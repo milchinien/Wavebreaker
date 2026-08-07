@@ -8,17 +8,16 @@
 
 import { formatNumber } from '../core/format.ts'
 import { t } from '../data/strings.ts'
-import { dist, type Vec2 } from '../core/vec.ts'
+import type { Vec2 } from '../core/vec.ts'
 import { enemyById, type EnemyShape } from '../data/enemies.ts'
 import { podById } from '../data/events.ts'
 import { TRADER_STAY_SECONDS } from '../data/balance.ts'
 import type { Helper, Pod, Trader } from '../app/state.ts'
 import type { Beam, Burst, Gain, Hit, Muzzle, Pickup, Shard } from '../sim/combat.ts'
 import type { Drone } from '../sim/drones.ts'
-import { meanCoinValue, type Coin } from '../sim/economy.ts'
+import type { Coin } from '../sim/economy.ts'
 import type { Enemy } from '../sim/enemies.ts'
 import type { Projectile } from '../sim/projectiles.ts'
-import type { RangeCircle } from '../sim/towers.ts'
 import { viewZoom, worldToScreen, type Camera } from './camera.ts'
 import { drawFrame, SPRITES } from './sprites.ts'
 import { PALETTE, RARITY_COLOR, RGB, THEME } from './theme.ts'
@@ -80,22 +79,6 @@ const COIN_TIER_SILVER = 0.8
 const COIN_TIER_GOLD = 2.2
 
 /**
- * Die Landung einer eingesammelten Muenze auf dem Zeiger.
- *
- * `PICKUP_LANDING` ist die Strecke, auf der sie schrumpft und verblasst - gemessen in ihren
- * eigenen Radien, damit ein Krumen und ein Stapel gleich weit vor dem Zeiger anfangen zu
- * verschwinden. `PICKUP_MIN_SCALE` ist, was am Zeiger uebrig bleibt: nicht null, sonst
- * verschwindet die Muenze in einem Punkt, statt in der Anzeige anzukommen.
- *
- * `PICKUP_POP` ist der Stupser im Augenblick des Aufhebens, `PICKUP_POP_SHARE` sein Anteil
- * an der Flugzeit.
- */
-const PICKUP_LANDING = 2.6
-const PICKUP_MIN_SCALE = 0.45
-const PICKUP_POP = 0.22
-const PICKUP_POP_SHARE = 0.3
-
-/**
  * Der Glanzlauf einer Muenze: `GLINT_PERIOD` Sekunden Ruhe, dann ein kurzer Lauf ueber alle
  * Bilder. Der Versatz kommt aus dem Ort der Muenze - dieselbe Muenze glaenzt immer gleich,
  * zwei nebeneinander aber nie im Takt. Ein Feld voller Gold soll leben, nicht blinken.
@@ -104,7 +87,7 @@ const GLINT_PERIOD = 3.4
 const GLINT_FPS = 14
 
 /**
- * Der Wirkungsbereich um die Station.
+ * Der Angriffskreis um die Station.
  *
  * Er atmet langsam - sichtbar genug, dass man ihn als Anzeige liest, ruhig genug, dass er
  * nicht mit den Gegnern um Aufmerksamkeit streitet.
@@ -112,21 +95,6 @@ const GLINT_FPS = 14
 const RANGE_RING_BREATH = 0.9
 const RANGE_RING_ALPHA = 0.3
 const RANGE_RING_FILL = 0.05
-/**
- * Wie viele Strahlen den Umriss abtasten. 180 heisst: alle zwei Grad ein Punkt - fein genug,
- * dass zusammen mit der Kurvenglaettung keine Kante zu sehen ist, und grob genug, dass es
- * in jedem Bild bezahlbar bleibt.
- */
-const RANGE_RING_RAYS = 180
-/**
- * Wie breit die Ecken zwischen zwei Reichweitenkreisen verrundet werden - als Anteil des
- * **Vollkreises**, nicht als Abstand. Eine Ecke ist ein Winkelknick; wie weit sie im Bild
- * ausladet, haengt vom Zoom ab, ihre Breite in Grad nicht.
- *
- * 0,04 sind rund 15 Grad zu jeder Seite. Genug, dass keine Spitze stehen bleibt, und wenig
- * genug, dass eine Beule ihre Hoehe behaelt - geglaettet wird auch das Maximum.
- */
-const RANGE_RING_ROUNDING = 0.04
 
 /**
  * Die Kapsel: Groesse in Welteinheiten, dazu Weite und Tempo ihres Schwebens.
@@ -163,7 +131,7 @@ export function drawEnemies(
   for (const enemy of enemies) {
     const def = enemyById(enemy.defId)
     const center = worldToScreen(camera, enemy.pos, width, height)
-    const radius = enemy.radius * viewZoom(camera)
+    const radius = enemy.radius * camera.zoom
 
     // Der Biss: ein Stoss zum Modul hin und zurueck. Ein Sinusbogen geht weich hin und
     // weich zurueck - der Gegner beisst, er springt nicht.
@@ -171,7 +139,7 @@ export function drawEnemies(
       const lunge =
         Math.min(6, enemy.radius * 0.35) *
         Math.sin(Math.PI * Math.min(1, enemy.bite / enemy.biteLife)) *
-        viewZoom(camera)
+        camera.zoom
       center.x += enemy.biteDir.x * lunge
       center.y += enemy.biteDir.y * lunge
     }
@@ -181,168 +149,25 @@ export function drawEnemies(
       continue
     }
 
-    /*
-     * Eine getarnte Einheit wird durchscheinend statt unsichtbar (GDD 07 Abschnitt 5).
-     *
-     * Ganz zu verschwinden waere regelgetreu, aber unspielbar: Der Spieler saehe einen
-     * Gegner, der aus dem Nichts an seiner Station steht, und haette keine Erklaerung.
-     * Ein Schemen sagt "der ist da, aber deine Tuerme sehen ihn nicht" - und genau das
-     * ist die Aussage.
-     */
-    const hidden = enemy.cloak < 0
-    const alpha = hidden ? 0.28 : 1
-
-    /*
-     * Gegner sind leuchtende Umrisse, keine gefuellten Klumpen: Die Fuellung deutet den
-     * Koerper nur an, die Aussage traegt die Kante. So bleiben auch dichte Wellen lesbar,
-     * und der Blick faellt weiter auf die helle Station statt auf den Gegnerteppich.
-     *
-     * Die Kante wird deshalb **zweimal** gezogen: einmal breit und blass als Schein, einmal
-     * schmal und voll als Linie. Das ist der Unterschied zwischen einem Koerper, der von
-     * innen glimmt, und einer Roehre, die brennt - und nur die Roehre ist Neon. Vorher trug
-     * die Fuellung ein Siebtel Deckkraft und die Kante einen einzigen Strich; ein Pulk sah
-     * dadurch aus wie ein Feld heller Flecken, in dem die Formen untergingen.
-     */
-    tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null, enemy.spin)
+    // Gegner sind leuchtende Umrisse, keine gefuellten Klumpen: Die Fuellung deutet den
+    // Koerper nur an, die Aussage traegt die Kante. So bleiben auch dichte Wellen lesbar,
+    // und der Blick faellt weiter auf die helle Station statt auf den Gegnerteppich.
+    tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null)
     ctx.fillStyle = def.color
-    ctx.globalAlpha = 0.06 * alpha
+    ctx.globalAlpha = 0.14
     ctx.fill()
 
-    const elite = enemy.elite.length > 0
+    ctx.globalAlpha = 1
     ctx.strokeStyle = def.color
+    ctx.lineWidth = 2
     ctx.shadowColor = def.color
-
-    // Der Schein. Er sitzt unter der Linie, damit die Kante scharf bleibt.
-    ctx.globalAlpha = (elite ? 0.4 : 0.28) * alpha
-    ctx.lineWidth = elite ? 6 : 4.5
-    // Ein Elite traegt einen zusaetzlichen Neon-Effekt und bleibt sonst er selbst -
-    // "verstaerkter Tank", nicht neuer Gegnertyp (GDD 07 Abschnitt 6).
-    ctx.shadowBlur = elite ? 22 : enemy.dockedTo !== null ? 16 : 11
-    ctx.stroke()
-
-    // Die Linie.
-    ctx.globalAlpha = alpha
-    ctx.lineWidth = elite ? 2.4 : 1.6
-    ctx.shadowBlur = elite ? 10 : 6
+    ctx.shadowBlur = enemy.dockedTo !== null ? 12 : 7
     ctx.stroke()
     ctx.shadowBlur = 0
 
-    // Ein Schild liegt als zweiter Ring aussen herum - man soll sehen, warum die Treffer
-    // wenig bewirken, statt es an der Lebensleiste zu erraten.
-    if (enemy.shield > 0) {
-      ctx.globalAlpha = 0.4 * alpha
-      ctx.strokeStyle = PALETTE.cyan
-      ctx.lineWidth = 1.5
-      ctx.beginPath()
-      ctx.arc(center.x, center.y, radius * 1.35, 0, Math.PI * 2)
-      ctx.stroke()
-    }
-
-    // Brennt er, glimmt er von innen.
-    if (enemy.burnLeft > 0) {
-      ctx.globalAlpha = 0.35 * alpha
-      ctx.fillStyle = PALETTE.gold
-      ctx.beginPath()
-      ctx.arc(center.x, center.y, radius * 0.7, 0, Math.PI * 2)
-      ctx.fill()
-    }
-
-    // Ist er verlangsamt, legt sich ein kalter Schleier darueber.
-    if (enemy.chillLeft > 0) {
-      ctx.globalAlpha = 0.3 * alpha
-      ctx.fillStyle = PALETTE.edge
-      tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null, enemy.spin)
-      ctx.fill()
-    }
-
-    ctx.globalAlpha = alpha
     if (enemy.maxHp >= HP_BAR_FROM_MAX_HP) {
-      drawHpBar(ctx, center, radius, enemy.hp / enemy.maxHp, def.color, viewZoom(camera))
+      drawHpBar(ctx, center, radius, enemy.hp / enemy.maxHp, def.color, camera.zoom)
     }
-  }
-  ctx.restore()
-}
-
-/**
- * Laserstrahlen (GDD 05: Laser-Turm).
- *
- * Ein heller Kern in einem breiteren Schein - so liest sich eine Linie als Energie und
- * nicht als gezogener Strich. Sie leben einen Wimpernschlag; bei sechs Schuessen je Sekunde
- * ergibt das den Dauerstrahl, den das GDD beschreibt.
- */
-export function drawBeams(
-  ctx: CanvasRenderingContext2D,
-  beams: readonly Beam[],
-  camera: Camera,
-  width: number,
-  height: number,
-): void {
-  ctx.save()
-  ctx.lineCap = 'round'
-
-  for (const beam of beams) {
-    if (!beam.active) continue
-
-    const fade = Math.max(0, 1 - beam.age / beam.life)
-    const from = worldToScreen(camera, beam.from, width, height)
-    const to = worldToScreen(camera, beam.to, width, height)
-    const zoom = Math.max(0.6, viewZoom(camera))
-
-    ctx.strokeStyle = beam.color
-    ctx.shadowColor = beam.color
-
-    ctx.globalAlpha = 0.35 * fade
-    ctx.shadowBlur = 12
-    ctx.lineWidth = 6 * zoom
-    ctx.beginPath()
-    ctx.moveTo(from.x, from.y)
-    ctx.lineTo(to.x, to.y)
-    ctx.stroke()
-
-    ctx.globalAlpha = fade
-    ctx.shadowBlur = 6
-    ctx.lineWidth = 2 * zoom
-    ctx.stroke()
-  }
-
-  ctx.restore()
-}
-
-/**
- * Kampfdrohnen (GDD 05: Drohnen-Modul).
- *
- * Kleine leuchtende Rauten auf ihrer Kreisbahn. Bewusst schlicht: Sie sind zu dritt bis zu
- * sechst gleichzeitig unterwegs, und alles Aufwendigere waere in dieser Groesse Rauschen.
- */
-export function drawDrones(
-  ctx: CanvasRenderingContext2D,
-  drones: readonly Drone[],
-  camera: Camera,
-  width: number,
-  height: number,
-  time: number,
-): void {
-  if (drones.length === 0) return
-  const zoom = Math.max(0.6, viewZoom(camera))
-
-  ctx.save()
-  for (const drone of drones) {
-    const center = worldToScreen(camera, drone.pos, width, height)
-    // Ein leichtes Pulsen aus der eigenen Bahnlage - so blinken nicht alle im Takt.
-    const pulse = 0.75 + 0.25 * Math.sin(time * 5 + drone.angle * 3)
-    const size = 4.2 * zoom
-
-    ctx.globalAlpha = pulse
-    ctx.fillStyle = drone.color
-    ctx.shadowColor = drone.color
-    ctx.shadowBlur = 8
-    ctx.beginPath()
-    ctx.moveTo(center.x, center.y - size)
-    ctx.lineTo(center.x + size, center.y)
-    ctx.lineTo(center.x, center.y + size)
-    ctx.lineTo(center.x - size, center.y)
-    ctx.closePath()
-    ctx.fill()
   }
   ctx.restore()
 }
@@ -603,7 +428,7 @@ export function drawApproach(
     if (drawn >= APPROACH_MAX) break
 
     const point = worldToScreen(camera, enemy.pos, width, height)
-    const radius = enemy.radius * viewZoom(camera)
+    const radius = enemy.radius * camera.zoom
     const inside =
       point.x >= -radius && point.y >= -radius && point.x <= width + radius && point.y <= height + radius
     if (inside) continue
@@ -780,7 +605,7 @@ export function drawProjectiles(
 
   for (const projectile of projectiles) {
     const center = worldToScreen(camera, projectile.pos, width, height)
-    const zoom = Math.max(0.6, viewZoom(camera))
+    const zoom = Math.max(0.6, camera.zoom)
     const radius = (projectile.crit ? 3.4 : 2.2) * zoom
 
     const trail = Math.min(projectile.speed * TRAIL_SECONDS, projectile.speed * projectile.life)
@@ -827,7 +652,9 @@ export function drawCoins(
 ): void {
   if (coins.length === 0) return
 
-  const mean = meanCoinValue(coins)
+  let onField = 0
+  for (const coin of coins) onField += coin.value
+  const mean = onField / coins.length
 
   // Ausserhalb des Kampfes ist Gold Auskunft, keine Aufforderung: Es liegt weiter da
   // (GDD 08 Abschnitt 2), aufheben laesst es sich aber nur im Kampf. Gedaempft tritt es
@@ -840,7 +667,27 @@ export function drawCoins(
 
   for (const coin of coins) {
     const center = worldToScreen(camera, { x: coin.x, y: coin.y }, width, height)
-    const { radius, tier } = coinLook(coin.value, mean, zoom)
+
+    /*
+     * Die Groesse folgt dem **Vielfachen des Durchschnitts**, nicht dem absoluten Wert und
+     * nicht dem Anteil an der Summe.
+     *
+     * Ein absolutes Mass braucht einen Deckel, sonst deckt ein spaeter Stapel die halbe
+     * Station zu - und ueber dem Deckel sehen wieder alle gleich aus. Der Anteil an der
+     * Summe wiederum waechst, waehrend man einsammelt: Von zehn gleichen Muenzen wuchs die
+     * letzte von Radius 6,2 auf 11, obwohl sich an ihr nichts geaendert hatte.
+     *
+     * Das Vielfache des Durchschnitts ist gegen beides fest. Gleich schwere Muenzen bleiben
+     * gleich gross, egal wie viele davon noch liegen, und ein Stapel, der zehnmal so schwer
+     * ist wie der Durchschnitt, sieht auf jeder Wellenhoehe gleich aus.
+     *
+     * Die Wurzel spreizt das untere Ende: Ein Krumen unter vielen bleibt sichtbar, statt
+     * auf den Grundwert zusammenzufallen.
+     */
+    const times = mean > 0 ? coin.value / mean : 1
+    const radius =
+      (COIN_RADIUS_BASE + COIN_RADIUS_SPAN * Math.min(1, Math.sqrt(times) / COIN_SIZE_SPREAD)) *
+      zoom
 
     if (
       center.x < -radius ||
@@ -850,6 +697,10 @@ export function drawCoins(
     ) {
       continue
     }
+
+    // Dasselbe Vielfache entscheidet ueber das Metall - Groesse und Farbe sagen damit
+    // dasselbe und koennen sich nicht widersprechen.
+    const tier = times >= COIN_TIER_GOLD ? 2 : times >= COIN_TIER_SILVER ? 1 : 0
 
     if (SPRITES.coins.ready()) {
       drawFrame(ctx, SPRITES.coins, glintFrame(time, coin.x, coin.y), tier, center.x, center.y, radius * 2)
@@ -866,36 +717,6 @@ export function drawCoins(
 }
 
 /**
- * Wie eine Muenze aussieht: Groesse und Metall - beide aus **einem** Mass.
- *
- * Das Mass ist das Vielfache des Durchschnitts auf dem Feld, nicht der absolute Wert und
- * nicht der Anteil an der Summe.
- *
- * Ein absolutes Mass braucht einen Deckel, sonst deckt ein spaeter Stapel die halbe Station
- * zu - und ueber dem Deckel sehen wieder alle gleich aus. Der Anteil an der Summe wiederum
- * waechst, waehrend man einsammelt: Von zehn gleichen Muenzen wuchs die letzte von Radius
- * 6,2 auf 11, obwohl sich an ihr nichts geaendert hatte.
- *
- * Das Vielfache des Durchschnitts ist gegen beides fest. Gleich schwere Muenzen bleiben
- * gleich gross, egal wie viele davon noch liegen, und ein Stapel, der zehnmal so schwer ist
- * wie der Durchschnitt, sieht auf jeder Wellenhoehe gleich aus.
- *
- * Die Wurzel spreizt das untere Ende: Ein Krumen unter vielen bleibt sichtbar, statt auf den
- * Grundwert zusammenzufallen.
- *
- * Groesse und Metall kommen aus **derselben** Zahl und koennen sich deshalb nicht
- * widersprechen. Und sie stehen an einer Stelle, weil zwei Ebenen sie brauchen: das
- * liegende Gold und die aufgehobene Muenze auf ihrem Flug zum Zeiger.
- */
-function coinLook(value: number, mean: number, zoom: number): { radius: number; tier: number } {
-  const times = mean > 0 ? value / mean : 1
-  const radius =
-    (COIN_RADIUS_BASE + COIN_RADIUS_SPAN * Math.min(1, Math.sqrt(times) / COIN_SIZE_SPREAD)) * zoom
-  const tier = times >= COIN_TIER_GOLD ? 2 : times >= COIN_TIER_SILVER ? 1 : 0
-  return { radius, tier }
-}
-
-/**
  * Welches Bild des Glanzlaufs eine Muenze gerade zeigt.
  *
  * Der Versatz kommt aus ihrem Ort und braucht deshalb weder Zufall noch gespeicherten
@@ -909,68 +730,42 @@ function glintFrame(time: number, x: number, y: number): number {
 }
 
 /**
- * Der Wirkungsbereich der Station (GDD 13 Abschnitt 4).
+ * Der Angriffskreis um die Station (GDD 13 Abschnitt 4).
  *
  * Er ersetzt den frueher gezeigten Sammelradius am Zeiger. Das ist ein Tausch von zwei
  * Anzeigen, die beide "Reichweite" hiessen und Verschiedenes meinten: Der Sammelradius
- * haftete am Zeiger und sagte etwas ueber die Maus, dieser Umriss haftet an der Station und
+ * haftete am Zeiger und sagte etwas ueber die Maus, dieser Kreis haftet an der Station und
  * sagt, wohin sie schiesst. Nur der zweite ist eine Aussage ueber das Spiel.
- *
- * **Es ist kein Kreis, sondern die Vereinigung vieler Kreise** - je einer um jeden Turm, der
- * schiesst (`rangeCircles` in `sim/towers.ts`). Ein einzelner Kreis um den Kern waere in
- * beide Richtungen falsch: Nimmt er die kleinste Reichweite, sterben Gegner sichtbar
- * ausserhalb; nimmt er die groesste, verspricht er Deckung auf der Seite, wo gar kein Turm
- * steht. Solange ein Turm nicht weiter reicht als der Rest, sieht man von ihm nichts - erst
- * wenn er ueber den bestehenden Umriss hinausragt, waechst dort eine Beule.
- *
- * Abgetastet wird radial: Fuer jeden Strahl vom Kern nach aussen zaehlt der am weitesten
- * entfernte Kreisdurchstoss. Dabei entstehen an den Schnittstellen zweier Kreise Spitzen,
- * und Spitzen sehen nach Fehler aus, nicht nach Reichweite - deshalb laeuft das Maximum
- * ueber `softMax` und rundet sie ab (dasselbe Verfahren wie bei einer weichen Vereinigung
- * von Abstandsfeldern).
  *
  * Gezeichnet als sehr blasse Flaeche mit einer klaren Kante: Die Flaeche macht den Bereich
  * als Raum lesbar, die Kante nennt die Grenze. Beides zusammen bleibt weit hinter Gegnern
- * und Station zurueck - der Umriss ist Kulisse, kein Gegenstand.
+ * und Station zurueck - der Kreis ist Kulisse, kein Gegenstand.
  */
 export function drawRangeRing(
   ctx: CanvasRenderingContext2D,
-  origin: Vec2,
-  circles: readonly RangeCircle[],
+  center: Vec2,
+  range: number,
   camera: Camera,
   width: number,
   height: number,
   time: number,
 ): void {
-  if (circles.length === 0) return
+  const radius = range * viewZoom(camera)
+  if (radius < 8) return
 
-  // Die weiteste Ecke des Umrisses. Sie entscheidet, ob ueberhaupt gezeichnet wird, und ist
-  // der Bezug fuer Rundung und Farbverlauf - beide sollen mit dem Bild mitwachsen.
-  let outer = 0
-  for (const circle of circles) {
-    outer = Math.max(outer, dist(origin, circle.center) + circle.range)
-  }
-
-  const zoom = viewZoom(camera)
-  if (outer * zoom < 8) return
-
-  const point = worldToScreen(camera, origin, width, height)
+  const point = worldToScreen(camera, center, width, height)
   const breath = 0.85 + 0.15 * Math.sin(time * RANGE_RING_BREATH)
-
-  const reaches = cachedOutline(origin, circles)
-  const outline = projectOutline(reaches, point, zoom)
 
   ctx.save()
 
-  traceLoop(ctx, outline)
-
   // Die Flaeche laeuft von innen nach aussen auf, damit die Station nicht in einem
   // gleichmaessigen Schleier steht - innen soll es dunkel bleiben.
-  const radius = outer * zoom
   const fill = ctx.createRadialGradient(point.x, point.y, radius * 0.35, point.x, point.y, radius)
   fill.addColorStop(0, `rgba(${RGB.cyan},0)`)
-  fill.addColorStop(1, `rgba(${RGB.cyan},${RANGE_RING_FILL * breath})`)
+  fill.addColorStop(1, `rgba(${CYAN_RGB}, ${RANGE_RING_FILL * breath})`)
   ctx.fillStyle = fill
+  ctx.beginPath()
+  ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
   ctx.fill()
 
   ctx.globalAlpha = RANGE_RING_ALPHA * breath
@@ -983,203 +778,12 @@ export function drawRangeRing(
   ctx.restore()
 }
 
-/*
- * Zwischenspeicher des Umrisses.
- *
- * `rangeOutline` rechnet **rein in Weltkoordinaten** - kein Zoom, keine Kamera, keine Zeit
- * gehen ein. Sein Ergebnis aendert sich also nur, wenn sich die Kreise aendern: wenn gebaut
- * wird, ein Reichweiten-Upgrade faellt oder ein Buff an- oder ausgeht. Trotzdem lief es in
- * **jedem** Bild: 180 Strahlen gegen jeden Kreis, dazu die Glaettung und zwei frische
- * Felder. Bei fuenfzehn Modulen sind das 2700 Kreisdurchstoesse je Bild fuer ein Ergebnis,
- * das minutenlang dasselbe bleibt.
- *
- * Der Schluessel ist die Kreisliste selbst - Ursprung, Ort und Reichweite je Kreis, flach
- * hintereinander. Ihn Zahl fuer Zahl zu vergleichen kostet drei Vergleiche je Kreis; das ist
- * gegen die Neurechnung nichts. Eine Zeichenkette als Schluessel waere kuerzer zu schreiben
- * und wuerde je Bild eine neue anlegen - genau die Art Muell, die hier weg soll.
- */
-let outlineKey: number[] = []
-let outlineValue: number[] = []
-
-function cachedOutline(origin: Vec2, circles: readonly RangeCircle[]): number[] {
-  let same = outlineKey.length === circles.length * 3 + 2
-  if (same) same = outlineKey[0] === origin.x && outlineKey[1] === origin.y
-  for (let i = 0; same && i < circles.length; i++) {
-    const circle = circles[i] as RangeCircle
-    same =
-      outlineKey[2 + i * 3] === circle.center.x &&
-      outlineKey[3 + i * 3] === circle.center.y &&
-      outlineKey[4 + i * 3] === circle.range
-  }
-  if (same) return outlineValue
-
-  outlineKey = [origin.x, origin.y]
-  for (const circle of circles) {
-    outlineKey.push(circle.center.x, circle.center.y, circle.range)
-  }
-  outlineValue = rangeOutline(origin, circles, RANGE_RING_ROUNDING)
-  return outlineValue
-}
-
-/**
- * Den Umriss auf den Bildschirm rechnen.
- *
- * Schreibt in ein wiederverwendetes Feld statt in ein neues. Der Umriss hat 180 Punkte, und
- * 180 frische Objekte je Bild sind Muell, den der Speicherbereiniger spaeter in einem Stueck
- * wegraeumt - und dieses eine Stueck sieht man als Ruckler. Das Feld wird sofort gezeichnet
- * und nirgends aufgehoben, also darf es dasselbe bleiben.
- */
-const outlineScratch: Vec2[] = []
-
-function projectOutline(reaches: readonly number[], point: Vec2, zoom: number): Vec2[] {
-  while (outlineScratch.length < reaches.length) outlineScratch.push({ x: 0, y: 0 })
-  outlineScratch.length = reaches.length
-
-  for (let i = 0; i < reaches.length; i++) {
-    const angle = (i / reaches.length) * Math.PI * 2
-    const reach = (reaches[i] as number) * zoom
-    const target = outlineScratch[i] as Vec2
-    target.x = point.x + Math.cos(angle) * reach
-    target.y = point.y + Math.sin(angle) * reach
-  }
-  return outlineScratch
-}
-
-/**
- * Der Umriss als Reichweite je Strahl, gegen den Uhrzeigersinn ab Winkel null.
- *
- * Zwei Schritte: erst die **echte** Vereinigung abtasten, dann die fertige Kurve glaetten.
- *
- * Diese Reihenfolge ist der ganze Trick. Der naheliegende Weg - das Maximum der Kreise
- * gleich weich zu nehmen (`smax` aus der Abstandsfeld-Rechnerei) - rundet die Ecke zwar
- * auch, aber er beult dabei **ueber** beide Kreise hinaus. Ein Turm, der gar nichts
- * erweitert, weil seine Scheibe ganz in der des Kerns liegt, liesse den Umriss dann trotzdem
- * wachsen: nachgemessen um zehn von 220 Einheiten. Genau das soll er nicht - unsichtbar
- * bleiben, bis er wirklich weiter reicht.
- *
- * Ein Mittelwertfilter kann das nicht: Er kommt nie ueber das oertliche Maximum hinaus, und
- * ueber einem gleichbleibenden Stueck aendert er gar nichts. Ein Kreis bleibt ein Kreis,
- * eine Beule bekommt runde Schultern.
- *
- * Rein rechnerisch und ohne Kamera - deshalb liegt die Funktion offen und wird im
- * Selbsttest geprueft. Was gezeichnet wird, ist eine Aussage ueber das Spiel; sie darf
- * nicht nur gut aussehen, sie muss stimmen.
- *
- * `rounding` ist ein Anteil des Vollkreises, kein Abstand: Die Ecke ist ein Winkelknick,
- * und wie weit sie im Bild ausladet, haengt vom Zoom ab.
- */
-export function rangeOutline(
-  origin: Vec2,
-  circles: readonly RangeCircle[],
-  rounding: number,
-  rays: number = RANGE_RING_RAYS,
-): number[] {
-  const exact: number[] = []
-  for (let i = 0; i < rays; i++) {
-    const angle = (i / rays) * Math.PI * 2
-    exact.push(reachAlong(origin, circles, Math.cos(angle), Math.sin(angle)))
-  }
-  return smoothLoop(exact, Math.round(rays * rounding))
-}
-
-/**
- * Wie weit die Vereinigung entlang eines Strahls reicht.
- *
- * Je Kreis der **hintere** Durchstosspunkt des Strahls - das ist die Stelle, an der man
- * diesen Kreis wieder verlaesst. Ein Kreis, den der Strahl gar nicht trifft, traegt nichts
- * bei; er liegt seitlich und hat in dieser Richtung nichts zu sagen.
- */
-function reachAlong(
-  origin: Vec2,
-  circles: readonly RangeCircle[],
-  dx: number,
-  dy: number,
-): number {
-  let reach = 0
-
-  for (const circle of circles) {
-    const ox = circle.center.x - origin.x
-    const oy = circle.center.y - origin.y
-
-    // Abstand des Mittelpunkts laengs und quer zum Strahl. Quer entscheidet, ob getroffen
-    // wird, laengs, wo.
-    const along = ox * dx + oy * dy
-    const across = ox * dy - oy * dx
-    const half = circle.range * circle.range - across * across
-    if (half <= 0) continue
-
-    const hit = along + Math.sqrt(half)
-    if (hit > reach) reach = hit
-  }
-
-  return reach
-}
-
-/**
- * Geschlossene Zahlenreihe glaetten - Dreiecksfenster, damit die Mitte am meisten zaehlt.
- *
- * Geschlossen heisst: Der letzte Wert ist Nachbar des ersten. Ohne das bekaeme der Umriss
- * an Winkel null eine Naht, und ausgerechnet dort faellt sie auf, weil sie stehen bleibt,
- * waehrend sich alles andere dreht.
- */
-function smoothLoop(values: readonly number[], radius: number): number[] {
-  if (radius < 1) return [...values]
-
-  const count = values.length
-  const smoothed: number[] = []
-
-  for (let i = 0; i < count; i++) {
-    let sum = 0
-    let weight = 0
-    for (let offset = -radius; offset <= radius; offset++) {
-      const w = radius + 1 - Math.abs(offset)
-      sum += (values[(i + offset + count) % count] as number) * w
-      weight += w
-    }
-    smoothed.push(sum / weight)
-  }
-
-  return smoothed
-}
-
-/**
- * Geschlossener Linienzug mit weichen Uebergaengen.
- *
- * Die Kurve laeuft nicht durch die Abtastpunkte, sondern durch die **Mitten** zwischen je
- * zwei benachbarten; der Punkt dazwischen wird zum Kontrollpunkt. Das ist der uebliche
- * Griff fuer eine glatte geschlossene Kurve und kostet nichts - ohne ihn zeigte der Umriss
- * bei starkem Zoom seine Ecken.
- */
-function traceLoop(ctx: CanvasRenderingContext2D, points: readonly Vec2[]): void {
-  const count = points.length
-  if (count < 3) return
-
-  const first = points[0] as Vec2
-  const last = points[count - 1] as Vec2
-
-  ctx.beginPath()
-  ctx.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2)
-  for (let i = 0; i < count; i++) {
-    const current = points[i] as Vec2
-    const next = points[(i + 1) % count] as Vec2
-    ctx.quadraticCurveTo(current.x, current.y, (current.x + next.x) / 2, (current.y + next.y) / 2)
-  }
-  ctx.closePath()
-}
-
 /**
  * Eingesammelte Muenzen auf dem Weg zum Zeiger.
  *
- * Sie bleiben **dieselbe Muenze**: dasselbe Bild, dasselbe Metall, dieselbe Groesse wie
- * eben noch im Feld (`coinLook`). Vorher flog hier ein kleiner goldener Punkt los, der
- * sofort zu schrumpfen begann - das sah aus, als loese sich das Gold auf, und nicht, als
- * hebe man es auf.
- *
- * Wohin sie fliegt, entscheidet die Simulation (`sim/combat.ts`): Sie faehrt dem Zeiger
- * nach und bleibt dabei erst zurueck. Diese Ebene zeichnet nur noch die **Landung** - auf
- * den letzten Pixeln vor dem Zeiger schrumpft die Muenze und verblasst. Das Schrumpfen
- * haengt am Abstand und nicht am Alter: Eine Muenze, die frueh ankommt, soll auch frueh
- * verschwinden, und eine, die lange hinterherfliegt, soll dabei nicht unterwegs zerfallen.
+ * Sie starten schnell und kommen langsam an: So liest sich die Bewegung als Aufheben und
+ * nicht als Wegfliegen. Am Ziel schrumpfen sie auf null - der Wert steht dann schon in der
+ * Goldanzeige, die im selben Moment pulst.
  */
 export function drawPickups(
   ctx: CanvasRenderingContext2D,
@@ -1187,70 +791,70 @@ export function drawPickups(
   camera: Camera,
   width: number,
   height: number,
-  time: number,
 ): void {
-  const zoom = Math.max(0.6, viewZoom(camera))
-
   ctx.save()
   for (const pickup of pickups) {
     if (!pickup.active) continue
 
-    const center = worldToScreen(camera, pickup.pos, width, height)
-    const { radius, tier } = coinLook(pickup.value, pickup.mean, zoom)
-
-    // Wie weit die Muenze noch vom Zeiger weg ist, gemessen in ihren eigenen Radien: Eine
-    // dicke Muenze darf spaeter schrumpfen als ein Krumen, sonst zerfaellt der Krumen
-    // gefuehlt schon auf halber Strecke.
-    const gap = dist(pickup.pos, pickup.to) * zoom
-    const landing = Math.min(1, gap / (radius * PICKUP_LANDING))
-
-    // Ein kurzer Stupser beim Aufheben. Er sagt nichts ueber den Wert - er trifft jede
-    // Muenze gleich und ist nach einem Wimpernschlag vorbei -, also stoert er die Regel
-    // nicht, dass die Groesse einer Muenze ihr Vielfaches des Durchschnitts nennt.
-    const pop = 1 + PICKUP_POP * Math.max(0, 1 - pickup.age / (pickup.life * PICKUP_POP_SHARE))
-    const size = radius * 2 * pop * (PICKUP_MIN_SCALE + (1 - PICKUP_MIN_SCALE) * landing)
-    if (size < 1) continue
-
-    ctx.globalAlpha = landing
-    if (SPRITES.coins.ready()) {
-      // Derselbe Glanzlauf wie im Liegen, gerechnet aus dem **Fundort**: Das Bild springt
-      // beim Aufheben nicht um, sondern laeuft weiter.
-      drawFrame(
-        ctx,
-        SPRITES.coins,
-        glintFrame(time, pickup.from.x, pickup.from.y),
-        tier,
-        center.x,
-        center.y,
-        size,
-      )
-    } else {
-      ctx.fillStyle = PALETTE.gold
-      ctx.shadowColor = PALETTE.gold
-      ctx.shadowBlur = 9 * landing
-      ctx.beginPath()
-      ctx.arc(center.x, center.y, size / 2, 0, Math.PI * 2)
-      /* [REKONSTRUIERT] Ab hier war die Leseausgabe abgeschnitten (Zeile 1207 ff.).
-         Nachgebaut nach dem gleichlaufenden Ersatzzweig fuer liegende Muenzen weiter
-         oben: beginPath, arc, fillStyle, fill. Ein Zuruecksetzen von `shadowBlur`
-         braucht es nicht - `SPRITES.coins.ready()` faellt fuer alle Muenzen eines
-         Bildes gleich aus, der Ersatzzweig kann also nicht in den Sprite-Zweig
-         durchschlagen, und `ctx.restore()` raeumt am Ende ohnehin auf. */
-      ctx.fill()
+    const progress = Math.min(1, pickup.age / pickup.life)
+    const eased = 1 - Math.pow(1 - progress, 3)
+    const world = {
+      x: pickup.from.x + (pickup.to.x - pickup.from.x) * eased,
+      y: pickup.from.y + (pickup.to.y - pickup.from.y) * eased,
     }
+    const center = worldToScreen(camera, world, width, height)
+    const radius = 4.5 * (1 - progress) * Math.max(0.6, camera.zoom)
+    if (radius < 0.4) continue
+
+    ctx.globalAlpha = 1 - progress * progress
+    ctx.fillStyle = PALETTE.gold
+    ctx.shadowColor = PALETTE.gold
+    ctx.shadowBlur = 9 * (1 - progress)
+    ctx.beginPath()
+    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2)
+    ctx.fill()
   }
   ctx.restore()
 }
 
-/* ============================================================================
- * [REKONSTRUIERT] Aus einer aelteren Fassung uebernommen.
+/**
+ * Der eingesammelte Betrag steigt auf und verblasst.
  *
- * Die letzte vollstaendige Leseausgabe dieser Datei endete bei Zeile 1207 - dort
- * greift die Laengengrenze fuer Werkzeugausgaben. Was danach stand, ist in keiner
- * Sitzung erfasst. Die folgenden Funktionen stammen deshalb aus dem Stand vom
- * 03.08.2026; `render/scene.ts` fuehrt sie unveraendert im Import, sie gehoeren
- * also weiterhin hierher. Spaetere Aenderungen an ihnen koennen fehlen.
- * ==========================================================================*/
+ * Er steht dort, wo eingesammelt wurde, und wandert nach oben aus dem Geschehen heraus -
+ * so verdeckt er nichts, was gerade wichtig ist. Die Bewegung ist am Anfang schnell und
+ * wird langsamer: Die Zahl springt ins Auge und legt sich dann hin.
+ */
+export function drawGains(
+  ctx: CanvasRenderingContext2D,
+  gains: readonly Gain[],
+  camera: Camera,
+  width: number,
+  height: number,
+): void {
+  const zoom = Math.max(0.6, camera.zoom)
+
+  ctx.save()
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.font = `${Math.round(18 * zoom)}px ${THEME.numberFont}`
+
+  for (const gain of gains) {
+    if (!gain.active) continue
+
+    const progress = Math.min(1, gain.age / gain.life)
+    const rise = GAIN_RISE * (1 - (1 - progress) * (1 - progress))
+    const point = worldToScreen(camera, { x: gain.pos.x, y: gain.pos.y - rise }, width, height)
+
+    ctx.globalAlpha = 1 - progress * progress
+    ctx.fillStyle = PALETTE.gold
+    ctx.shadowColor = PALETTE.gold
+    ctx.shadowBlur = 8 * (1 - progress)
+    writePixelText(ctx, t('hud.gain', { amount: formatNumber(Math.floor(gain.value)) }), point.x, point.y)
+  }
+
+  ctx.restore()
+}
+
 /**
  * Der Zerfall eines Gegners.
  *
@@ -1306,39 +910,78 @@ export function drawBursts(
   ctx.restore()
 }
 
-/**
- * Der eingesammelte Betrag steigt auf und verblasst.
- *
- * Er steht dort, wo eingesammelt wurde, und wandert nach oben aus dem Geschehen heraus -
- * so verdeckt er nichts, was gerade wichtig ist. Die Bewegung ist am Anfang schnell und
- * wird langsamer: Die Zahl springt ins Auge und legt sich dann hin.
- */
-export function drawGains(
+export function drawShards(
   ctx: CanvasRenderingContext2D,
-  gains: readonly Gain[],
+  shards: readonly Shard[],
   camera: Camera,
   width: number,
   height: number,
 ): void {
-  const zoom = Math.max(0.6, camera.zoom)
-
   ctx.save()
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.font = `${Math.round(18 * zoom)}px ${THEME.numberFont}`
+  for (const shard of shards) {
+    if (!shard.active) continue
 
-  for (const gain of gains) {
-    if (!gain.active) continue
+    const progress = Math.min(1, shard.age / shard.life)
+    const center = worldToScreen(camera, shard.pos, width, height)
+    const zoom = Math.max(0.6, camera.zoom)
+    const radius = shard.radius * (1 - 0.45 * progress) * zoom
+    if (radius < 0.4) continue
 
-    const progress = Math.min(1, gain.age / gain.life)
-    const rise = GAIN_RISE * (1 - (1 - progress) * (1 - progress))
-    const point = worldToScreen(camera, { x: gain.pos.x, y: gain.pos.y - rise }, width, height)
+    // Goldfunken holen ihre Farbe aus der Palette - die Simulation kennt keine Farben,
+    // die nicht von einem Gegner oder einem Turm kommen.
+    const color = shard.kind === 'muenze' ? PALETTE.gold : shard.color
 
     ctx.globalAlpha = 1 - progress * progress
-    ctx.fillStyle = PALETTE.gold
-    ctx.shadowColor = PALETTE.gold
-    ctx.shadowBlur = 8 * (1 - progress)
-    writePixelText(ctx, t('hud.gain', { amount: formatNumber(Math.floor(gain.value)) }), point.x, point.y)
+    ctx.strokeStyle = color
+    ctx.lineWidth = Math.max(1, 1.4 * zoom)
+    ctx.shadowColor = color
+    ctx.shadowBlur = 6 * (1 - progress)
+    ctx.beginPath()
+    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
+/**
+ * Muendungsfeuer: ein kurzer Strich, der aus der Modulkante in Schussrichtung schlaegt.
+ *
+ * Er beginnt bewusst **ausserhalb** der Flaeche - laege der Anfang in der Mitte, malte der
+ * Blitz das Modul zu, und genau das Modul ist der Teil, den man sehen soll.
+ */
+export function drawMuzzles(
+  ctx: CanvasRenderingContext2D,
+  muzzles: readonly Muzzle[],
+  camera: Camera,
+  width: number,
+  height: number,
+): void {
+  ctx.save()
+  ctx.lineCap = 'round'
+
+  for (const muzzle of muzzles) {
+    if (!muzzle.active) continue
+
+    const fade = Math.max(0, 1 - muzzle.age / muzzle.life)
+    const dx = Math.cos(muzzle.angle)
+    const dy = Math.sin(muzzle.angle)
+    const start = worldToScreen(
+      camera,
+      { x: muzzle.pos.x + dx * MUZZLE_OFFSET, y: muzzle.pos.y + dy * MUZZLE_OFFSET },
+      width,
+      height,
+    )
+    const length = MUZZLE_LENGTH * Math.max(0.6, camera.zoom) * fade
+
+    ctx.globalAlpha = fade
+    ctx.strokeStyle = muzzle.color
+    ctx.shadowColor = muzzle.color
+    ctx.shadowBlur = 10 * fade
+    ctx.lineWidth = Math.max(1.4, 3.2 * Math.max(0.6, camera.zoom) * fade)
+    ctx.beginPath()
+    ctx.moveTo(start.x, start.y)
+    ctx.lineTo(start.x + dx * length, start.y + dy * length)
+    ctx.stroke()
   }
 
   ctx.restore()
@@ -1405,83 +1048,6 @@ export function drawHits(
       ctx.arc(center.x, center.y, (hit.crit ? 3.4 : 2.2) * zoom, 0, Math.PI * 2)
       ctx.fill()
     }
-  }
-  ctx.restore()
-}
-
-/**
- * Muendungsfeuer: ein kurzer Strich, der aus der Modulkante in Schussrichtung schlaegt.
- *
- * Er beginnt bewusst **ausserhalb** der Flaeche - laege der Anfang in der Mitte, malte der
- * Blitz das Modul zu, und genau das Modul ist der Teil, den man sehen soll.
- */
-export function drawMuzzles(
-  ctx: CanvasRenderingContext2D,
-  muzzles: readonly Muzzle[],
-  camera: Camera,
-  width: number,
-  height: number,
-): void {
-  ctx.save()
-  ctx.lineCap = 'round'
-
-  for (const muzzle of muzzles) {
-    if (!muzzle.active) continue
-
-    const fade = Math.max(0, 1 - muzzle.age / muzzle.life)
-    const dx = Math.cos(muzzle.angle)
-    const dy = Math.sin(muzzle.angle)
-    const start = worldToScreen(
-      camera,
-      { x: muzzle.pos.x + dx * MUZZLE_OFFSET, y: muzzle.pos.y + dy * MUZZLE_OFFSET },
-      width,
-      height,
-    )
-    const length = MUZZLE_LENGTH * Math.max(0.6, camera.zoom) * fade
-
-    ctx.globalAlpha = fade
-    ctx.strokeStyle = muzzle.color
-    ctx.shadowColor = muzzle.color
-    ctx.shadowBlur = 10 * fade
-    ctx.lineWidth = Math.max(1.4, 3.2 * Math.max(0.6, camera.zoom) * fade)
-    ctx.beginPath()
-    ctx.moveTo(start.x, start.y)
-    ctx.lineTo(start.x + dx * length, start.y + dy * length)
-    ctx.stroke()
-  }
-
-  ctx.restore()
-}
-
-export function drawShards(
-  ctx: CanvasRenderingContext2D,
-  shards: readonly Shard[],
-  camera: Camera,
-  width: number,
-  height: number,
-): void {
-  ctx.save()
-  for (const shard of shards) {
-    if (!shard.active) continue
-
-    const progress = Math.min(1, shard.age / shard.life)
-    const center = worldToScreen(camera, shard.pos, width, height)
-    const zoom = Math.max(0.6, camera.zoom)
-    const radius = shard.radius * (1 - 0.45 * progress) * zoom
-    if (radius < 0.4) continue
-
-    // Goldfunken holen ihre Farbe aus der Palette - die Simulation kennt keine Farben,
-    // die nicht von einem Gegner oder einem Turm kommen.
-    const color = shard.kind === 'muenze' ? PALETTE.gold : shard.color
-
-    ctx.globalAlpha = 1 - progress * progress
-    ctx.strokeStyle = color
-    ctx.lineWidth = Math.max(1, 1.4 * zoom)
-    ctx.shadowColor = color
-    ctx.shadowBlur = 6 * (1 - progress)
-    ctx.beginPath()
-    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2)
-    ctx.stroke()
   }
   ctx.restore()
 }

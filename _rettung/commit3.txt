@@ -1,0 +1,24 @@
+render/combat.ts vervollstaendigt, Typecheck von 1156 auf 26
+
+Die letzte Leseausgabe von render/combat.ts endete bei Zeile 1207 - dort greift die
+Laengengrenze fuer Werkzeugausgaben. Dahinter standen fuenf Zeichenfunktionen, die
+render/scene.ts importiert: drawBursts, drawGains, drawHits, drawMuzzles, drawShards.
+
+Sie sind aus dem Stand vom 03.08.2026 uebernommen, wo sie noch vor der Grenze lagen,
+und als [REKONSTRUIERT] gekennzeichnet. Ebenso der Abschluss von drawPickups, der
+mitten im Ersatzzweig abbrach - nachgebaut nach dem gleichlaufenden Zweig fuer
+liegende Muenzen.
+
+Klammerbilanz der Datei geht auf (106/106), 1477 Zeilen.
+
+Verbleibende 26 Typfehler, alle diagnostiziert:
+  - selftest/suites/combat.ts: veraltete Einfuhrliste (rangeCircles, stationRange,
+    RangeCircle, SPIN_MAX fehlen darin)
+  - ui/dialogs.ts: dasselbe fuer towerHint
+  - data/strings.ts: drei Schluessel fehlen (offer.hint, upgrades.tipTitle,
+    upgrades.tipLevel)
+  - sim/economy.ts: steht auf Rang 4 von 21; meanCoinValue fehlt, ist aber in einer
+    Bash-Ausgabe aus Rang 18 belegt
+  - app/actions.ts: eine Aufrufstelle mit geaenderter Argumentzahl
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

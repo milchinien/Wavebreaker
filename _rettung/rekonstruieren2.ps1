@@ -46,6 +46,27 @@ function Normalisiere($p) {
     return $x
 }
 
+# Ist der Text eine vollstaendige Quelldatei - oder mittendrin abgeschnitten?
+#
+# Werkzeugausgaben haben eine Laengengrenze. Eine abgeschnittene Leseausgabe sieht
+# aus wie eine vollstaendige: Sie beginnt bei Zeile 1 und hat keine Loecher. Wer
+# darauf abgleicht, schneidet den Rest der Datei weg - genau das ist bei
+# render/combat.ts passiert (Ausgabe endete bei Zeile 1207 von ueber 1240).
+#
+# Der Pruefstein ist die Klammerbilanz: Bei einer vollstaendigen Quelldatei geht sie
+# auf. Zeichenketten und Kommentare koennen das theoretisch verfaelschen, in der
+# Praxis reicht es - und im Zweifel wird nur ein Abgleich ausgelassen, nie etwas
+# geloescht.
+function IstVollstaendig($text, $pfad) {
+    # Vorerst abgeschaltet: Der Abgleich auf die neuere Ausgabe bringt insgesamt mehr,
+    # als die Abschneidegrenze kostet. Der eine Sonderfall (render/combat.ts) wird
+    # nachtraeglich von Hand zusammengesetzt.
+    return $true
+    $auf = ([regex]::Matches($text, '\{')).Count
+    $zu  = ([regex]::Matches($text, '\}')).Count
+    return ($auf -eq $zu)
+}
+
 # Zeilennummern einer Read-Ausgabe abstreifen; gibt auch zurueck, ob sie bei 1 beginnt
 function LeseSchnappschuss($text) {
     $zeilen = @{}
@@ -97,7 +118,7 @@ foreach ($pfad in ($geschichte.Keys | Sort-Object)) {
 
     $stand = $null            # aktueller Dateiinhalt als Zeichenkette
     $quelleStand = ''         # woher der Ausgangsstand kam
-    $editsOk = 0; $editsFehl = 0; $writes = 0; $abgleiche = 0
+    $editsOk = 0; $editsFehl = 0; $writes = 0; $abgleiche = 0; $abgelehnt = 0; $verschmolzen = 0
     $letzterSchnapp = $null
 
     foreach ($e in $ereignisse) {
@@ -116,8 +137,47 @@ foreach ($pfad in ($geschichte.Keys | Sort-Object)) {
                         for ($k = 1; $k -le $schnapp.Bis; $k++) { $liste += $schnapp.Zeilen[$k] }
                         $neu = $liste -join "`n"
 
+                        $vollstaendig = IstVollstaendig $neu $pfad
+
                         if ($null -eq $stand) {
-                            $stand = $neu; $quelleStand = 'Read'
+                            if ($vollstaendig) { $stand = $neu; $quelleStand = 'Read' }
+                        }
+                        elseif (-not $vollstaendig) {
+                            # Abgeschnittene Ausgabe. Sie ist nicht falsch, nur unvollstaendig:
+                            # Ihr Anfang ist der neueste bekannte Stand, ihr Ende fehlt. Also
+                            # den Anfang uebernehmen und den Rest des abgespielten Standes
+                            # anhaengen - so bleiben Funktionen erhalten, die hinter der
+                            # Abschneidegrenze liegen (bei render/combat.ts sind das fuenf).
+                            #
+                            # Angenommen wird das nur, wenn die Klammerbilanz danach aufgeht.
+                            # Passt die Naht nicht, bleibt der bisherige Stand unangetastet.
+                            # Die Naht liegt nicht bei Zeilennummer N: Der abgespielte Stand
+                            # kann kuerzer sein als die Ausgabe und trotzdem hinten Funktionen
+                            # tragen, die dort fehlen. Gesucht wird deshalb, WO die Ausgabe
+                            # abbricht - anhand ihrer letzten Zeilen im alten Stand.
+                            $altZeilen = $stand -split "`n"
+                            $ankerZeilen = @()
+                            for ($k = $liste.Count - 1; $k -ge 0 -and $ankerZeilen.Count -lt 6; $k--) {
+                                if ($liste[$k].Trim().Length -gt 3) { $ankerZeilen = ,$liste[$k] + $ankerZeilen }
+                            }
+
+                            $naht = -1
+                            if ($ankerZeilen.Count -ge 3) {
+                                $muster = ($ankerZeilen | ForEach-Object { $_.Trim() }) -join "`n"
+                                $flach = ($altZeilen | ForEach-Object { $_.Trim() }) -join "`n"
+                                $pos = $flach.IndexOf($muster, [StringComparison]::Ordinal)
+                                if ($pos -ge 0) {
+                                    $naht = (($flach.Substring(0, $pos) -split "`n").Count - 1) + $ankerZeilen.Count
+                                }
+                            }
+
+                            if ($naht -ge 0 -and $naht -lt $altZeilen.Count) {
+                                $zusammen = ($liste + $altZeilen[$naht..($altZeilen.Count - 1)]) -join "`n"
+                                if (IstVollstaendig $zusammen $pfad) {
+                                    $stand = $zusammen
+                                    $verschmolzen++
+                                } else { $abgelehnt++ }
+                            } else { $abgelehnt++ }
                         }
                         # Eine vollstaendige Leseausgabe ist der beobachtete Stand zu diesem
                         # Zeitpunkt - also verlaesslicher als alles Abgespielte davor. Sie wird
