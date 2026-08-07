@@ -1,0 +1,38 @@
+Typecheck fehlerfrei, 475/475 Selbsttests, Goldeinsammeln geprueft
+
+Die letzten sechs Typfehler betrafen eine Erweiterung, die nach dem 03.08.2026
+entstand - danach hat keine Sitzung sim/combat.ts mehr gelesen. Sie ist deshalb in
+keinem Verlauf erfasst und musste rekonstruiert werden. Belegt ist sie durch ihre
+Benutzer, nicht erraten:
+
+  Pickup: Felder pos, value und mean ergaenzt
+      render/combat.ts liest alle drei und misst dist(pickup.pos, pickup.to).
+
+  spawnPickups: nimmt jetzt die Muenzen statt blosser Orte, dazu ihren Durchschnitt
+      app/actions.ts ruft mit vier Argumenten auf. Der Durchschnitt muss von aussen
+      kommen, weil er vor dem Einsammeln gebildet wird - danach liegen die Muenzen
+      nicht mehr im Spielstand.
+
+  Flug zum Zeiger im Schritt der Simulation
+      Der Kommentar von drawPickups sagt, die Muenze fahre dem Zeiger nach und
+      bleibe dabei erst zurueck. Umgesetzt als quadratischer Fortschritt.
+
+  ui/dialogs.ts: towerHint angelegt
+      Der Knoten wurde beschriftet, aber nie erzeugt. Aufbau nach dem
+      gleichlaufenden Hinweis im Stufenaufstieg-Fenster.
+
+Alles davon ist im Quelltext als [REKONSTRUIERT] gekennzeichnet und begruendet.
+
+Geprueft:
+  Typecheck    fehlerfrei
+  Selbsttests  475/475
+  Im Spiel     Welle laeuft, Gegner erscheinen, Gold faellt; Einsammeln per Zeiger
+               erhoeht das Gold und zeigt die aufsteigende Zahl - genau der Weg,
+               der durch den rekonstruierten Code laeuft.
+
+Nicht wiederherstellbar: die Anlagen unter public/ (Bilder, Klaenge). Binaerdateien
+lassen sich aus Textprotokollen nicht zurueckholen. Das Spiel faengt das selbst ab
+und zeichnet Ersatzformen. docs/anlagen.md ist erhalten und benennt jede Datei samt
+Herkunft - der Satz laesst sich also nachkaufen.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

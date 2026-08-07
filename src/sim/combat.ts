@@ -114,9 +114,27 @@ export type Shard = {
  * Sie ist zum Zeitpunkt des Einsammelns bereits aus dem Spielstand verschwunden - der Flug
  * ist reine Nachschau und darf deshalb nichts mehr verrechnen.
  */
+/*
+ * [REKONSTRUIERT] Die Felder `pos`, `value` und `mean` fehlten.
+ *
+ * Nach dem 03.08.2026 hat keine Sitzung diese Datei mehr gelesen; die Erweiterung ist
+ * deshalb in keinem Verlauf erfasst. Belegt ist sie aber durch ihre Benutzer:
+ * `render/combat.ts` liest `pickup.pos`, `.value` und `.mean` und misst
+ * `dist(pickup.pos, pickup.to)`, und `app/actions.ts` ruft `spawnPickups` mit einem
+ * vierten Argument (dem Durchschnittswert) auf. Der Kommentar der Zeichenfunktion sagt
+ * ausserdem, wohin die Muenze fliegt, entscheide die Simulation - sie fahre dem Zeiger
+ * nach und bleibe dabei erst zurueck.
+ */
 export type Pickup = {
+  /** Fundort. Bleibt stehen - der Glanzlauf rechnet daraus, damit das Bild nicht springt. */
   from: Vec2
+  /** Aktueller Ort auf dem Flug. Die Simulation fuehrt ihn, die Zeichenebene liest ihn nur. */
+  pos: Vec2
   to: Vec2
+  /** Betrag der Muenze. Groesse und Metall leiten sich daraus ab (`coinLook`). */
+  value: number
+  /** Durchschnitt auf dem Feld im Augenblick des Einsammelns - der Bezug fuer die Groesse. */
+  mean: number
   age: number
   life: number
   active: boolean
@@ -383,7 +401,10 @@ export function createCombatState(): CombatState {
     burstCursor: 0,
     pickups: Array.from({ length: PICKUP_SLOTS }, () => ({
       from: { x: 0, y: 0 },
+      pos: { x: 0, y: 0 },
       to: { x: 0, y: 0 },
+      value: 0,
+      mean: 0,
       age: 0,
       life: PICKUP_LIFE,
       active: false,
@@ -678,16 +699,35 @@ export function spawnGain(state: GameState, at: Vec2, amount: number): void {
   gain.active = true
 }
 
-export function spawnPickups(state: GameState, from: readonly Vec2[], to: Vec2): void {
+/*
+ * [REKONSTRUIERT] Signatur und Rumpf erweitert - siehe die Anmerkung beim Typ `Pickup`.
+ *
+ * Uebergeben werden jetzt die eingesammelten Muenzen statt blosser Orte, dazu ihr
+ * Durchschnittswert. Beides braucht die Zeichenebene: Die Muenze soll auf dem Flug
+ * **dieselbe** bleiben, die eben noch im Feld lag - gleiche Groesse, gleiches Metall.
+ * Der Durchschnitt kommt von aussen, weil er vor dem Einsammeln gebildet werden muss;
+ * danach liegen die Muenzen nicht mehr im Spielstand.
+ */
+export function spawnPickups(
+  state: GameState,
+  coins: readonly { x: number; y: number; value: number }[],
+  to: Vec2,
+  mean: number,
+): void {
   const combat = state.runtime.combat
 
-  for (const start of from) {
+  for (const coin of coins) {
     const pickup = combat.pickups[combat.pickupCursor] as Pickup
     combat.pickupCursor = (combat.pickupCursor + 1) % combat.pickups.length
-    pickup.from.x = start.x
-    pickup.from.y = start.y
+    pickup.from.x = coin.x
+    pickup.from.y = coin.y
+    // Der Flug beginnt am Fundort - sonst spraenge die Muenze im ersten Bild.
+    pickup.pos.x = coin.x
+    pickup.pos.y = coin.y
     pickup.to.x = to.x
     pickup.to.y = to.y
+    pickup.value = coin.value
+    pickup.mean = mean
     pickup.age = 0
     pickup.life = effectLife(state, PICKUP_LIFE)
     pickup.active = true
@@ -1207,6 +1247,24 @@ export function stepEffects(state: GameState, dt: number): void {
   for (const pickup of combat.pickups) {
     if (!pickup.active) continue
     pickup.age += dt
+
+    /*
+     * [REKONSTRUIERT] Der Flug zum Zeiger - siehe die Anmerkung beim Typ `Pickup`.
+     *
+     * Das Quadrat des Fortschritts laesst die Muenze erst zurueckbleiben und dann
+     * aufholen. Genau so beschreibt es der Kommentar von `drawPickups`: Sie faehrt dem
+     * Zeiger nach. Eine gleichmaessige Fahrt saehe aus, als werde sie gezogen - so
+     * sieht es aus, als setze sie sich erst in Bewegung.
+     *
+     * Die Zeichenebene misst dann den **Abstand** zum Ziel, nicht das Alter: Eine
+     * Muenze, die frueh ankommt, verschwindet frueh, und eine lange nachfliegende
+     * zerfaellt nicht unterwegs.
+     */
+    const fortschritt = Math.min(1, pickup.age / pickup.life)
+    const gefahren = fortschritt * fortschritt
+    pickup.pos.x = pickup.from.x + (pickup.to.x - pickup.from.x) * gefahren
+    pickup.pos.y = pickup.from.y + (pickup.to.y - pickup.from.y) * gefahren
+
     if (pickup.age > pickup.life) pickup.active = false
   }
 

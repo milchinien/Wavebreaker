@@ -98,6 +98,11 @@ export function mountDialogs(
   const towerPanel = document.createElement('section')
   towerPanel.className = 'panel levelup-panel offer-panel'
   const towerTitle = document.createElement('h2')
+  /* [REKONSTRUIERT] Die Erzeugung dieses Knotens fehlte, obwohl er weiter unten
+     beschriftet wird (`offer.hint`). Aufbau nach dem gleichlaufenden Hinweis im
+     Stufenaufstieg-Fenster weiter oben: ein `p` mit der Klasse `muted`. */
+  const towerHint = document.createElement('p')
+  towerHint.className = 'muted'
   const towerCards = document.createElement('div')
   towerCards.className = 'offer-grid'
   const discard = document.createElement('button')
@@ -109,7 +114,7 @@ export function mountDialogs(
     onChange()
   })
 
-  towerPanel.append(towerTitle, towerCards, discard)
+  towerPanel.append(towerTitle, towerHint, towerCards, discard)
   towerBackdrop.appendChild(towerPanel)
   overlay.appendChild(towerBackdrop)
 
