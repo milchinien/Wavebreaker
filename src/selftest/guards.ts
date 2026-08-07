@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Die Querschnittsregeln aus Abschnitt 9 des Implementierungsplans, als Pruefung statt
  * als Vorsatz. Sie gehoeren zur Abnahme **jeder** Etappe.
  *

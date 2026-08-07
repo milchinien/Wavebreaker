@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Level-Perks als Datensaetze (GDD 09 Teil A).
  *
  * Ein Perk ist eine **Verbesserung fuer den laufenden Run**, die auf die gesamte Basis

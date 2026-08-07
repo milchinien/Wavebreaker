@@ -1,4 +1,4 @@
-﻿Datei : src\sim\enemies.ts
+Datei : src\sim\enemies.ts
 Luecke: Zeilen 537 bis 551  (15 Zeilen)
 
 ---- Anker davor ----

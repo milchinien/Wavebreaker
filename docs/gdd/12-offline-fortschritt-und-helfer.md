@@ -1,4 +1,4 @@
-﻿# 12 – Offline-Fortschritt und Helfer
+# 12 – Offline-Fortschritt und Helfer
 
 > Teil 12 von 16 der Game-Design-Dokumentation.
 

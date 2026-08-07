@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Hauptturm-Kerne (GDD 04).
  *
  * In E1 stehen nur Identitaet und Form - genug, damit der Hauptturm sichtbar wird. Die

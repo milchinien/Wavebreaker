@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Gegner, Geschosse und Treffer.
  *
  * Der Spieler soll **ohne Text** erkennen, was auf ihn zukommt (GDD 07 Abschnitt 3):

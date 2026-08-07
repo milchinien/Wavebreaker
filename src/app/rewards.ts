@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Die eine Stelle, an der Gold, XP und Prestige-Punkte entstehen.
  *
  * GDD 16 Abschnitt 2 und Implementierungsplan Abschnitt 3: Belohnungen laufen

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Maus und Tastatur -> Aktionen.
  *
  * Kernentscheidung: Der Spieler zielt nicht auf eine Zelle, sondern auf eine KANTE.

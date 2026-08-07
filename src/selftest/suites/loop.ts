@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E0: "120 Ticks bei x2 in einer Sekunde, 60 bei x1 - als Test, nicht per
  * Augenmass." Moeglich wird das durch die austauschbare Bildquelle: der Test loest die
  * Bilder selbst aus und bestimmt, wie weit die Zeit springt.

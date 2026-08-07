@@ -1,4 +1,4 @@
-﻿# Anlagen — was benutzt wird und woher es kommt
+# Anlagen — was benutzt wird und woher es kommt
 
 > `assets/raw` ist die **unangetastete Quelle**. Was das Spiel wirklich lädt, liegt in
 > `public/` — nur dorthin wird ausgeliefert.

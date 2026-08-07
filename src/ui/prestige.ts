@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Der Prestige-Bereich (GDD 10, GDD 13 Abschnitt 6).
  *
  * Aufbau nach GDD 13: oben die Punkte, in der Mitte der Baum, und der Auslöser daneben.

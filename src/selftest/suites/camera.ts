@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E1: `fitTo` mit vorgegebenen Vielecken liefert die erwarteten Zoomwerte,
  * und die Kamera naehert sich weich an, statt zu springen.
  *

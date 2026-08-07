@@ -1,4 +1,4 @@
-﻿Datei : docs\gdd\15-balancing-und-skalierung.md
+Datei : docs\gdd\15-balancing-und-skalierung.md
 Luecke: Zeilen 150 bis 246  (97 Zeilen)
 
 ---- Anker davor ----

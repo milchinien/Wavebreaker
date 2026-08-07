@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Geometrie des Ansteck-Systems. Kennt weder DOM noch Canvas.
  *
  * Uebernommen aus Prototyp 01 (GDD 16 Abschnitt 7). E1 braucht nur die Erzeugung und

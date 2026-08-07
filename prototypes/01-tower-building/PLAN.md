@@ -1,4 +1,4 @@
-﻿# Prototyp 01 — Turmbau: Umsetzungsplan
+# Prototyp 01 — Turmbau: Umsetzungsplan
 
 > Detailplan für das modulare Bausystem als isolierter Prototyp.
 > Grundlage: [GDD 03](../../docs/gdd/03-modulare-basis-und-bauregeln.md),

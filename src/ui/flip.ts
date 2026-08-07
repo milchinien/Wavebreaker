@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Bereichswechsel als Bewegung **eines** Bildes statt als Wechsel zweier Bilder.
  *
  * Das Verfahren heisst FLIP und besteht aus vier Schritten:

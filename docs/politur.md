@@ -1,4 +1,4 @@
-﻿# Politur — Spielgefühl und Optik (E18)
+# Politur — Spielgefühl und Optik (E18)
 
 > Arbeitsliste für die Politur nach GDD 13 §10. **Ein Durchlauf = ein Punkt.**
 > Sortiert nach Wirkung pro Aufwand, nicht nach Thema.

@@ -1,4 +1,4 @@
-﻿# GAME DESIGN DOCUMENT v1.0
+# GAME DESIGN DOCUMENT v1.0
 
 ## Arbeitstitel:
 Noch nicht festgelegt

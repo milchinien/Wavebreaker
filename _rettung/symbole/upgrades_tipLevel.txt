@@ -1,4 +1,4 @@
-﻿Gesucht: upgrades.tipLevel
+Gesucht: upgrades.tipLevel
 Erwaehnungen: 6, davon Definitionen: 0
 
 ======== 01PMQtEQdw #23 Bash/Ergebnis  ========

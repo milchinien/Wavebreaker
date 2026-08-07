@@ -1,4 +1,4 @@
-﻿src/data/strings.ts:223:export function hasString(key: string): key is StringKey {
+src/data/strings.ts:223:export function hasString(key: string): key is StringKey {
 src/selftest/suites/strings.ts:8:import { hasString, STRINGS, t } from '../../data/strings.ts'
 src/selftest/suites/strings.ts:36:  check('hasString erkennt unbekannte Schluessel', () => {
 src/selftest/suites/strings.ts:37:    assertEqual(hasString('game.title'), true)

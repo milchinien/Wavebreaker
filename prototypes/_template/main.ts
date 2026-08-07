@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Startvorlage fuer neue Prototypen.
  *
  * Enthaelt nur das, was jeder Prototyp braucht:

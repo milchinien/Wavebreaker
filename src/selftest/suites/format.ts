@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Zahlendarstellung nach GDD 13 Abschnitt 8. Diese Datei ist zugleich die Absicherung
  * fuer die Entscheidung "normales `number`": Wenn spaeter doch ein eigener Zahlentyp
  * kommt, muessen diese Erwartungen unveraendert gelten.

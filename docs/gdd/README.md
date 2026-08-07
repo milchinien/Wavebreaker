@@ -1,4 +1,4 @@
-﻿# WELLENBRECHER — Game Design Document
+# WELLENBRECHER — Game Design Document
 
 **Titel:** WELLENBRECHER (deutsch) · **WAVEBREAKER** (englisch, Titel im Spiel)
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E3: der Bedienungsablauf als Skript ueber **echte** Zeigerereignisse -
  * auswaehlen, platzieren, Platzlimit ablehnen, verschieben, entfernen, Inseln wandern
  * zurueck.

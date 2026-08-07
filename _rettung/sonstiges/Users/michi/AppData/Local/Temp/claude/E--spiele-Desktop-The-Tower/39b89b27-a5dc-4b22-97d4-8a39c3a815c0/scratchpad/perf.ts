@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Leistungsmessung fuer E18 (GDD 16 Abschnitt 15). Kein Teil des Spiels - ein Werkzeug.
  *
  * Gemessen wird, was der Plan verlangt: gleichzeitige Gegner, gleichzeitige Geschosse und

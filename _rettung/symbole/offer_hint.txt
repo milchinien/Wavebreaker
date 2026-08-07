@@ -1,4 +1,4 @@
-﻿Gesucht: offer.hint
+Gesucht: offer.hint
 Erwaehnungen: 3, davon Definitionen: 0
 
 ======== 01PMQtEQdw #23 Bash/Ergebnis  ========

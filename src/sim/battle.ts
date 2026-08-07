@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Ein Simulationsschritt des Gefechts - die Reihenfolge an einer Stelle.
  *
  * Diese Datei bindet die Teile zusammen und wird selbst von niemandem in `sim/`

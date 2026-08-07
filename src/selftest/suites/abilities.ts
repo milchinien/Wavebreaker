@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E11.
  *
  * Der Plan nennt genau eine Abnahmebedingung: "Abklingzeit in Simulationssekunden, nicht in

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweise aus E4, E5 und E6.
  *
  * Der Kern ist die Zusicherung "ein Turm mit bekannten Werten toetet einen Gegner mit
@@ -29,9 +29,11 @@ import {
   spawnEnemy,
   stepEnemies,
   touchesModule,
+  SPIN_MAX,
   type Enemy,
 } from '../../sim/enemies.ts'
 import { spawnProjectile, stepProjectiles } from '../../sim/projectiles.ts'
+import { rangeCircles, stationRange, type RangeCircle } from '../../sim/towers.ts'
 import { fireInterval, moduleStats } from '../../sim/stats.ts'
 import { CORE_UID, freeEdges, place, type FreeEdge } from '../../sim/station.ts'
 import { findTarget } from '../../sim/targeting.ts'

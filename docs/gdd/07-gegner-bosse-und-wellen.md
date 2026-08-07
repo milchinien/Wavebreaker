@@ -1,4 +1,4 @@
-﻿# 07 – Gegner, Bosse und Wellen
+# 07 – Gegner, Bosse und Wellen
 
 > Teil 7 von 16 der Game-Design-Dokumentation.
 

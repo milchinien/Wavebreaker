@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Bildstreifen aus dem Anlagensatz (`docs/anlagen.md`).
  *
  * Alle benutzten Effekt- und Muenzbilder liegen als **waagerechter Streifen** vor: gleich

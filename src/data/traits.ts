@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Turm-Eigenschaften (GDD 06 Abschnitt 10).
  *
  * Sie sind das, was zwei Tuerme derselben Art und derselben Raritaet **unterschiedlich**

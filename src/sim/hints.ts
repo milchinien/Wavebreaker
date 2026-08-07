@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Einmalige Hinweise (GDD 14 Abschnitt 4a).
  *
  * Es gibt **kein gefuehrtes Tutorial**. Das Spiel erklaert sich ueber die Reihenfolge

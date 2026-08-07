@@ -1,4 +1,4 @@
-﻿import type { Vec2 } from './geometry'
+import type { Vec2 } from './geometry'
 
 /** Tatsaechliche Grundflaeche eines Moduls — bestimmt Geometrie UND Anzahl der Anschlusskanten. */
 export type FootprintSides = 3 | 4 | 5 | 6

@@ -1,0 +1,37 @@
+Das Spiel laeuft: 475/475 Selbsttests bestanden
+
+Erster lauffaehiger Stand nach der Rekonstruktion. Vite startet, das Spiel zeichnet
+die Station, Welle 1 laeuft, Gegner erscheinen.
+
+Behoben in diesem Schritt:
+
+  BOM entfernt (252 Dateien)
+      PowerShells "-Encoding UTF8" schreibt ein Byte-Order-Mark. Daran scheiterte
+      der JSON-Parser beim Laden von package.json ("Unexpected token"), was wiederum
+      Vites PostCSS-Suche abbrechen liess.
+
+  sim/economy.ts: meanCoinValue ergaenzt
+      Signatur und Ort sind aus einem Suchlauf im Rohmaterial belegt (Zeile 209),
+      der Rumpf nicht - er ist als [REKONSTRUIERT] gekennzeichnet. coinLook faengt
+      den Fall "keine Muenzen" selbst ab, deshalb gibt die Funktion dort 0 zurueck.
+
+  data/strings.ts: 14 fehlende Textbausteine
+      Alle woertlich aus dem Sitzungsmaterial, nicht erfunden. Ohne sie brach das
+      Spiel beim Aufbau des Upgrade-Menues ab (t() gab undefined zurueck).
+
+  selftest/suites/combat.ts: Einfuhren ergaenzt
+      SPIN_MAX aus sim/enemies.ts, dazu rangeCircles, stationRange und RangeCircle
+      aus sim/towers.ts. Alle waren vorhanden und ausgefuehrt, nur nicht eingefuehrt.
+
+  selftest/suites/economy.ts: sechs Aufrufe von moduleStats angepasst
+      Die Signatur ist inzwischen (module, buffs, state) statt (module, buffs,
+      upgrades). Alle uebrigen Aufrufstellen im Projekt benutzen die neue Form -
+      die Testdatei war die veraltete.
+
+  .claude/launch.json: absoluter Pfad zu node.exe
+      Node liegt tragbar unter D:\Werkzeuge\node und steht nicht im System-Pfad.
+
+Selbsttests: 475/475 gruen.
+Typecheck: noch 6 Fehler (Pickup-Typ, towerHint, eine Argumentzahl).
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Ereignisse und Versorgungskapseln (GDD 11).
  *
  * Diese Datei ist der **einzige Ort**, an dem Ereignisse ausgeloest, entschieden und

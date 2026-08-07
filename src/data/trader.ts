@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Das Sortiment der Haendler-Drohne (GDD 11 Abschnitt 7).
  *
  * GDD 11 nennt vier Warenarten: Gold-Upgrades, temporaere Boni, seltene Verbesserungen und

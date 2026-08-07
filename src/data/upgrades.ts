@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Upgrade-Pfade (GDD 08 Abschnitt 5).
  *
  * Die wichtigste Regel steckt im Zuschnitt: **Turm-Upgrades gelten pro Turmtyp**, nicht

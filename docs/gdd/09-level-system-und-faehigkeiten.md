@@ -1,4 +1,4 @@
-﻿# 09 – Level-System und Fähigkeiten
+# 09 – Level-System und Fähigkeiten
 
 > Teil 9 von 16 der Game-Design-Dokumentation.
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Gegnerinstanzen, Bewegung und Andocken (GDD 07 Abschnitt 2).
  *
  * Zwei Regeln praegen alles hier:

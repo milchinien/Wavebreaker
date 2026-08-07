@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Symbole und Raritaetsrahmen der Oberflaeche.
  *
  * Quelle sind die Pixel-Symbole aus `assets/raw` - benutzt werden sie aber **als Maske**,

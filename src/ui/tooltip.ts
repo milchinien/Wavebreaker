@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Hover-Informationen statt Dauertext (GDD 13 Abschnitt 9).
  *
  * Ein einziges Element, das umgehaengt wird - kein Element je Ziel.

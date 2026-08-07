@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Fenster, die den Spieler um eine Entscheidung bitten (GDD 13 Abschnitt 6).
  *
  * Vier: die Perk-Auswahl beim Levelaufstieg, die Turmauswahl beim Kauf oder nach einem

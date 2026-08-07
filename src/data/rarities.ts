@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Raritaeten: wie oft sie fallen und was sie mitbringen (GDD 06 Abschnitt 6 bis 10).
  *
  * Die Stufen selbst stehen in `data/types.ts` - sie sind eine Vokabel des ganzen Spiels.

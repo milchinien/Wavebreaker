@@ -1,4 +1,4 @@
-﻿# Prototypen
+# Prototypen
 
 Dieser Ordner enthält **isolierte Experimente** für WAVEBREAKER. Prototypen dienen dazu,
 ein einzelnes Feature auszuprobieren, bevor es im eigentlichen Spiel gebaut wird.

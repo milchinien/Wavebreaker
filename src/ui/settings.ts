@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Einstellungen (GDD 13 Abschnitt 3).
  *
  * Hier steht **nur, was es wirklich gibt** - ein Regler ohne Wirkung waere schlimmer als

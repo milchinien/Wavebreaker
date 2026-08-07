@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Endwerte aus Basis x Raritaet x Buffs.
  *
  * Die eine Stelle, an der Kampfwerte entstehen. Der Plan sieht diese Datei erst fuer E5

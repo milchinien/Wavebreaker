@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Bauregeln. Reine Funktionen ueber die Station - die Bedienung kennt keine Regeln.
  * Kein DOM, kein Canvas.
  *

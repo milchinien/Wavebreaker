@@ -1,4 +1,4 @@
-﻿# 05 – Turm-System und Turmtypen
+# 05 – Turm-System und Turmtypen
 
 > Teil 5 von 16 der Game-Design-Dokumentation.
 

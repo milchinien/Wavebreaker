@@ -1,4 +1,4 @@
-﻿Gesucht: towerHint
+Gesucht: towerHint
 Erwaehnungen: 3, davon Definitionen: 2
 
 ======== 01529YqdKL #53 Edit/Edit-neu E:\spiele\Desktop\The Tower\src\ui\dialogs.ts ========

@@ -1,4 +1,4 @@
-﻿import { createServer } from 'node:http'
+import { createServer } from 'node:http'
 import { writeFileSync } from 'node:fs'
 
 const dir = 'C:/Users/michi/AppData/Local/Temp/claude/E--spiele-Desktop-The-Tower/8fccefee-fea8-4ba3-9a8c-205fe35c5336/scratchpad'

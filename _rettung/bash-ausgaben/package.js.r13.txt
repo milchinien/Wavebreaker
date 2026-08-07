@@ -1,4 +1,4 @@
-﻿abilities.ts
+abilities.ts
 base.ts
 dialogs.ts
 flip.ts

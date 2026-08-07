@@ -1,4 +1,4 @@
-﻿# 11 – Events und Versorgungskapseln
+# 11 – Events und Versorgungskapseln
 
 > Teil 11 von 16 der Game-Design-Dokumentation.
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E0: Speicher-Rundlauf ist verlustfrei, kaputte Spielstaende liefern `null`
  * statt eines Absturzes.
  *

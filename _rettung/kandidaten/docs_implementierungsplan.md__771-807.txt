@@ -1,4 +1,4 @@
-﻿Datei : docs\implementierungsplan.md
+Datei : docs\implementierungsplan.md
 Luecke: Zeilen 771 bis 807  (37 Zeilen)
 
 ---- Anker davor ----

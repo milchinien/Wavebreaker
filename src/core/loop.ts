@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Die Zeitquelle des Spiels.
  *
  * Regel aus dem Implementierungsplan (Abschnitt 3): Niemand ausserhalb dieser Datei

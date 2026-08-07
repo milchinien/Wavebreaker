@@ -1,4 +1,4 @@
-﻿Gesucht: stationRange
+Gesucht: stationRange
 Erwaehnungen: 9, davon Definitionen: 2
 
 ======== 01AdKuuazG #4 Read/Ergebnis E:/spiele/Desktop/The Tower/src/sim/towers.ts ========

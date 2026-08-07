@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Basisansicht: Inventar und Moduldetails.
  *
  * Zwei Regeln aus GDD 13:

@@ -1,4 +1,4 @@
-﻿---
+---
 name: visual-referenz-neon-mockup
 description: "Verbindliches Look-and-Feel-Referenzbild (Screenshot eines Neon-Tower-Defense im Hochformat), an dem sich Farben und Stil des Spiels exakt orientieren sollen"
 metadata: 

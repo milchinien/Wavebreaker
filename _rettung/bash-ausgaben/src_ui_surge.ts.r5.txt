@@ -1,4 +1,4 @@
-﻿src/core/loop.ts:25: * Quelle fuer Einzelbilder. Im Browser `requestAnimationFrame`, im Test ein
+src/core/loop.ts:25: * Quelle fuer Einzelbilder. Im Browser `requestAnimationFrame`, im Test ein
 src/core/loop.ts:74:    request: (cb) => requestAnimationFrame(cb),
 src/ui/shell.ts:169:    window.setTimeout(() => {
 --- surge ---

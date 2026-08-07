@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E14 und E15.
  *
  * Beide Etappen haben dieselbe Abnahmebedingung, nur einmal fuer Tuerme und einmal fuer

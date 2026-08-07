@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E0: `grantReward` erhoeht genau die genannte Ressource und meldet ein
  * Ereignis. Das ist der Haken, an dem spaeter Werbe-Belohnungen haengen (GDD 16
  * Abschnitt 2) - er muss von Anfang an dicht sein.

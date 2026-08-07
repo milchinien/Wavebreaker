@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Der einzige Ort mit Zahlen (GDD 16 §5). Ein neuer Turm ist ein Datensatz, kein Code.
  * Alle Werte sind Prototyp-Platzhalter — echtes Balancing gehoert nach GDD 15.
  */

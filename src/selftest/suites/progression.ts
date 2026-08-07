@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E10.
  *
  * Der Plan verlangt: "Perk-Effekte erscheinen in `effectiveTowerStats`, nicht als Sonderfall

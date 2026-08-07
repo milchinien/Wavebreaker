@@ -1,4 +1,4 @@
-﻿Gesucht: SPIN_MAX
+Gesucht: SPIN_MAX
 Erwaehnungen: 8, davon Definitionen: 4
 
 ======== 01E1azVsAu #18 Edit/Edit-neu E:/spiele/Desktop/The Tower/src/sim/enemies.ts ========

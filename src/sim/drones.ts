@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Kampfdrohnen (GDD 05: Drohnen-Modul, GDD 03 Abschnitt 6).
  *
  * Drohnen sind die einzigen beweglichen Einheiten des Spielers. Zwei Regeln aus dem GDD

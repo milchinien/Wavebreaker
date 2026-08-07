@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Der Prestige-Baum als Datensatz (GDD 10 Abschnitt 6).
  *
  * **Jede Freischaltung ist ein Knoten, und jede Abfrage danach ist eine Datenabfrage.**

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Bausteine der Selbsttests.
  *
  * Bewusst kein Testframework: Die Pruefungen laufen im Spiel selbst ueber `?selftest`

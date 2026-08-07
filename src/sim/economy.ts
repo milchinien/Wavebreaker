@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Gold auf dem Feld (GDD 08 Abschnitt 2).
  *
  * Gold wird **nicht automatisch** gutgeschrieben. Besiegte Gegner lassen leuchtende
@@ -195,4 +195,26 @@ export function goldOnField(state: GameState): number {
   let total = 0
   for (const coin of state.run.coins) total += coin.value
   return total
+}
+
+/**
+ * [REKONSTRUIERT] Der Rumpf dieser Funktion ist in keiner Sitzung erfasst - belegt sind
+ * nur ihre Signatur und ihr Ort (Suchlauf ueber `src/sim/economy.ts`, Zeile 209).
+ *
+ * Durchschnittlicher Wert der uebergebenen Muenzen.
+ *
+ * Die Groesse einer Muenze nennt ihr **Vielfaches des Durchschnitts**, nicht ihren Betrag
+ * (siehe `coinLook` in `render/combat.ts`): Was in Welle 3 ein Vermoegen ist, ist in
+ * Welle 300 Staub. Der Bezugswert gehoert deshalb zum Zustand des Feldes und nicht zur
+ * Zeichenebene - sonst muesste ihn jede Ebene neu bilden, und zwei koennten sich
+ * widersprechen.
+ *
+ * Ohne Muenzen ist er 0. Die Zeichenebene faengt das ab und rechnet dann mit dem
+ * Einfachen, statt hier durch null zu teilen.
+ */
+export function meanCoinValue(coins: readonly Coin[]): number {
+  if (coins.length === 0) return 0
+  let total = 0
+  for (const coin of coins) total += coin.value
+  return total / coins.length
 }

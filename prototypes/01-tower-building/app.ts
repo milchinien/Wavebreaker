@@ -1,4 +1,4 @@
-﻿/** Zustand des Prototyps. Bewusst flach und ohne Framework. */
+/** Zustand des Prototyps. Bewusst flach und ohne Framework. */
 import type { Vec2 } from './geometry'
 import type { Station } from './model'
 import type { ActionError, FreeEdge, RemovalRule } from './station'

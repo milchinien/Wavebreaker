@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Buff-System. Nachbarschaft entsteht ausschliesslich ueber GETEILTE KANTEN — Module, die sich
  * nur in einer Ecke beruehren, verstaerken sich nicht (GDD 03 §9).
  *

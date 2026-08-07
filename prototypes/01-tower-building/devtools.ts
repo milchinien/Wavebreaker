@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Werkzeuge nur fuer die Auswertung — kein Teil der Spielregeln.
  * Dient vor allem der Lesbarkeitspruefung (offene Frage F4): grosse Stationen auf Knopfdruck.
  */

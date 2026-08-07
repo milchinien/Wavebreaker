@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Reine Geometrie des Ansteck-Systems. Kennt weder DOM noch Canvas.
  *
  * Konvention: Alle Polygone sind regelmaessige n-Ecke mit der EINHEITLICHEN Seitenlaenge SIDE

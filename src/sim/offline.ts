@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Abwesenheitsertrag (GDD 12 Teil A).
  *
  * **Die eine Regel dieser Datei: Es gibt keine zweite Simulation.** Sie ruft `stepBattle`

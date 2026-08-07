@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Zusicherungen fuer die reinen Funktionen — dort, wo Fehler still bleiben.
  * Kein Testframework: Aufruf ueber ?selftest in der Adresszeile oder den Knopf im Debug-Panel.
  */

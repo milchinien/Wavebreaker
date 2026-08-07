@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Ereignisse und Versorgungskapseln als Datensatz (GDD 11).
  *
  * Beide sind bewusst **getrennte Mechanismen** (GDD 11 Abschnitt 2), und die Trennung ist

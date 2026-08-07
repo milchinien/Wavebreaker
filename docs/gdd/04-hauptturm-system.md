@@ -1,4 +1,4 @@
-﻿# 04 – Hauptturm-System
+# 04 – Hauptturm-System
 
 > Teil 4 von 16 der Game-Design-Dokumentation.
 

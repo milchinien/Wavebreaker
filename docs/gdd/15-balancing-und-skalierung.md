@@ -1,4 +1,4 @@
-﻿/* ### FEHLENDE ZEILE 1 ### */
+/* ### FEHLENDE ZEILE 1 ### */
 /* ### FEHLENDE ZEILE 2 ### */
 /* ### FEHLENDE ZEILE 3 ### */
 /* ### FEHLENDE ZEILE 4 ### */

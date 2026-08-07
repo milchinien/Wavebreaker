@@ -1,4 +1,4 @@
-﻿Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Drawing
 
 $Root = "E:\spiele\Desktop\The Tower"
 $Raw = "$Root\assets\raw"

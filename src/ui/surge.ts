@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Die Energiewelle eines Prestiges, über dem gesamten Bild (GDD 13 Abschnitt 10).
  *
  * Die Kampfebene hat ihren Teil schon (`surgeStation` in `sim/combat.ts`): Ringe, die von

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Vektoren und regelmaessige Vielecke. Die Grundlage, auf der ab E2 das gesamte
  * Ansteck-System steht - Fehler hier sind spaeter kaum zu finden.
  */

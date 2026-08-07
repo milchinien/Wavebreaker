@@ -1,4 +1,4 @@
-﻿# 13 – UI und visuelles Design
+# 13 – UI und visuelles Design
 
 > Teil 13 von 16 der Game-Design-Dokumentation.
 

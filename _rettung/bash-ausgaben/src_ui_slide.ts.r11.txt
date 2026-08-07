@@ -1,4 +1,4 @@
-﻿.claude:
+.claude:
 launch.json
 scheduled_tasks.lock
 ===slide===

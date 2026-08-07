@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Aktive Faehigkeiten als Datensaetze (GDD 09 Teil B).
  *
  * Der Grundgedanke aus GDD 09 Abschnitt 6: Das Spiel laeuft automatisch, aber der Spieler

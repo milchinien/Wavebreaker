@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweise aus E7, E8 und E9.
  *
  * E7: 500 Muenzen ueber 20 Wellen verschmelzen auf eine handhabbare Zahl von Objekten,
@@ -184,13 +184,13 @@ export function economySuite(): void {
     state.run.gold = cost
 
     const core = state.runtime.combat.modules[0]!
-    const before = moduleStats(core, undefined, state.run.upgrades).final.damage
+    const before = moduleStats(core, undefined, state).final.damage
 
     assertEqual(buyUpgrade(state, path), true)
     assertEqual(state.run.gold, 0, 'das Gold ist ausgegeben')
     assertEqual(upgradeLevel(state.run.upgrades, path), 1)
 
-    const after = moduleStats(core, undefined, state.run.upgrades).final.damage
+    const after = moduleStats(core, undefined, state).final.damage
     assertClose(after, before * (1 + upgradeById(path).amount), 1e-9)
   })
 
@@ -216,7 +216,7 @@ export function economySuite(): void {
 
     const damageOf = (uid: string): number => {
       const module = state.runtime.combat.modules.find((entry) => entry.uid === uid)!
-      return moduleStats(module, undefined, state.run.upgrades).final.damage
+      return moduleStats(module, undefined, state).final.damage
     }
     const before = uids.map(damageOf)
 
@@ -237,16 +237,16 @@ export function economySuite(): void {
     state.run.gold = 1e9
     buyUpgrade(state, 'tower.autocannon.damage')
 
-    const cannonAfter = moduleStats({ ...dummy('cannon') }, undefined, state.run.upgrades).final.damage
+    const cannonAfter = moduleStats({ ...dummy('cannon') }, undefined, state).final.damage
     assertEqual(cannonAfter, cannonBefore)
   })
 
   check('ein Kern-Upgrade wirkt nicht auf Tuerme', () => {
     const state = rig()
-    const before = moduleStats(dummy('autocannon'), undefined, state.run.upgrades).final.damage
+    const before = moduleStats(dummy('autocannon'), undefined, state).final.damage
     state.run.gold = 1e9
     buyUpgrade(state, 'core.damage')
-    assertEqual(moduleStats(dummy('autocannon'), undefined, state.run.upgrades).final.damage, before)
+    assertEqual(moduleStats(dummy('autocannon'), undefined, state).final.damage, before)
   })
 
   check('das globale HP-Upgrade hebt die gemeinsame Leiste', () => {

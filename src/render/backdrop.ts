@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Lichtbahnen hinter den Menuebereichen (GDD 13 Abschnitt 2 und 10).
  *
  * In der Basis, im Prestige-Baum und in den Einstellungen laeuft kein Kampf: Nichts bewegt

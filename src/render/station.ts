@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Module zeichnen: Flaechen, Fugen, Raritaetsrahmen, Embleme.
  *
  * Reihenfolge ist Absicht - erst alle Flaechen, dann alle Kanten. Wuerde jedes Modul

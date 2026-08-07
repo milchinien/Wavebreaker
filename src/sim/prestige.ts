@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Prestige: zuruecksetzen, um dauerhaft staerker zu werden (GDD 10).
  *
  * Diese Datei ist die **einzige Auskunftsstelle fuer Freischaltungen**. Wer wissen will, ob

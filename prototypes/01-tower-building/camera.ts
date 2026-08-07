@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Auto-Zoom: Die Station bleibt immer komplett im Bild (GDD 13 §4).
  * Der Zoom springt nicht, sondern naehert sich exponentiell an.
  */

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Prototyp 02 - Bereichswechsel mit `createLayout` aus anime.js.
  *
  * Leitfrage: Kann ein Panel, das es in zwei Bereichen gibt, beim Wechsel an seinen neuen

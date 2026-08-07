@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Ereignisbus.
  *
  * Jedes bedeutsame Spielereignis wird gemeldet, auch wenn zunaechst niemand zuhoert

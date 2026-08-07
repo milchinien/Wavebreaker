@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Gegnerklassen als Datensaetze (GDD 07 Abschnitt 4).
  *
  * Die Werte sind **Vielfache** des Standard-Gegners, nicht absolute Zahlen: Der

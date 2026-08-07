@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Embleme: das Zeichen im Inneren eines Moduls. Reine Wiedererkennung, keine Mechanik -
  * die steckt in der Grundflaeche (Anzahl der Anschlusskanten, GDD 03 Abschnitt 7).
  *

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Zielerfassung und Prioritaeten (GDD 05 Abschnitt 4).
  *
  * Zwei Regeln:

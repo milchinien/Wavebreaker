@@ -1,4 +1,4 @@
-﻿# Prototyp 02 — Bereichswechsel mit `createLayout`
+# Prototyp 02 — Bereichswechsel mit `createLayout`
 
 ## Leitfrage
 

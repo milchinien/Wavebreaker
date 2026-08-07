@@ -1,4 +1,4 @@
-﻿# Waverbreaker - Rekonstruktionsbericht (Abspielverfahren)
+# Waverbreaker - Rekonstruktionsbericht (Abspielverfahren)
 
 Quelle: 21 Sitzungsverlaeufe vom 02. bis 04.08.2026 aus dem Claude-Konto.
 Urspruenglicher Projektpfad: `E:\spiele\Desktop\The Tower`

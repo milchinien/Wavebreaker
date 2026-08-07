@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Nachladen, Zielwahl, Schuss.
  *
  * Der Plan sieht diese Funktion in `sim/station.ts` vor. Sie steht hier, damit

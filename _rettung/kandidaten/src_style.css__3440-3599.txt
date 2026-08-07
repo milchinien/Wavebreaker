@@ -1,4 +1,4 @@
-﻿Datei : src\style.css
+Datei : src\style.css
 Luecke: Zeilen 3440 bis 3599  (160 Zeilen)
 
 ---- Anker davor ----

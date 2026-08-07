@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Der Hinweiszettel (GDD 14 Abschnitt 4a).
  *
  * Bewusst **kein Fenster**: Er liegt am Rand, haelt nichts an und faengt keine Klicks ab.

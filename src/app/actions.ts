@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Jede Spielerhandlung als eine Funktion.
  *
  * `render/` und `ui/` lesen den Zustand und rufen ausschliesslich hier an - sie aendern

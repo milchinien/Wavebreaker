@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Serialisierung, Version, Migration.
  *
  * Eine einzige Stelle (GDD 16 Abschnitt 8). Der Spielstand ist ein klar getrenntes,

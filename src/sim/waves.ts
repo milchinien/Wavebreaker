@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Wellenerzeugung und Wellenzustand (GDD 07).
  *
  * Wellen werden **dynamisch erzeugt**, nicht einzeln definiert (GDD 16 Abschnitt 6).

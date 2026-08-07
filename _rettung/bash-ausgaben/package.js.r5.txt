@@ -1,4 +1,4 @@
-﻿=== root package.json ===
+=== root package.json ===
 {
   "name": "wavebreaker",
   "version": "0.0.0",

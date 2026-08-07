@@ -1,4 +1,4 @@
-﻿# 03 – Modulare Basis und Bauregeln
+# 03 – Modulare Basis und Bauregeln
 
 > Teil 3 von 16 der Game-Design-Dokumentation.
 

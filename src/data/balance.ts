@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Alle Kurven, Faktoren und Obergrenzen an einem Ort.
  *
  * Regel (Implementierungsplan Abschnitt 9): Zahlen stehen hier, nicht in `sim/`.

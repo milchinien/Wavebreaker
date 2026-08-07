@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Persistenz. Zweck ist nicht das Speichern selbst, sondern der Nachweis, dass das Datenmodell
  * serialisierbar ist — das Speicherformat des Spiels wird davon abgeleitet (GDD 16 §8).
  *

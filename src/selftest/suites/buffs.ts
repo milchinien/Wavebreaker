@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Buff-System aus GDD 03 Abschnitt 9 - die Regeln, an denen der Prototyp gemessen hat,
  * dass Buff-Tuerme Voraussicht brauchen (F7).
  *

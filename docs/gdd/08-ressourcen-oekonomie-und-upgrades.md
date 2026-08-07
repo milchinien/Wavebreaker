@@ -1,4 +1,4 @@
-﻿# 08 – Ressourcen, Ökonomie und Upgrades
+# 08 – Ressourcen, Ökonomie und Upgrades
 
 > Teil 8 von 16 der Game-Design-Dokumentation.
 

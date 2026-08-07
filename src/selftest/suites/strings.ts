@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Alle Spielertexte laufen ueber `t()` (GDD 16 Abschnitt 1). Der Test sichert die
  * Platzhalter-Ersetzung ab - sie ist die Stelle, an der eine spaetere deutsche Fassung
  * bricht, wenn sie unsauber ist.

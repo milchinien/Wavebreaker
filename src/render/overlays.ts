@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Bauhilfen, Buff-Linien und Abriss-Vorschau (GDD 13 Abschnitt 12).
  *
  * Diese Ebene erklaert die Regeln, statt sie zu behaupten:

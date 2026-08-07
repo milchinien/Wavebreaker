@@ -1,4 +1,4 @@
-﻿# 10 – Prestige-System
+# 10 – Prestige-System
 
 > Teil 10 von 16 der Game-Design-Dokumentation.
 

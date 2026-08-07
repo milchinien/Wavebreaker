@@ -1,4 +1,4 @@
-﻿Gesucht: drawBursts
+Gesucht: drawBursts
 Erwaehnungen: 15, davon Definitionen: 4
 
 ======== 01QexX4hhG #17 Read/Ergebnis E:\spiele\Desktop\The Tower\src\render\combat.ts ========

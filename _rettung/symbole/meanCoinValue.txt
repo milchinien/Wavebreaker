@@ -1,4 +1,4 @@
-﻿Gesucht: meanCoinValue
+Gesucht: meanCoinValue
 Erwaehnungen: 3, davon Definitionen: 1
 
 ======== 01PMQtEQdw #33 Bash/Ergebnis  ========

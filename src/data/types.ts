@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Gemeinsame Vokabeln von Kernen und Tuermen.
  *
  * Trennung aus Prototyp 01 (PLAN.md Abschnitt 4.3), die sich bewaehrt hat:

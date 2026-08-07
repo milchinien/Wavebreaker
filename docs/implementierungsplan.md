@@ -1,4 +1,4 @@
-﻿# WAVEBREAKER — Implementierungsplan
+# WAVEBREAKER — Implementierungsplan
 
 > Schritt-für-Schritt-Bauplan für das gesamte Spiel. Beschreibt **Reihenfolge, Dateien und
 > Funktionen** — keinen fertigen Code.

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Maus- und Tastaturbedienung der Baufläche.
  *
  * Der Plan nennt fuer E3 keine eigene Eingabedatei; sie steht hier trotzdem, weil sonst

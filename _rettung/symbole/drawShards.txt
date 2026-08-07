@@ -1,4 +1,4 @@
-﻿Gesucht: drawShards
+Gesucht: drawShards
 Erwaehnungen: 17, davon Definitionen: 2
 
 ======== 01QexX4hhG #17 Read/Ergebnis E:\spiele\Desktop\The Tower\src\render\combat.ts ========

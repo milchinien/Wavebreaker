@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Zahlendarstellung (GDD 13 Abschnitt 8).
  *
  * Diese Datei ist die einzige Stelle, an der aus einer Zahl ein Text wird. Das ist die

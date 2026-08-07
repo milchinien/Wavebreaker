@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E13.
  *
  * Der Implementierungsplan nennt genau eine Abnahmebedingung, und er nennt sie die

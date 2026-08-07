@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Sammelstelle aller Zusicherungen. Aufruf im Spiel ueber `?selftest`, headless ueber
  * `npm run selftest`.
  *

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Schaden, Tod und der Zustand eines Gefechts.
  *
  * Die Station hat **eine gemeinsame Lebensleiste** (GDD 03 Abschnitt 5): Es gibt keine

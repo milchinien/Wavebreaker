@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Einstellungen des Geraets (GDD 13 Abschnitt 3).
  *
  * Sie liegen **nicht im Spielstand**, sondern in einer eigenen Ablage. Der Grund ist keine

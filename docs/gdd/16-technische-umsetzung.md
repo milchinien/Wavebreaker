@@ -1,4 +1,4 @@
-﻿# 16 – Technische Umsetzung und Entwicklungsplan
+# 16 – Technische Umsetzung und Entwicklungsplan
 
 > Teil 16 von 16 der Game-Design-Dokumentation.
 

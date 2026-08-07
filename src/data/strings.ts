@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Alle Spielertexte an einer Stelle.
  *
  * Spielsprache ist Englisch (GDD 16 Abschnitt 1), Dokumentationssprache Deutsch. Kein
@@ -32,6 +32,9 @@ export const STRINGS = {
   'upgrades.level': 'Lv {level}',
   'upgrades.max': 'Max',
   'upgrades.section': '{name} upgrades',
+  'upgrades.none': 'No level yet',
+  'upgrades.tipLevel': 'Lv {level} / {max}',
+  'upgrades.tipTitle': '{group} - {path}',
   'hud.costs': '$ {amount}',
   'hud.gain': '+{amount}',
 
@@ -52,11 +55,16 @@ export const STRINGS = {
   'shop.meltHint': 'Pick three towers in storage to melt them into a free draw.',
   'shop.meltShort': 'Melt',
   'shop.cancel': 'Cancel',
+  'shop.locked': 'Opens with the tower shop',
 
   'offer.title': 'Choose a tower',
   'offer.meltTitle': 'Melted — choose a tower',
   'offer.discard': 'Discard',
   'offer.noTraits': 'No modifiers',
+  'offer.boost': 'Every neighbour gets',
+  'offer.gain': '({base} +{gain})',
+  'offer.hint': 'One draw · one module',
+  'offer.take': 'Take it',
 
   'prestige.title': 'Prestige',
   'prestige.points': 'Prestige points',
@@ -71,6 +79,7 @@ export const STRINGS = {
   'prestige.tipTitle': '{area} - {node}',
   'prestige.needs': 'Needs {names}',
   'prestige.cost': '{amount} points',
+  'prestige.blocked': 'Locked',
 
   'area.economy': 'Economy',
   'area.towers': 'Towers',
@@ -231,6 +240,14 @@ export const STRINGS = {
   'save.restored': 'Progress restored.',
   'save.fresh': 'New station initialised.',
   'save.corrupt': 'Saved game could not be read. Starting fresh.',
+
+  // [REKONSTRUIERT] Gruppe fehlte in der rekonstruierten Tabelle. Schluessel und
+  // Texte stammen woertlich aus dem Sitzungsmaterial, nicht aus eigener Erfindung.
+  'category.area': 'Area',
+  'category.attack': 'Attack',
+  'category.buff': 'Amplifier',
+  'category.special': 'Special',
+  'category.support': 'Support',
 } as const
 
 export type StringKey = keyof typeof STRINGS

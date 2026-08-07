@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Klang (GDD 13 Abschnitt 11).
  *
  * **Diese Datei wird angeschlossen, nicht eingebaut.** Sie kennt keine Spielregel und wird

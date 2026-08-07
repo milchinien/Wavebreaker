@@ -1,4 +1,4 @@
-﻿# 06 – Turmerwerb, Inventar und Raritäten
+# 06 – Turmerwerb, Inventar und Raritäten
 
 > Teil 6 von 16 der Game-Design-Dokumentation.
 

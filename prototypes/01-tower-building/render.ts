@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Canvas-Zeichnung. Der praegende Look entsteht aus den hellen Fugen zwischen den Modulen
  * (geteilte Kanten), nicht aus den Fuellflaechen — siehe Zielskizze.
  */

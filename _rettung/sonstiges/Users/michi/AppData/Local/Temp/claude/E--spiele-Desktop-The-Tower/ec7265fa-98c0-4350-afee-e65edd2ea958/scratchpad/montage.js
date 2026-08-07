@@ -1,4 +1,4 @@
-﻿// Baut aus vielen kleinen PNGs (Farbtyp 3, 8 Bit) eine Uebersichtsgrafik.
+// Baut aus vielen kleinen PNGs (Farbtyp 3, 8 Bit) eine Uebersichtsgrafik.
 const fs = require('fs')
 const zlib = require('zlib')
 const path = require('path')

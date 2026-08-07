@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Schwebende Funken hinter einem Fenster (GDD 13 Abschnitt 10: Neon, aber ruhig).
  *
  * Das Aufstiegsfenster hatte bisher einen leeren, weichgezeichneten Hintergrund. Das ist

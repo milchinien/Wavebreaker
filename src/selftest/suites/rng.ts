@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Der Zufall muss reproduzierbar sein, sonst ist ein Balancing-Fehler nicht nachstellbar
  * (Implementierungsplan Abschnitt 3).
  */

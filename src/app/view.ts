@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Abgeleitete Sicht auf die Station - Geometrie, freie Kanten, Nachbarschaft, Buffs.
  *
  * GDD 03 Abschnitt 10 verlangt zweierlei: **vollstaendig** neu rechnen statt fortschreiben,

@@ -1,4 +1,4 @@
-﻿import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 
 const ENTRY = [
   '- **Licht hinter den Menüs** (2026-08-03) — In Basis, Prestige und Einstellungen ziehen jetzt',

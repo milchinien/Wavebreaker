@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Die Haendler-Drohne (GDD 11 Abschnitt 7).
  *
  * "Waehrend eines Runs kann eine Haendler-Drohne erscheinen. Sie landet kurzzeitig in der

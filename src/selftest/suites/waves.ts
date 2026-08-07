@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E4: Welle 1 und Welle 50 erzeugen unterschiedliche, aber plausible
  * Zusammensetzungen - und `buildWave` ist rein und mit festem Seed reproduzierbar.
  *

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E17 (Abwesenheitsertrag und Helfer) und E18 (Hinweise).
  *
  * Der Plan nennt fuer E17 genau eine Abnahme:

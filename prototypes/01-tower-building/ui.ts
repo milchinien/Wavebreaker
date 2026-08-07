@@ -1,4 +1,4 @@
-﻿/** Inventarliste, HUD und Debug-Panel. Kennt keine Bauregeln. */
+/** Inventarliste, HUD und Debug-Panel. Kennt keine Bauregeln. */
 import { defOf, RARITY_COLOR, RARITY_LABEL, RARITY_MULT } from './catalog'
 import { SHAPE_GLYPH, SHAPE_NAME } from './shapes'
 import { canRemove, ERROR_TEXT, usedSlots } from './station'

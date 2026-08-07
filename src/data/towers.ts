@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Turmarten als Datensaetze (GDD 05, GDD 16 Abschnitt 5).
  *
  * Ein neuer Turm soll allein durch einen Eintrag hier entstehen - kein neuer Code, solange

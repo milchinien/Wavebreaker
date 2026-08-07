@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Aktive Faehigkeiten (GDD 09 Teil B).
  *
  * Drei Regeln bestimmen den Aufbau dieser Datei:

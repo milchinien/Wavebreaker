@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Deterministischer Zufall.
  *
  * Regel aus dem Implementierungsplan (Abschnitt 3 und 9): `Math.random()` kommt im

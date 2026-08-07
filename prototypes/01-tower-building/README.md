@@ -1,4 +1,4 @@
-﻿# Prototyp 01 — Turmbau (modulares Ansteck-System)
+# Prototyp 01 — Turmbau (modulares Ansteck-System)
 
 **Status:** abgeschlossen (M0–M7) → [PLAN.md](PLAN.md) · [Ergebnis](#ergebnis)
 

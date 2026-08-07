@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Erfahrung, Stufen und Perks (GDD 09 Teil A).
  *
  * Die eine Entscheidung dieser Datei: **Erfahrung wird nie verbraucht.**

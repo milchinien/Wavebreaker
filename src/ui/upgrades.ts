@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Upgrade-Panel (GDD 08 Abschnitt 5, GDD 13 Abschnitt 6).
  *
  * Es sitzt dauerhaft unten in der Kampfansicht - Verbessern ist die Handlung, die der

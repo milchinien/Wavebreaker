@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Zeichenreihenfolge - eine Stelle.
  *
  * Wer eine neue Ebene hinzufuegt (Gegner in E4, Geschosse in E5, Muenzen in E7), traegt

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Rollende Knopfbeschriftung (GDD 13 Abschnitt 10).
  *
  * Unter dem Zeiger faehrt die Beschriftung nach oben aus dem Rahmen heraus, waehrend

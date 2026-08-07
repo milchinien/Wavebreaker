@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E16 (Ereignisse und Versorgungskapseln).
  *
  * Die Abnahmebedingung der Etappe ist dieselbe wie bei Tuermen und Gegnern: **Ein neues

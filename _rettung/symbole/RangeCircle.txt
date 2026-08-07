@@ -1,4 +1,4 @@
-﻿Gesucht: RangeCircle
+Gesucht: RangeCircle
 Erwaehnungen: 15, davon Definitionen: 4
 
 ======== 01E1azVsAu #41 Bash/Ergebnis  ========

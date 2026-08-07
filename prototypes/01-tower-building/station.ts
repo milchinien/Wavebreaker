@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Bauregeln. Reine Funktionen ueber den Zustand — die UI kennt keine Regeln.
  * Kennt weder DOM noch Canvas.
  */

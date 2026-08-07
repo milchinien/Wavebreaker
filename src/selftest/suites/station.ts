@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Bauregeln aus GDD 03. Der Beweis fuer E2: die Zusicherungen aus Prototyp 01 laufen hier
  * erneut - Andocken, Ueberlappung, Nachbarschaft, Zusammenhang, Entfernen, Verschieben.
  *

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Selbsttests ohne Browser: `npm run selftest`.
  *
  * Der Weg ueber `?selftest` im Spiel bleibt der eigentliche, hier laeuft derselbe Code

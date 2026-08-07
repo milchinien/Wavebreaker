@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 #  Waverbreaker - Rekonstruktion durch Abspielen der Aenderungsgeschichte
 # ----------------------------------------------------------------------------
 #  Der erste Versuch hat Zeilen aus verschiedenen Zeitpunkten uebereinandergelegt.

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Faehigkeiten verwalten (GDD 09 Teil B, GDD 13 Abschnitt 6).
  *
  * Der Bereich sitzt im Upgrades-Menue, weil GDD 13 Abschnitt 6 dort ausdruecklich die

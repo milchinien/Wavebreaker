@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Auto-Zoom: Die Station bleibt immer vollstaendig im Bild (GDD 13 Abschnitt 4). Der
  * Spieler soll seine Basis jederzeit als Ganzes sehen - das ist der Kern der Spielfantasie.
  *

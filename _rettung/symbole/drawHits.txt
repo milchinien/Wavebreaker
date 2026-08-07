@@ -1,4 +1,4 @@
-﻿Gesucht: drawHits
+Gesucht: drawHits
 Erwaehnungen: 30, davon Definitionen: 7
 
 ======== 01QexX4hhG #17 Read/Ergebnis E:\spiele\Desktop\The Tower\src\render\combat.ts ========

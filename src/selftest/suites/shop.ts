@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Beweis aus E12.
  *
  * Der Plan verlangt dreierlei: die Eigenschaftsanzahl je Raritaet, die Kostenkurve, und

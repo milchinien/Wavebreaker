@@ -1,4 +1,4 @@
-﻿Datei : prototypes\01-tower-building\README.md
+Datei : prototypes\01-tower-building\README.md
 Luecke: Zeilen 170 bis 227  (58 Zeilen)
 
 ---- Anker davor ----

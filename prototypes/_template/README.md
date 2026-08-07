@@ -1,4 +1,4 @@
-﻿# Prototyp — Vorlage
+# Prototyp — Vorlage
 
 > Diesen Ordner nach `NN-kurzname/` kopieren und die Abschnitte ausfüllen.
 > `_template` selbst ist kein Prototyp und wird vom Build ignoriert.

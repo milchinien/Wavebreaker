@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Der Ausgang einer Welle, gross in der Mitte des Feldes: VICTORY oder DEFEAT.
  *
  * Der Schriftzug **schreibt sich selbst**, Buchstabe fuer Buchstabe, mit blinkendem Cursor

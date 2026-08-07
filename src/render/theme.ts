@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Farben, Linienstaerken und Leuchtstaerken an einem Ort (GDD 13 Abschnitt 2 und 7).
  *
  * Der praegende Look entsteht aus den **hellen Fugen** zwischen den Modulen - also aus den

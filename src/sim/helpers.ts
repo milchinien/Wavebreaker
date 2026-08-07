@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Helfer (GDD 12 Teil B).
  *
  * Bisher gibt es genau einen: den **Goldsammler**. Er ist keine Kampfeinheit (GDD 12

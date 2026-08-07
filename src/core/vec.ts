@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Vektorrechnung. Reine Mathematik ohne Spielwissen.
  *
  * Uebernommen aus Prototyp 01 - dort ueber 34.708 Platzierungen erprobt und im Spiel

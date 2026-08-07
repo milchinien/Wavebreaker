@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Alle laufenden Zahlen der Oberflaeche (GDD 13 Abschnitt 4).
  *
  * Verteilt auf mehrere Stellen, aber bewusst in **einer** Datei: Sie alle lesen denselben

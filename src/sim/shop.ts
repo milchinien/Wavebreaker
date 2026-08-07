@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Turmerwerb und Schmelzen (GDD 06).
  *
  * Die praegende Regel steht in GDD 06 Abschnitt 1: **Der Spieler kauft keinen Turm, er

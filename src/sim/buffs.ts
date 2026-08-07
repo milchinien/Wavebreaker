@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Buff-System (GDD 03 Abschnitt 9).
  *
  * Nachbarschaft entsteht ausschliesslich ueber **geteilte Kanten**. Module, die sich nur

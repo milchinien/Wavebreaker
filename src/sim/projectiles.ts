@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Geschosse mit Wiederverwendung (GDD 16 Abschnitt 12).
  *
  * Geschosse sind die haeufigsten Objekte im Spiel - ein Autocannon allein erzeugt sechs

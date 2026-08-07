@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GameState - die eine Wahrheit.
  *
  * Die Aufteilung ist die wichtigste Entscheidung dieser Datei und laut GDD 16 Abschnitt 8

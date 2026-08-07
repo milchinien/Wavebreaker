@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Rahmen der Oberflaeche: Bereiche, Navileiste, Panels (GDD 13 Abschnitt 3 und 4).
  *
  * Der Aufbau folgt den Entwurfsbildern:

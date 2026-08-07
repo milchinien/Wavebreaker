@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Prototyp 01 — Turmbau, vollstaendig (M0–M7).
  *
  * Geometrie, Katalog, Inventar, Andocken, Umbauen, Buff-System, Darstellung, Persistenz.

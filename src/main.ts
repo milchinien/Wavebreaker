@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Einstieg: Zustand laden, Schleife starten, Bereiche verdrahten.
  *
  * Diese Datei kennt keine Regeln. Sie verbindet Schleife, Zustand, Zeichnen und Bedienung -

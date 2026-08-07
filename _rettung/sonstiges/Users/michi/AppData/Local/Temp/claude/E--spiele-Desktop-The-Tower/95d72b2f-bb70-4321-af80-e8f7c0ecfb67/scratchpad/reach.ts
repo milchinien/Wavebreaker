@@ -1,4 +1,4 @@
-﻿/** Nachmessen: Wie weit reicht jeder Turm ab der Mitte, wenn er am Kern haengt? */
+/** Nachmessen: Wie weit reicht jeder Turm ab der Mitte, wenn er am Kern haengt? */
 import { apothem } from '../../../../../../../E:/spiele/Desktop/The Tower/src/core/geometry.ts'
 import { TOWERS } from '../../../../../../../E:/spiele/Desktop/The Tower/src/data/towers.ts'
 import { CORES } from '../../../../../../../E:/spiele/Desktop/The Tower/src/data/cores.ts'
