@@ -427,4 +427,3 @@ Unterstützend wirken visuelle Hilfen statt Text:
 - **Das Turm-Detailfenster** zeigt „verstärkt *n* von *m* Nachbarn" und macht damit einen wirkungslosen Buff-Turm sofort sichtbar.
 
 → [14 – Progression und Freischaltungen](14-progression-und-freischaltungen.md)
-

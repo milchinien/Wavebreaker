@@ -1,133 +1,161 @@
 ﻿# Prototyp 01 — Turmbau (modulares Ansteck-System)
 
-**Status:** geplant, noch nicht implementiert → [PLAN.md](PLAN.md)
+**Status:** abgeschlossen (M0–M7) → [PLAN.md](PLAN.md) · [Ergebnis](#ergebnis)
 
 | Etappe | Inhalt | Stand |
 |---|---|---|
 | M0 | Gerüst, Canvas, feste Zeitschritte | ✓ |
 | M1 | Geometrie, `attachTo`, Überlappungsprüfung, Selbsttests | ✓ |
-> Fühlt sich das Anstecken verschiedener Turmformen an den Hauptturm und aneinander gut an —
+| M2 | Datenmodell, Katalog mit 8 Turmarten, Inventar | ✓ |
 | M3 | Andocken an freie Kanten, Ghost, Platzlimit | ✓ |
-| M4 | Entfernen, Verschieben, Zusammenhang | offen |
-| M5 | Buff-System, Detailpanel, DPS-Kennzahl | offen |
-| M6 | Optik, Auto-Zoom-Politur, Reichweitenkreise | offen |
+| M4 | Entfernen, Verschieben, Zusammenhang, Regel A/B | ✓ |
+| M5 | Buff-System, Buff-Linien, Detailpanel, DPS-Kennzahl | ✓ |
+| M6 | Reichweitenkreise, Grundplatte, Raritätsglühen, Zufallsstation | ✓ |
+| M7 | Persistenz, Messungen zu F1–F10, Auswertung | ✓ |
+
+## Starten
+
+```bash
+npm --prefix prototypes run dev
+```
+
+Dann `http://localhost:5174/01-tower-building/` öffnen.
+Selbsttests laufen automatisch mit `?selftest` in der Adresszeile oder über den Knopf im rechten Panel.
+
+---
+
+## Leitfrage
+
+> Fühlt sich das Anstecken verschiedener Turmformen an den Hauptturm und aneinander gut an —
+> und bleibt eine gewachsene Station lesbar und baubar?
+
+## Grundidee in drei Sätzen
+
 Jedes Modul ist ein regelmäßiges Polygon mit **einheitlicher Seitenlänge** — Dreieck, Viereck,
 Fünfeck oder Hexagon. Der Hauptturm ist ein festes Hexagon im Zentrum; neue Module docken an eine
 **freie Kante** eines bereits platzierten Moduls an, wodurch Position und Drehung eindeutig
 festliegen. Nachbarschaft — und damit jeder Buff — entsteht über **gemeinsame Kanten**, weshalb die
 Form eines Moduls (3 bis 6 Anschlusskanten) eine echte Spielmechanik ist und nicht nur Optik.
-npm --prefix prototypes run dev
+
 > **Achtung:** Das weicht bewusst von [GDD 03 § 3](../../docs/gdd/03-modulare-basis-und-bauregeln.md)
 > (Hex-Raster, Formen nur als Signatur) ab und folgt stattdessen § 2 und der Zielskizze.
 > Begründung und Folgen: [PLAN.md, Abschnitt 0](PLAN.md).
-Selbsttests laufen automatisch mit `?selftest` in der Adresszeile oder über den Knopf im rechten Panel.
+
 ## Nicht Teil des Prototyps
----
+
 Kampf, Gegner, Gold, Upgrades, Prestige, Raritäts-Auswürfelung, Speicherstand-Kompatibilität, Audio.
 Statt echtem Kampf dient eine theoretische Stations-DPS-Kennzahl zum Vergleich zweier Builds.
 
-> Fühlt sich das Anstecken verschiedener Turmformen an den Hauptturm und aneinander gut an —
-> und bleibt eine gewachsene Station lesbar und baubar?
-*Wird mit der Implementierung ausgefüllt — geplante Belegung siehe [PLAN.md, Abschnitt 6.2](PLAN.md).*
-## Grundidee in drei Sätzen
-## Ergebnis
-Jedes Modul ist ein regelmäßiges Polygon mit **einheitlicher Seitenlänge** — Dreieck, Viereck,
-*Nach dem Experiment ausfüllen — die Fragen F1–F9 aus [PLAN.md, Abschnitt 10](PLAN.md) beantworten.*
-**freie Kante** eines bereits platzierten Moduls an, wodurch Position und Drehung eindeutig
-festliegen. Nachbarschaft — und damit jeder Buff — entsteht über **gemeinsame Kanten**, weshalb die
-Form eines Moduls (3 bis 6 Anschlusskanten) eine echte Spielmechanik ist und nicht nur Optik.
-| F1 | Fühlt sich das Einrasten an Kanten gut an? | |
-> **Achtung:** Das weicht bewusst von [GDD 03 § 3](../../docs/gdd/03-modulare-basis-und-bauregeln.md)
-| F3 | Wie stark begrenzt die Geometrie den Bau? | |
-| F4 | Bleiben Module bei Auto-Zoom unterscheidbar? | |
-| F5 | Ist die Formwahl eine interessante Entscheidung? | |
-| F6 | Buff-Linien dauerhaft oder nur bei Auswahl? | |
-| F7 | Ab wie vielen Nachbarn schlägt ein Buff-Turm einen Kampfturm? | |
-| F8 | Ist die vollständige Neuberechnung schnell genug? | |
-| F9 | Sind die entstehenden Lücken schön oder wirken sie kaputt? | |
+## Bedienung
 
-## Übernahme ins Spiel
+| Eingabe | Wirkung |
+|---|---|
+| Klick auf Inventarkarte | Bau-Modus mit diesem Modul (nochmal klicken hebt auf) |
+| Maus über die Baufläche | Ghost rastet auf die nächstgelegene freie Kante ein |
+| Linksklick | Platzieren — grün gültig, rot abgelehnt |
+| Linksklick auf Modul | Auswählen, Details rechts |
+| **Maus über ein Modul** | Abriss-Vorschau: es leuchtet auf, was beim Entfernen abreißen würde |
+| Ziehen eines Moduls | Umsetzen; das Modul wird blass, die Vorschau zeigt das Ziel |
+| Rechtsklick auf Modul | Entfernen → zurück ins Inventar |
+| `Entf` | Ausgewähltes Modul entfernen |
+| `Esc` / Rechtsklick ins Leere | Bau- oder Ziehvorgang abbrechen |
+| `B` | Buff-Linien dauerhaft an/aus (ausgeschaltet nur bei Auswahl) |
+| **`R`** | Reichweitenkreise aller Module; der Auto-Zoom fährt dafür heraus |
+| **`P`** | Grundplatte an/aus — bindet die Keile zwischen den Modulen optisch ein |
+| `E` | Kantennummern einblenden |
+| Mausrad | Zoom; `F` stellt den Auto-Zoom wieder her |
 
-*Nach dem Experiment ausfüllen — Vorgabe siehe [PLAN.md, Abschnitt 11](PLAN.md).*
+Rechts: Turmplätze 1–20, Entfern-Regel A/B, **Zufallsstation mit 4–40 Modulen**, Zurücksetzen,
+Spielstand löschen, Selbsttests. Das Layout wird **fortlaufend gespeichert** und beim Öffnen
+wiederhergestellt — es gibt keinen Speichern-Knopf ([GDD 16 §8](../../docs/gdd/16-technische-umsetzung.md)).
+Die Zufallsstation ist das Werkzeug für die Lesbarkeitsprüfung — sie hebt das Turmplatz-Limit an,
+weil das eine Spielregel ist und keine Baubeschränkung des Werkzeugs.
 
-/* ### FEHLENDE ZEILE 53 ### */
-/* ### FEHLENDE ZEILE 54 ### */
-/* ### FEHLENDE ZEILE 55 ### */
-/* ### FEHLENDE ZEILE 56 ### */
-/* ### FEHLENDE ZEILE 57 ### */
-/* ### FEHLENDE ZEILE 58 ### */
-/* ### FEHLENDE ZEILE 59 ### */
-/* ### FEHLENDE ZEILE 60 ### */
-/* ### FEHLENDE ZEILE 61 ### */
-/* ### FEHLENDE ZEILE 62 ### */
-/* ### FEHLENDE ZEILE 63 ### */
-/* ### FEHLENDE ZEILE 64 ### */
-/* ### FEHLENDE ZEILE 65 ### */
-/* ### FEHLENDE ZEILE 66 ### */
-/* ### FEHLENDE ZEILE 67 ### */
-/* ### FEHLENDE ZEILE 68 ### */
-/* ### FEHLENDE ZEILE 69 ### */
-/* ### FEHLENDE ZEILE 70 ### */
-/* ### FEHLENDE ZEILE 71 ### */
-/* ### FEHLENDE ZEILE 72 ### */
-/* ### FEHLENDE ZEILE 73 ### */
-/* ### FEHLENDE ZEILE 74 ### */
-/* ### FEHLENDE ZEILE 75 ### */
-/* ### FEHLENDE ZEILE 76 ### */
-/* ### FEHLENDE ZEILE 77 ### */
-/* ### FEHLENDE ZEILE 78 ### */
-/* ### FEHLENDE ZEILE 79 ### */
-/* ### FEHLENDE ZEILE 80 ### */
-/* ### FEHLENDE ZEILE 81 ### */
-/* ### FEHLENDE ZEILE 82 ### */
-/* ### FEHLENDE ZEILE 83 ### */
-/* ### FEHLENDE ZEILE 84 ### */
-/* ### FEHLENDE ZEILE 85 ### */
-/* ### FEHLENDE ZEILE 86 ### */
-/* ### FEHLENDE ZEILE 87 ### */
-/* ### FEHLENDE ZEILE 88 ### */
-/* ### FEHLENDE ZEILE 89 ### */
-/* ### FEHLENDE ZEILE 90 ### */
-/* ### FEHLENDE ZEILE 91 ### */
-/* ### FEHLENDE ZEILE 92 ### */
-/* ### FEHLENDE ZEILE 93 ### */
-/* ### FEHLENDE ZEILE 94 ### */
-/* ### FEHLENDE ZEILE 95 ### */
-/* ### FEHLENDE ZEILE 96 ### */
-/* ### FEHLENDE ZEILE 97 ### */
-/* ### FEHLENDE ZEILE 98 ### */
-/* ### FEHLENDE ZEILE 99 ### */
-/* ### FEHLENDE ZEILE 100 ### */
-/* ### FEHLENDE ZEILE 101 ### */
-/* ### FEHLENDE ZEILE 102 ### */
-/* ### FEHLENDE ZEILE 103 ### */
-/* ### FEHLENDE ZEILE 104 ### */
-/* ### FEHLENDE ZEILE 105 ### */
-/* ### FEHLENDE ZEILE 106 ### */
-/* ### FEHLENDE ZEILE 107 ### */
-/* ### FEHLENDE ZEILE 108 ### */
-/* ### FEHLENDE ZEILE 109 ### */
-/* ### FEHLENDE ZEILE 110 ### */
-/* ### FEHLENDE ZEILE 111 ### */
-/* ### FEHLENDE ZEILE 112 ### */
-/* ### FEHLENDE ZEILE 113 ### */
-/* ### FEHLENDE ZEILE 114 ### */
-/* ### FEHLENDE ZEILE 115 ### */
-/* ### FEHLENDE ZEILE 116 ### */
-/* ### FEHLENDE ZEILE 117 ### */
-/* ### FEHLENDE ZEILE 118 ### */
-/* ### FEHLENDE ZEILE 119 ### */
+## Messungen
+
+| Beobachtung | Wert |
+|---|---|
+| Selbsttests | 38/38 bestanden |
+| Freigegebene Platzierungen mit echter Überlappung | 0 von 34.708 (größte Schnittfläche 2·10⁻¹⁵ Modulfläche = Rundungsrauschen) |
+| Blockierte Platzierungen mit tatsächlicher Überlappung | 14.244 von 14.244; kleinste echte Schnittfläche 7,5·10⁻⁵ Modulfläche |
+| Anteil blockierter Kombinationen aus freier Kante × Form | ~29 % — erster Anhaltspunkt für **F3**, belastbare Messung folgt in M7 |
+
+Die Überlappungsprüfung ist damit belastbar: Sie lässt nie eine echte Überlappung durch und
+blockiert nur bei tatsächlicher Schnittfläche.
+
+### Zwischenstand zu F2 (Entfernen zerteilt die Station)
+
+Gemessen an je 120 zufällig gewachsenen Stationen: Anteil der Module, die als **Brücke** wirken,
+deren Entfernung also unter Variante A blockiert würde bzw. unter Variante B andere mitreißt.
+
+| Stationsgröße | Brückenmodule | Ø mitgerissene Module (B) | schlimmster Fall |
+|---|---|---|---|
+| 4 Module | 30 % | 1,4 | — |
+| 8 Module | 42,6 % | 2,2 | — |
+| 12 Module | 48,3 % | 2,7 | — |
+| 15 Module | 50,2 % | 3,0 | 13 Module auf einen Schlag |
+
+**Vorläufige Lesart — beide Varianten haben ein Problem.** Bei Zielgröße 8–15 Modulen wäre unter
+Variante A rund jedes zweite Modul unentfernbar; unter Variante B reißt ein Klick im Schnitt drei
+weitere Module mit, im Extremfall die halbe Station.
+
+*Einschränkung:* Die Stationen sind zufällig gewachsen und dadurch verzweigter als das, was ein
+Spieler bewusst kompakt um den Kern baut. Die Zahlen sind eher eine Obergrenze. Eine belastbare
+Antwort braucht Messungen an echten, von Hand gebauten Layouts (M7).
+
+**Umgesetzt:** die Abriss-Vorschau. Wer auf ein Modul zeigt, sieht sofort, was daran hängt —
+rot unter Variante A („Entfernen blockiert — N Module würden abreißen"), bernstein unter
+Variante B („Entfernen nimmt N weitere Module mit"). Damit überrascht B niemanden mehr, und
+unter A ist der Grund für die Sperre sichtbar statt nur behauptet.
+
+### F8 beantwortet: Neuberechnung ist billig
+
+Station mit 21 Modulen, je 400 Durchläufe:
+
+| Aufruf | Zeit |
+|---|---|
+| `computeStation` (alle Buffs + DPS + HP) | 0,29 ms |
+| `freeEdges` | 0,35 ms |
+| **zusammen pro Änderung** | **0,65 ms** |
+
+Beides läuft nur bei Änderungen, nicht pro Frame. Die vollständige Neuberechnung bleibt damit
 auch im Spiel die richtige Wahl — kein Cache, keine Invalidierung.
 
-### Beobachtung zu F5 (lohnt sich die Formwahl?)
+### F5: die Formwahl wirkt — aber schwach
 
-In derselben 21-Modul-Station: **Ø 2,0 Nachbarn pro Modul**, nur 4 Module überhaupt gebufft.
-Ein Fünfeck-Amplifier könnte 5 Module erreichen — real erreicht er meist 1–2.
+60 Stationen mit je 15 Modulen, Nachbarn pro Grundfläche:
 
-Das ist ein Warnsignal für die Formmechanik: Wenn der Unterschied zwischen 3 und 5 Anschlusskanten
-in der Praxis nie zum Tragen kommt, ist die Formwahl keine Entscheidung. Auch hier gilt die
-Einschränkung, dass zufällig gewachsene Stationen verzweigter sind als ein bewusst kompakter Bau —
-handgebaute Layouts in M7 müssen das prüfen.
+| Grundfläche | Module | Ø Nachbarn | Auslastung der Kanten |
+|---|---|---|---|
+| Dreieck (3) | 271 | 1,52 | 51 % |
+| Viereck (4) | 226 | 1,74 | 44 % |
+| Fünfeck (5) | 196 | 1,98 | 40 % |
+| Hexagon (6) | 267 | 2,65 | 44 % |
+
+Mehr Kanten bringen tatsächlich mehr Nachbarn, und die Auslastung liegt bei allen Formen bei
+40–51 % — die Mechanik funktioniert also wie gedacht. **Der absolute Unterschied ist aber klein:**
+zwischen Dreieck und Fünfeck liegen 0,46 Nachbarn. Wer bewusst kompakt baut, holt mehr heraus
+(siehe F7), aber im normalen Wachstum ist die Formwahl eher Nuance als Entscheidung.
+
+### F3: gut ein Viertel der Kanten ist unbebaubar
+
+60 Stationen mit je 15 Modulen, 2.397 freie Kanten, geprüft gegen alle vier Grundflächen
+(Turmplatz-Limit ausgeklammert — das ist eine Spielregel, keine Geometrie):
+
+| Messgröße | Wert |
+|---|---|
+| Kanten, an die **gar nichts** passt | **27,7 %** |
+| Ø passende Formen je Kante (von 4) | 2,24 |
+| Dreieck passt an | 72 % der Kanten |
+| Viereck | 57 % |
+| Fünfeck | 48 % |
+| Hexagon | 46 % |
+
+Das liegt genau an der Schwelle, die der Plan als Frustgrenze angesetzt hatte (~30 %). Die
+Geometrie schränkt spürbar ein, und zwar ungleich: Ein Hexagon findet nur an knapp der Hälfte
+der Kanten Platz, ein Dreieck fast überall. **Das ist keine Störung, sondern eine Mechanik** —
+große Module brauchen Platz, kleine füllen Lücken. Es muss aber im Spiel sichtbar sein, sonst
+wirkt es wie ein Fehler: Der Prototyp markiert deshalb ungültige Ziele rot statt sie zu verstecken.
 
 ### F4: Größe ist nicht das Problem — der Reichweiten-Zoom schon
 
@@ -161,70 +189,44 @@ gesamte Station auf ein Drittel — Embleme landen bei 11 px.
 > den Zoom zu ändern — oder nur einen Bruchteil der Maximalreichweite in die Box aufnehmen.
 > Im Prototyp ist der Effekt über `R` direkt vorführbar.
 
-### Entscheidungen im Buff-System (M5)
+### F7: Buff-Türme lohnen sich nur mit Voraussicht — das ist der wichtigste Befund
 
-Punkte, die das GDD offenlässt und die der Prototyp so beantwortet:
+**Die Faustformel.** Ein Buff-Turm belegt denselben Platz wie ein Kampfturm. Er verstärkt `k`
+Module um `b`. Er schlägt einen zusätzlichen gleichwertigen Kampfturm genau dann, wenn
 
-| Frage | Umsetzung im Prototyp | Begründung |
-|---|---|---|
-/* ### FEHLENDE ZEILE 170 ### */
-/* ### FEHLENDE ZEILE 171 ### */
-/* ### FEHLENDE ZEILE 172 ### */
-/* ### FEHLENDE ZEILE 173 ### */
-/* ### FEHLENDE ZEILE 174 ### */
-/* ### FEHLENDE ZEILE 175 ### */
-/* ### FEHLENDE ZEILE 176 ### */
-/* ### FEHLENDE ZEILE 177 ### */
-/* ### FEHLENDE ZEILE 178 ### */
-/* ### FEHLENDE ZEILE 179 ### */
-/* ### FEHLENDE ZEILE 180 ### */
-/* ### FEHLENDE ZEILE 181 ### */
-/* ### FEHLENDE ZEILE 182 ### */
-/* ### FEHLENDE ZEILE 183 ### */
-/* ### FEHLENDE ZEILE 184 ### */
-/* ### FEHLENDE ZEILE 185 ### */
-/* ### FEHLENDE ZEILE 186 ### */
-/* ### FEHLENDE ZEILE 187 ### */
-/* ### FEHLENDE ZEILE 188 ### */
-/* ### FEHLENDE ZEILE 189 ### */
-/* ### FEHLENDE ZEILE 190 ### */
-/* ### FEHLENDE ZEILE 191 ### */
-/* ### FEHLENDE ZEILE 192 ### */
-/* ### FEHLENDE ZEILE 193 ### */
-/* ### FEHLENDE ZEILE 194 ### */
-/* ### FEHLENDE ZEILE 195 ### */
-/* ### FEHLENDE ZEILE 196 ### */
-/* ### FEHLENDE ZEILE 197 ### */
-/* ### FEHLENDE ZEILE 198 ### */
-/* ### FEHLENDE ZEILE 199 ### */
-/* ### FEHLENDE ZEILE 200 ### */
-/* ### FEHLENDE ZEILE 201 ### */
-/* ### FEHLENDE ZEILE 202 ### */
-/* ### FEHLENDE ZEILE 203 ### */
-/* ### FEHLENDE ZEILE 204 ### */
-/* ### FEHLENDE ZEILE 205 ### */
-/* ### FEHLENDE ZEILE 206 ### */
-/* ### FEHLENDE ZEILE 207 ### */
-/* ### FEHLENDE ZEILE 208 ### */
-/* ### FEHLENDE ZEILE 209 ### */
-/* ### FEHLENDE ZEILE 210 ### */
-/* ### FEHLENDE ZEILE 211 ### */
-/* ### FEHLENDE ZEILE 212 ### */
-/* ### FEHLENDE ZEILE 213 ### */
-/* ### FEHLENDE ZEILE 214 ### */
-/* ### FEHLENDE ZEILE 215 ### */
-/* ### FEHLENDE ZEILE 216 ### */
-/* ### FEHLENDE ZEILE 217 ### */
-/* ### FEHLENDE ZEILE 218 ### */
-/* ### FEHLENDE ZEILE 219 ### */
-/* ### FEHLENDE ZEILE 220 ### */
-/* ### FEHLENDE ZEILE 221 ### */
-/* ### FEHLENDE ZEILE 222 ### */
-/* ### FEHLENDE ZEILE 223 ### */
-/* ### FEHLENDE ZEILE 224 ### */
-/* ### FEHLENDE ZEILE 225 ### */
-/* ### FEHLENDE ZEILE 226 ### */
-/* ### FEHLENDE ZEILE 227 ### */
+> **b > 1 / k**
+
+| gebuffte Module | nötiger Buff |
+|---|---|
+| 1 | > 100 % |
+| 2 | > 50 % |
+| 3 | > 33 % |
+| 4 | > 25 % |
+| 5 | > 20 % |
+
+**Warum das entscheidend ist.** Ein neu angestecktes Modul teilt sich per Konstruktion **genau eine**
+Kante mit der Station. In 659 gemessenen Platzierungen an gewachsenen Stationen hatte ein frisch
+gesetzter Amplifier **nie mehr als einen** verstärkbaren Nachbarn. Bei k = 1 wäre ein Buff über
+100 % nötig — der Amplifier verliert entsprechend in 95–100 % der Fälle gegen einen weiteren
+Kampfturm (Ø +18–28 DPS gegen +49–128 DPS).
+
+> **Wer einen Buff-Turm an eine fertige Station anbaut, macht immer einen Fehler.**
+
+**Umgekehrt funktioniert es.** Wird der Amplifier **zuerst** gesetzt und werden die Kampftürme an
+*seine* freien Kanten gebaut, erreicht er 4 Module (drei Türme plus den Hauptturm) — vier Plätze,
+gleicher Preis:
+
+| Aufbau | Amplifier Epic | Legendary | Mythic |
+|---|---|---|---|
+| 4 × Autocannon = 538,7 DPS | 569,3 (**+5,7 %**) | 591,7 (**+9,8 %**) | 627,5 (**+16,5 %**) |
+| 4 × Marksman = 654,1 DPS | 679,2 (**+3,8 %**) | 705,9 (**+7,9 %**) | 748,7 (**+14,5 %**) |
+
+**Antwort auf F7:** Der Buff-Turm ist tragfähig, aber nur mit Planung. Das ist gutes Design —
+es belohnt Voraussicht statt Nachrüsten. Zwei Bedingungen hängen daran:
+
+1. **F10 trägt die Rechnung.** Der Amplifier kommt nur auf k = 4, weil der **Hauptturm mitgebufft
+   wird**. Ohne das wären es 3 Nachbarn, die Schwelle läge bei 33 %, und ein Epic-Amplifier (27 %)
+   würde verlieren. Die Entscheidung „Kern ist buffbar" ist also nicht kosmetisch.
 2. **Das Spiel muss es vermitteln.** Ein Spieler, der den Zusammenhang nicht kennt, baut den
    Amplifier zuletzt an den Rand und erlebt ihn als Fehlkauf.
 
@@ -246,22 +248,48 @@ Punkte, die das GDD offenlässt und die der Prototyp so beantwortet:
 
 ## Ergebnis
 
-*Nach dem Experiment ausfüllen — die Fragen F1–F9 aus [PLAN.md, Abschnitt 10](PLAN.md) beantworten.*
+Alles Messbare ist gemessen. Was übrig bleibt, sind **Urteile am Bild**, die nur am laufenden
+Prototyp zu fällen sind — sie sind hier bewusst offen gelassen statt geraten.
 
 | # | Frage | Antwort |
 |---|---|---|
-| F1 | Fühlt sich das Einrasten an Kanten gut an? | |
-| F2 | Entfernen mit Stationsbruch: blockieren oder zurückgeben? | |
-| F3 | Wie stark begrenzt die Geometrie den Bau? | |
-| F4 | Bleiben Module bei Auto-Zoom unterscheidbar? | Größe ja (45 px bei 41 Modulen); mit Reichweiten-Zoom nein |
-| F5 | Ist die Formwahl eine interessante Entscheidung? | |
-| F6 | Buff-Linien dauerhaft oder nur bei Auswahl? | |
-| F7 | Ab wie vielen Nachbarn schlägt ein Buff-Turm einen Kampfturm? | |
-| F8 | Ist die vollständige Neuberechnung schnell genug? | |
-| F9 | Sind die entstehenden Lücken schön oder wirken sie kaputt? | Beide Varianten per `P` vergleichbar — Bewertung offen |
-| F10 | Soll der Hauptturm selbst Buffs erhalten? | im Prototyp: ja — noch zu bewerten |
+| F1 | Fühlt sich das Einrasten an Kanten gut an? | **offen — Urteilsfrage.** Mechanik steht: Ghost rastet auf die nächste freie Kante, Fangradius 2,5 × Seitenlänge |
+| F2 | Entfernen mit Stationsbruch: blockieren oder zurückgeben? | **Variante B mit Vorschau.** Bei 15 Modulen sind 50 % Brückenmodule — A würde jedes zweite Modul festnageln. B ist nur zumutbar, weil die Vorschau vorher zeigt, was mitgeht |
+| F3 | Wie stark begrenzt die Geometrie den Bau? | **27,7 % tote Kanten**, Ø 2,24 von 4 Formen passen. An der Frustgrenze, aber als Mechanik lesbar |
+| F4 | Bleiben Module bei Auto-Zoom unterscheidbar? | **Größe ja** (45 px bei 41 Modulen). **Mit Reichweiten-Zoom nein** (24 px) → Konflikt mit GDD 13 §4 |
+| F5 | Ist die Formwahl eine interessante Entscheidung? | **Ja, aber schwach.** Kantenauslastung 40–51 %; Dreieck 1,52 gegen Fünfeck 1,98 Nachbarn |
+| F6 | Buff-Linien dauerhaft oder nur bei Auswahl? | **offen — Urteilsfrage.** Beides per `B` umschaltbar |
+| F7 | Ab wie vielen Nachbarn schlägt ein Buff-Turm einen Kampfturm? | **Buff > 1/k.** Am Rand angebaut erreicht ein Amplifier nie mehr als k = 1 und verliert immer. Zuerst gesetzt und umbaut erreicht er k = 4 und gewinnt um 4–17 % |
+| F8 | Ist die vollständige Neuberechnung schnell genug? | **Ja.** 0,65 ms pro Änderung bei 21 Modulen, nur bei Änderungen |
+| F9 | Sind die entstehenden Lücken schön oder wirken sie kaputt? | **offen — Urteilsfrage.** Grundplatte per `P` gegen offene Keile vergleichbar |
+| F10 | Soll der Hauptturm selbst Buffs erhalten? | **Ja — und es ist nicht kosmetisch.** Ohne den Kern als viertes Buff-Ziel wäre der Epic-Amplifier rechnerisch wertlos (F7) |
+
+### Was ins GDD musste — eingearbeitet
+
+Alle Punkte sind übernommen. Geänderte Dokumente: **03** (Abschnitte 2, 3, 4, 7, 9, 10, 12),
+**04** (§1), **05** (§4, §5), **06** (§7), **08** (§5), **13** (§4, §5, §6, §12), **14** (§4a),
+**15** (§8, §16), **16** (§1, §7, §15) sowie die GDD-Übersicht.
+
+| Änderung | Betrifft |
+|---|---|
+| § 3 (Hex-Raster) durch das Kantensystem ersetzen; „hinterlassen keine Lücken" streichen | [GDD 03](../../docs/gdd/03-modulare-basis-und-bauregeln.md) |
+| Entfern-Regel festhalten: Inseln wandern zurück, mit Vorschau vor dem Klick | GDD 03 |
+| Buff-Regel ergänzen: Nachbarschaft = **geteilte Kante**, Eckberührung zählt nicht | GDD 03 § 9 |
+| Buffstärke an die Schwelle `b > 1/k` binden — sonst sind Buff-Türme rechnerisch tot | GDD 03 § 9, [GDD 15](../../docs/gdd/15-balancing-und-skalierung.md) |
+| Hauptturm ist buffbar | GDD 03 § 9, [GDD 04](../../docs/gdd/04-hauptturm-system.md) |
+| Buffs stapeln **additiv**, danach Deckel | GDD 03 § 9 |
+| Zoom darf die maximale Turmreichweite **nicht** vollständig einschließen | [GDD 13 § 4](../../docs/gdd/13-ui-und-visuelles-design.md) |
+| Modulform bestimmt die Anzahl der Anschlusskanten und ist damit Mechanik, nicht Optik | GDD 03 § 7 |
 
 ## Übernahme ins Spiel
 
-*Nach dem Experiment ausfüllen — Vorgabe siehe [PLAN.md, Abschnitt 11](PLAN.md).*
+| Was | Wie |
+|---|---|
+| [`geometry.ts`](geometry.ts) | praktisch unverändert übernehmen — reine Mathematik, im Spiel identisch |
+| [`station.ts`](station.ts), [`buffs.ts`](buffs.ts) | als Vorlage; im Spiel gegen den echten Zustand neu schreiben. Die Regeln stimmen, die Struktur ist bewährt |
+| Katalogstruktur (Footprint + Emblem) | Struktur ja, Werte nein — Balancing kommt aus GDD 15 |
+| [`persist.ts`](persist.ts) | Format bestätigt: 11 Module + Inventar = 1,4 KB, Rundung auf 3 Nachkommastellen unkritisch |
+| Rendering, Eingabe, UI | nur Referenz; im Spiel gegen die echte Kampfansicht neu bauen |
+| [`devtools.ts`](devtools.ts), [`selftest.ts`](selftest.ts) | bleiben hier |
 
+Der Prototyp wird ab hier nicht mehr gepflegt.

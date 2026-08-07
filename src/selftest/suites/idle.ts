@@ -116,6 +116,10 @@ export function idleSuite(): void {
     const result = simulateOffline(offline, seconds / efficiency, stationView(offline))
 
     assert(result !== null, 'die Rechnung muss ein Ergebnis liefern')
+    // Ohne diese Zeile waere der Vergleich unten auch dann gruen, wenn beide Seiten nichts
+    // getan haetten - der haeufigste stille Fehler in Gleichheitstests.
+    assert(foreground.run.gold > 0 && foreground.run.wave > 1, 'der Vergleich braucht Inhalt')
+
     assertEqual(offline.run.wave, foreground.run.wave, 'dieselbe Welle')
     assertEqual(Math.round(offline.run.gold), Math.round(foreground.run.gold), 'dasselbe Gold')
     assertEqual(Math.round(offline.run.xp), Math.round(foreground.run.xp), 'dieselbe Erfahrung')
@@ -165,6 +169,30 @@ export function idleSuite(): void {
     simulateOffline(state, 3600, stationView(state))
     assertEqual(state.run.coins.length, 0)
     assert(state.run.gold > 0, 'das Gold muss auf dem Konto sein')
+  })
+
+  check('waehrend der Abwesenheit entstehen keine optischen Effekte', () => {
+    /*
+     * Ohne Zuschauer waere jeder Splitter Arbeit fuer den Papierkorb - und bei
+     * zehntausenden Gegnern ist genau das der Unterschied zwischen zwei Sekunden und
+     * vierzig. Geprueft wird an den Ringspeichern: Kein einziger Platz darf belegt sein.
+     */
+    const state = withOffline(ready(9))
+    simulateOffline(state, 3600, stationView(state))
+
+    assertEqual(state.runtime.combat.shards.some((shard) => shard.active), false, 'Splitter')
+    assertEqual(state.runtime.combat.bursts.some((burst) => burst.active), false, 'Druckwellen')
+    assertEqual(state.runtime.combat.muzzles.some((muzzle) => muzzle.active), false, 'Muendungsfeuer')
+    assertEqual(state.runtime.combat.hits.length, 0, 'Trefferblitze')
+  })
+
+  check('danach sieht wieder jemand zu', () => {
+    // Bliebe der Schalter stehen, saehe der Spieler nach der Rueckkehr einen stummen
+    // Kampf: keine Treffer, keine Muenzen, kein Zerfall.
+    const state = withOffline(ready(10))
+    assertEqual(state.runtime.combat.observed, true)
+    simulateOffline(state, 3600, stationView(state))
+    assertEqual(state.runtime.combat.observed, true)
   })
 
   check('die Abwesenheit verschenkt keine Welle', () => {
@@ -342,4 +370,3 @@ export function idleSuite(): void {
     assertEqual(hint.when(state), false)
   })
 }
-

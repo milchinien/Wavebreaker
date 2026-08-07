@@ -291,4 +291,3 @@ function element(tag: string, ...classes: string[]): HTMLElement {
   node.classList.add(...classes)
   return node
 }
-

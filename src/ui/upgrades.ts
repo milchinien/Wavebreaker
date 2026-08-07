@@ -303,4 +303,3 @@ function describe(state: GameState, group: Category, def: UpgradeDef): string {
     `<br>${cost === null ? t('upgrades.max') : t('hud.costs', { amount: formatNumber(cost) })}`
   )
 }
-

@@ -35,4 +35,3 @@ console.log(
 )
 
 process.exit(summary.ok ? 0 : 1)
-

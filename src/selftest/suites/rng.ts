@@ -129,4 +129,3 @@ export function rngSuite(): void {
     assert(one !== two, 'Salz muss wirken')
   })
 }
-

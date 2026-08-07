@@ -115,4 +115,3 @@ export function abilityById(id: string): AbilityDef {
 export function isKnownAbility(id: string): boolean {
   return BY_ID.has(id)
 }
-

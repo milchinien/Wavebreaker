@@ -45,8 +45,8 @@ import {
   type GameEventDef,
   type PodDef,
 } from '../data/events.ts'
-import { eliteById, ELITE_MODIFIERS } from '../data/enemies.ts'
-import { globalUpgrades, upgradeById } from '../data/upgrades.ts'
+import { eliteById } from '../data/enemies.ts'
+import { globalUpgrades } from '../data/upgrades.ts'
 import type { StatKey } from '../data/types.ts'
 import { grantReward } from '../app/rewards.ts'
 import { markDirty, type Boon, type GameState, type Pod } from '../app/state.ts'
@@ -178,6 +178,25 @@ function applyEffect(state: GameState, sourceId: string, effect: EventEffect): v
       return
     }
   }
+}
+
+/**
+ * Eine zeitlich begrenzte Wirkung von aussen eintragen.
+ *
+ * Die Haendler-Drohne verkauft dieselben Boni, die ein Ereignis verschenkt (GDD 11
+ * Abschnitt 7). Sie laufen deshalb durch **dieselbe** Leiste und nicht durch eine zweite
+ * daneben: Zwei Systeme mit eigenen Boni haetten zwei Uhren, zwei Ablaufregeln und zwei
+ * Stellen, an denen ein Bonus haengen bleiben kann.
+ *
+ * `sourceId` ist die Herkunft - sie entscheidet, was sich verlaengert und was danebensteht.
+ */
+export function addEventBoon(
+  state: GameState,
+  sourceId: string,
+  stats: Partial<Record<StatKey, number>>,
+  duration: number,
+): void {
+  addBoon(state, { sourceId, stats: { ...stats }, power: 1, left: duration })
 }
 
 /**
@@ -451,14 +470,3 @@ export function isValidPod(value: unknown): value is Pod {
   }
   return true
 }
-
-/** Nur damit der Datensatz der Elite-Modifikatoren gegen Tippfehler gesichert bleibt. */
-export function knownEliteIds(): string[] {
-  return ELITE_MODIFIERS.map((modifier) => modifier.id)
-}
-
-/** Anzeigename eines Upgrade-Pfads - fuer die Meldung nach einer Upgrade-Kapsel. */
-export function upgradeLabel(path: string): string {
-  return upgradeById(path).label
-}
-

@@ -76,7 +76,7 @@ export function wavesSuite(): void {
 
   check('die Gegnerzahl waechst mit der Welle', () => {
     assert(enemyCount(50) > enemyCount(10), 'Welle 50 muss mehr Gegner haben als Welle 10')
-    assert(enemyCount(10) > enemyCount(1))
+    assert(enemyCount(10) > enemyCount(1), 'Welle 10 muss mehr Gegner haben als Welle 1')
     assertEqual(plan(1).spawns.length, enemyCount(1))
     assertEqual(plan(50).spawns.length, enemyCount(50))
   })
@@ -127,4 +127,3 @@ export function wavesSuite(): void {
     }
   })
 }
-

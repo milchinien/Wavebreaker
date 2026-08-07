@@ -1,70 +1,80 @@
 ﻿/**
  * Bauregeln. Reine Funktionen ueber die Station - die Bedienung kennt keine Regeln.
  * Kein DOM, kein Canvas.
- * In E1 besteht sie nur aus dem Hauptturm: Er steht immer im Zentrum, ist nicht
+ *
  * Neu geschrieben nach dem Vorbild aus Prototyp 01: Die Regeln sind dort ueber 34.708
- * Bauregeln - Andocken, Ueberlappung, Nachbarschaft, Zusammenhang - kommen in E2 dazu.
+ * Platzierungen vermessen worden, die Struktur hat sich bewaehrt.
  *
  * Zustandsmodell (GDD 16 Abschnitt 7): Die Wahrheit sind **Weltkoordinaten**
  * (Mittelpunkt + Drehung), kein Andock-Baum. Nachbarschaft wird rein geometrisch
  * bestimmt, dadurch bleibt Entfernen trivial. Das Vieleck wird aus der Platzierung
  * abgeleitet und nie gespeichert - so kann es gar nicht auseinanderlaufen.
-import type { Vec2 } from '../core/vec.ts'
-import { coreById } from '../data/cores.ts'
-import type { FootprintSides, Rarity } from '../data/types.ts'
+ */
+
+import {
   attachTo,
-export type PlacedModule = {
-  uid: string
-  kind: 'core' | 'tower'
-  /** Verweist je nach `kind` auf einen Eintrag in `data/cores.ts` oder `data/towers.ts`. */
+  edgesOf,
+  polygonAt,
+  polygonsOverlap,
+  pointInPolygon,
   pointSegmentDistance,
-  /** Haupttuerme haben keine Raritaet (GDD 04 Abschnitt 2). */
-  rarity: Rarity | null
+  sameEdge,
+  type Edge,
 } from '../core/geometry.ts'
 import type { Vec2 } from '../core/vec.ts'
 import { coreById } from '../data/cores.ts'
 import { towerById } from '../data/towers.ts'
 import type { FootprintSides, Rarity } from '../data/types.ts'
-   * Indizes der Kanten, die mit einem Nachbarmodul geteilt werden - die "Fugen".
-   * In E1 immer leer, weil es nur ein Modul gibt; E2 fuellt sie aus der Nachbarschaft.
+
+// ---------------------------------------------------------------------------
 // Modell
 // ---------------------------------------------------------------------------
-}
+
 export type Placement = { center: Vec2; rotation: number }
-/** Der Hauptturm hat eine feste Kennung - es gibt genau einen je Run. */
-export const CORE_UID = 'core'
+
+export type ModuleInstance = {
   uid: string
-/** Er steht immer im Zentrum der Welt. */
-export const CORE_CENTER: Vec2 = { x: 0, y: 0 }
+  defId: string
+  rarity: Rarity
+  /**
+   * Zufaellige Eigenschaften dieses **einzelnen** Turms (GDD 06 Abschnitt 10).
+   *
+   * Sie sind das, was zwei Tuerme derselben Art und Raritaet unterscheidet - Upgrades tun
+   * das nicht, die gelten je Turmart (GDD 08 Abschnitt 5.2). Ihre Anzahl kommt aus der
+   * Raritaet, ihre Qualitaet aus dem Prestige-Baum.
+   */
+  traits: string[]
   /** null = im Inventar. Das Inventar ist unbegrenzt (GDD 03 Abschnitt 6). */
   placement: Placement | null
-export function coreModule(coreId: string): PlacedModule {
-  const def = coreById(coreId)
+}
+
 export type Station = {
-    uid: CORE_UID,
+  coreId: string
   /** Turmplaetze zusaetzlich zum Hauptturm (GDD 03 Abschnitt 6). */
-    defId: def.id,
+  slots: number
   placed: ModuleInstance[]
   inventory: ModuleInstance[]
   /** Fortlaufende Kennung. Gehoert in den Spielstand, damit sie nach dem Laden weiterlaeuft. */
-    rotation: CORE_ROTATION,
-    poly: polygonAt(def.sides, CORE_CENTER, CORE_ROTATION),
-    sharedEdges: [],
+  nextUid: number
+}
+
 /** Der Hauptturm hat eine feste Kennung - es gibt genau einen je Run. */
 export const CORE_UID = 'core'
 
 /** Er steht immer im Zentrum (GDD 03 Abschnitt 2). */
- * Alle Module der Station, Hauptturm zuerst. Ab E2 kommen die angebauten Module dazu.
- */
+export const CORE_CENTER: Vec2 = { x: 0, y: 0 }
+
 /** Ecke oben, dadurch flache Kanten links und rechts - der Look aus Prototyp 01. */
 export const CORE_ROTATION = Math.PI / 6
-}
+
 export type PlacedModule = {
   uid: string
   kind: 'core' | 'tower'
   defId: string
   /** Haupttuerme haben keine Raritaet (GDD 04 Abschnitt 2). */
   rarity: Rarity | null
+  /** Eigenschaften dieses Exemplars. Der Hauptturm hat keine - er wird nicht gekauft. */
+  traits: readonly string[]
   sides: FootprintSides
   center: Vec2
   rotation: number
@@ -97,8 +107,19 @@ export function createStation(coreId: string, slots: number): Station {
   return { coreId, slots, placed: [], inventory: [], nextUid: 1 }
 }
 
-export function newModule(station: Station, defId: string, rarity: Rarity): ModuleInstance {
-  const module: ModuleInstance = { uid: `m${station.nextUid}`, defId, rarity, placement: null }
+export function newModule(
+  station: Station,
+  defId: string,
+  rarity: Rarity,
+  traits: string[] = [],
+): ModuleInstance {
+  const module: ModuleInstance = {
+    uid: `m${station.nextUid}`,
+    defId,
+    rarity,
+    traits,
+    placement: null,
+  }
   station.nextUid += 1
   return module
 }
@@ -115,6 +136,7 @@ export function coreModule(coreId: string): PlacedModule {
     kind: 'core',
     defId: def.id,
     rarity: null,
+    traits: [],
     sides: def.sides,
     center: CORE_CENTER,
     rotation: CORE_ROTATION,
@@ -131,6 +153,7 @@ function toPlaced(module: ModuleInstance): PlacedModule | null {
     kind: 'tower',
     defId: def.id,
     rarity: module.rarity,
+    traits: module.traits,
     sides: def.sides,
     center: module.placement.center,
     rotation: module.placement.rotation,
@@ -401,3 +424,42 @@ export function move(station: Station, uid: string, to: FreeEdge): MoveError | n
   return null
 }
 
+// ---------------------------------------------------------------------------
+// Aufraeumen
+// ---------------------------------------------------------------------------
+
+/**
+ * Stellt die Invarianten der Station wieder her. Wird nach dem Laden aufgerufen, denn ein
+ * Spielstand kann aus einer Fassung stammen, in der eine Turmart noch existierte oder mehr
+ * Turmplaetze freigeschaltet waren. Module gehen dabei nie verloren - sie wandern ins
+ * Inventar, das unbegrenzt ist (GDD 03 Abschnitt 6).
+ */
+export function sanitizeStation(station: Station): void {
+  // Zu viele platzierte Module: die ueberzaehligen zurueck ins Inventar.
+  while (station.placed.length > station.slots) {
+    const module = station.placed.pop()
+    if (!module) break
+    module.placement = null
+    station.inventory.push(module)
+  }
+
+  // Module ohne Kantenverbindung zum Hauptturm ebenfalls zurueck.
+  let orphans = detached(station)
+  while (orphans.length > 0) {
+    const ids = new Set(orphans.map((m) => m.uid))
+    station.placed = station.placed.filter((m) => !ids.has(m.uid))
+    for (const module of orphans) {
+      module.placement = null
+      station.inventory.push(module)
+    }
+    orphans = detached(station)
+  }
+
+  // Die Kennung muss ueber allem liegen, was es schon gibt.
+  let highest = 0
+  for (const module of [...station.placed, ...station.inventory]) {
+    const parsed = Number.parseInt(module.uid.slice(1), 10)
+    if (Number.isFinite(parsed) && parsed > highest) highest = parsed
+  }
+  if (station.nextUid <= highest) station.nextUid = highest + 1
+}

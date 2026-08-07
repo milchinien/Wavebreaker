@@ -1,71 +1,71 @@
 ﻿/**
- * Der Hauptturm steht fest: Hexagon, Zentrum, sechs Anschlusskanten (GDD 04 Abschnitt 1).
+ * Bauregeln aus GDD 03. Der Beweis fuer E2: die Zusicherungen aus Prototyp 01 laufen hier
  * erneut - Andocken, Ueberlappung, Nachbarschaft, Zusammenhang, Entfernen, Verschieben.
- */
+ *
  * Sie sind bewusst gegen die **Regel** formuliert, nicht gegen die Umsetzung: Wer die
+ * Datenstruktur austauscht, muss diese Datei nicht anfassen.
+ */
+
 import { assert, assertClose, assertEqual, check, suite } from '../../core/assert.ts'
-import { edgesOf, MODULE_SIDE, signedArea } from '../../core/geometry.ts'
-import { dist } from '../../core/vec.ts'
-import { assert, assertClose, assertEqual, check, suite } from '../../core/assert.ts'
-import { START_CORE_ID } from '../../data/balance.ts'
-import { coreModule, CORE_UID, stationModules } from '../../sim/station.ts'
+import {
+  apothem,
   attachTo,
-export function stationSuite(): void {
-  suite('sim/station')
+  circumradius,
+  edgesOf,
   EPS,
-  check('der Startkern ist in den Daten hinterlegt', () => {
-    const core = coreById(START_CORE_ID)
-    assertEqual(core.name, 'Sentinel Core')
+  MODULE_SIDE,
+  pointInPolygon,
+  polygonAt,
   polygonsOverlap,
   sameEdge,
-  check('ein unbekannter Kern faellt sofort auf', () => {
-    let threw = false
+  signedArea,
+  type Edge,
 } from '../../core/geometry.ts'
 import { dist, type Vec2 } from '../../core/vec.ts'
 import { START_CORE_ID, START_TOWER_SLOTS } from '../../data/balance.ts'
 import { CORES, coreById } from '../../data/cores.ts'
 import { TOWERS, towerById } from '../../data/towers.ts'
-    assert(threw, 'ein Tippfehler in einer Kern-Kennung darf nicht still durchgehen')
+import type { Rarity } from '../../data/types.ts'
 import {
   adjacency,
-  check('jeder Kern ist ein Hexagon mit sechs Anschlusskanten', () => {
-    for (const core of CORES) {
-      assertEqual(core.sides, 6, core.name)
+  canMove,
+  canPlace,
+  canRemove,
   coreModule,
   CORE_UID,
   createStation,
-  check('der Hauptturm steht im Zentrum', () => {
-    const core = coreModule(START_CORE_ID)
-    assertEqual(core.center.x, 0)
-    assertEqual(core.center.y, 0)
+  detached,
+  freeEdges,
+  isConnected,
+  moduleAt,
   move,
   nearestFreeEdge,
-  check('sein Vieleck hat sechs gleich lange Kanten', () => {
-    const core = coreModule(START_CORE_ID)
-    assertEqual(core.poly.length, 6)
-    for (const edge of edgesOf(core.poly)) {
-      assertClose(dist(edge.a, edge.b), MODULE_SIDE, 1e-9)
+  neighbors,
+  newModule,
+  place,
+  previewPolygon,
+  remove,
   sanitizeStation,
   stationModules,
   usedSlots,
-  check('sein Vieleck ist positiv orientiert', () => {
-    assert(signedArea(coreModule(START_CORE_ID).poly) > 0)
+  type FreeEdge,
+  type Station,
 } from '../../sim/station.ts'
 
-  check('der Hauptturm hat keine Raritaet (GDD 04 Abschnitt 2)', () => {
-    assertEqual(coreModule(START_CORE_ID).rarity, null)
-  })
+const ORIGIN: Vec2 = { x: 0, y: 0 }
+const SIDES = [3, 4, 5, 6] as const
+
 function station(slots = 9): Station {
-  check('in E1 hat er noch keine Nachbarn, also keine Fugen', () => {
-    assertEqual(coreModule(START_CORE_ID).sharedEdges.length, 0)
-  })
+  return createStation(START_CORE_ID, slots)
+}
+
 /** Modul ins Inventar legen und die Kennung zurueckgeben. */
 function give(st: Station, defId: string, rarity: Rarity = 'common'): string {
-    const modules = stationModules(START_CORE_ID)
-    assertEqual(modules.length, 1)
-    assertEqual(modules[0]?.uid, CORE_UID)
-    assertEqual(modules[0]?.kind, 'core')
-  })
+  const module = newModule(st, defId, rarity)
+  st.inventory.push(module)
+  return module.uid
+}
+
 function corePoly(): Vec2[] {
   return coreModule(START_CORE_ID).poly
 }
@@ -528,4 +528,3 @@ export function stationSuite(): void {
     }
   })
 }
-

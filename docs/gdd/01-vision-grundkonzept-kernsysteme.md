@@ -601,4 +601,3 @@ Rot
 ---
 
 # Ende Teil 1
-

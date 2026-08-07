@@ -32,8 +32,6 @@ export const STRINGS = {
   'upgrades.level': 'Lv {level}',
   'upgrades.max': 'Max',
   'upgrades.section': '{name} upgrades',
-  'upgrades.tipTitle': '{group} - {path}',
-  'upgrades.tipLevel': 'Lv {level} / {max}',
   'hud.costs': '$ {amount}',
   'hud.gain': '+{amount}',
 
@@ -48,6 +46,8 @@ export const STRINGS = {
 
   'shop.title': 'Management',
   'shop.buyTower': 'Buy tower',
+  'shop.price': '$ {amount}',
+  'shop.tooPoor': 'Not enough gold',
   'shop.melt': 'Melt {count} / {need}',
   'shop.meltHint': 'Pick three towers in storage to melt them into a free draw.',
   'shop.meltShort': 'Melt',
@@ -67,8 +67,10 @@ export const STRINGS = {
   'prestige.resets': 'Resets: waves, gold, towers, upgrades, level, perks, abilities',
   'prestige.keeps': 'Keeps: prestige points and everything unlocked here',
   'prestige.bought': 'Owned',
-  'prestige.blocked': 'Locked',
   'prestige.count': 'Prestige {count}',
+  'prestige.tipTitle': '{area} - {node}',
+  'prestige.needs': 'Needs {names}',
+  'prestige.cost': '{amount} points',
 
   'area.economy': 'Economy',
   'area.towers': 'Towers',
@@ -146,6 +148,30 @@ export const STRINGS = {
   'levelup.more': '{count} more waiting',
   'levelup.taken': 'owned x{count}',
 
+  /*
+   * Die ausfuehrliche Auskunft zu einer Perk-Karte - sie kommt, wenn der Zeiger drei
+   * Sekunden auf der Karte steht. Auf der Karte selbst steht nur der Betrag ("Range +14%");
+   * hier steht, **was** dieser Wert im Spiel tut. Ein bis zwei Saetze, denn der Kampf laeuft
+   * daneben weiter.
+   *
+   * Ein Schluessel je Kampfwert und je Run-Groesse, gebildet aus dem Feld des Perk-Effekts.
+   * Ein neuer Perk mit einer neuen Wirkung braucht deshalb genau eine Zeile hier - der
+   * Selbsttest in `selftest/suites/progression.ts` besteht darauf.
+   */
+  'perk.info.damage': 'Raises the damage of every module on the station. Adds up with tower upgrades and neighbour buffs.',
+  'perk.info.attackSpeed': 'Every module fires more often — the same shot lands more times per second.',
+  'perk.info.range': 'Every module reaches further and opens fire earlier, so enemies spend longer under it.',
+  'perk.info.critChance': 'Chance for a shot to land as a critical hit and deal double damage.',
+  'perk.info.projectileSpeed': 'Shots travel faster and lose less of their damage to a target that has already moved on.',
+  'perk.info.stationHp': 'Raises the hull of the station. It takes more hits before the run is over.',
+  'perk.info.goldBonus': 'Every enemy leaves more gold behind — towers and upgrades come sooner.',
+  'perk.info.collectRadius': 'Coins are picked up from further away, so less of a wave is left lying on the field.',
+  'perk.info.xpBonus': 'Every kill grants more experience. Levels — and the next choice — come sooner.',
+  'perk.info.now': 'Now',
+  'perk.info.after': 'With this pick',
+  'perk.info.stacks': 'Perks of the same kind add up — you hold {count}.',
+  'perk.info.first': 'Your first perk of this kind.',
+
   'abilities.title': 'Abilities',
   'abilities.unlock': 'Unlock',
   'abilities.equip': 'Equip',
@@ -173,4 +199,53 @@ export const STRINGS = {
   'offline.time': 'Time away',
   'offline.counted': 'Counted',
   'offline.kills': 'Enemies destroyed',
+  'offline.waves': 'Wave {from} to {to}',
+  'offline.gold': 'Gold',
+  'offline.xp': 'Experience',
+  'offline.level': 'Levels',
+  'offline.levels': '{count} gained — pick your perks',
+  'offline.close': 'Continue',
+  'offline.locked': 'Offline production is not unlocked yet.',
 
+  'hint.gotIt': 'Got it',
+  // Die acht Hinweise aus GDD 14 Abschnitt 4a. Ein bis zwei Saetze, kein Fliesstext -
+  // sie stehen neben dem Spielfeld und halten nichts an.
+  'hint.collect': 'Move the mouse over coins to collect them.',
+  'hint.upgrade': 'Upgrade your core in the menu below.',
+  'hint.buyTower': 'Buy a tower and dock it to your station.',
+  'hint.buff':
+    'Buff towers boost every module they share an edge with — place them early and build around them.',
+  'hint.level': 'Every level lets you pick an upgrade.',
+  'hint.boss': 'Bosses are tough — the wave keeps coming while you fight one.',
+  'hint.melt': 'Melt three spare towers into a free draw.',
+  'hint.prestige': 'Prestige resets this run and makes you permanently stronger.',
+
+  'settings.effects': 'Combat effects',
+  'settings.motion': 'Menu animation',
+  'settings.volume': 'Volume',
+  'settings.volumeStep': '{value}%',
+  'settings.mute': 'Mute',
+  'settings.hints': 'Replay hints',
+  'settings.hintsDone': 'Hints reset',
+
+  'save.restored': 'Progress restored.',
+  'save.fresh': 'New station initialised.',
+  'save.corrupt': 'Saved game could not be read. Starting fresh.',
+} as const
+
+export type StringKey = keyof typeof STRINGS
+export type StringParams = Record<string, string | number>
+
+export function t(key: StringKey, params?: StringParams): string {
+  const template: string = STRINGS[key]
+  if (!params) return template
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => {
+    const value = params[name]
+    return value === undefined ? match : String(value)
+  })
+}
+
+/** Existiert der Schluessel? Fuer den Selbsttest, der die UI gegen Tippfehler absichert. */
+export function hasString(key: string): key is StringKey {
+  return Object.prototype.hasOwnProperty.call(STRINGS, key)
+}

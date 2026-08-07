@@ -130,4 +130,3 @@ export function traitsFor(category: Category, unlocked: TraitTier | null): Trait
     (trait) => trait.categories.includes(category) && order.indexOf(trait.tier) <= ceiling,
   )
 }
-

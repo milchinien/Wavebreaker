@@ -18,7 +18,10 @@ export type CoreDef = {
   emblem: Emblem
   /** PLATZHALTER bis E6 - genug, damit der Kern buffbar und anzeigbar ist. */
   stats: CombatStats
-  /** Leitfarbe fuer Emblem und Leuchten. */
+  /**
+   * Leitfarbe fuer Emblem und Leuchten. Der Kern traegt das helle Cyan des Panelrahmens
+   * aus PALETTE (`render/theme.ts`) - die Station ist damit das hellste Objekt im Bild.
+   */
   accent: string
   description: string
 }
@@ -30,7 +33,7 @@ export const CORES: readonly CoreDef[] = [
     sides: 6,
     emblem: 'core',
     stats: makeStats(40, 1.6, 220, 0.1, 600),
-    accent: '#7cf3ff',
+    accent: '#7fd8ff',
     description: 'Balanced starting core. Always at the centre, cannot be removed.',
   },
 ]
@@ -40,4 +43,3 @@ export function coreById(id: string): CoreDef {
   if (!found) throw new Error(`Unbekannter Kern: ${id}`)
   return found
 }
-

@@ -143,4 +143,3 @@ export function perkById(id: string): PerkDef {
 export function isKnownPerk(id: string): boolean {
   return BY_ID.has(id)
 }
-

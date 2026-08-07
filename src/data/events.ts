@@ -302,4 +302,3 @@ export function isKnownPod(id: string): boolean {
 export function podsForWave(wave: number): PodDef[] {
   return PODS.filter((pod) => wave >= pod.minWave)
 }
-

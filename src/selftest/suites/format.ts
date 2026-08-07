@@ -79,4 +79,3 @@ export function formatSuite(): void {
     assertEqual(formatDurationCoarse(7200), '2h')
   })
 }
-

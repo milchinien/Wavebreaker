@@ -25,13 +25,14 @@
  * aufgehoben als im Feld, und dem Spieler geht dadurch nichts verloren.
  */
 
-import { emit } from '../core/events.ts'
+import { emit, on } from '../core/events.ts'
 import {
   OFFLINE_BASE_EFFICIENCY,
   OFFLINE_COLLECTOR_BONUS,
   OFFLINE_IMPROVED_BONUS,
   OFFLINE_MAX_EFFICIENCY,
   OFFLINE_MAX_SECONDS,
+  OFFLINE_MAX_TICKS,
   OFFLINE_MIN_SECONDS,
   OFFLINE_TICK_RATE,
 } from '../data/balance.ts'
@@ -41,6 +42,7 @@ import { collectAll } from './economy.ts'
 import { collectorLevel } from './helpers.ts'
 import { isUnlocked } from './prestige.ts'
 import { currentLevel } from './progression.ts'
+import { startWave } from './waves.ts'
 import type { BuffResult } from './buffs.ts'
 import type { PlacedModule } from './station.ts'
 
@@ -106,23 +108,57 @@ export function simulateOffline(
   const goldBefore = state.run.gold
   const xpBefore = state.run.xp
   const levelBefore = currentLevel(state)
-  let kills = 0
 
   syncStation(state, view.modules, view.buffs)
+  // Die Abwesenheit beginnt mit der Welle, bei der der Spieler aufgehoert hat. Ohne diesen
+  // Anstoss steht das Gefecht in der Pause **ohne Plan** da, und der erste Takt liesse die
+  // naechste Welle beginnen - der Spieler bekaeme eine Welle geschenkt, die niemand
+  // gespielt hat.
+  startWave(state, state.run.wave)
 
-  const step = 1 / OFFLINE_TICK_RATE
-  const ticks = Math.floor(simulated * OFFLINE_TICK_RATE)
-  for (let i = 0; i < ticks; i++) {
-    stepBattle(state, step)
-    kills += 0 // siehe unten: gezaehlt wird ueber den Kampfzustand, nicht je Takt
+  /*
+   * Ab hier sieht niemand zu (siehe `CombatState.observed`).
+   *
+   * Optische Effekte entstehen nicht mehr, und Gold wird direkt gutgeschrieben statt als
+   * Muenze abgelegt (GDD 12 Abschnitt 3). Der Schalter wird nach dem Durchlauf zwingend
+   * zurueckgenommen - bliebe er stehen, saehe der Spieler danach einen stummen Kampf.
+   */
+  state.runtime.combat.observed = false
+
+  /*
+   * Gezaehlt wird ueber den Ereignisbus, nicht ueber einen neuen Zaehler im Kampfzustand.
+   *
+   * `combat.killsThisWave` taugt nicht - er wird bei jedem Wellenwechsel geleert, und in
+   * acht Stunden wechselt die Welle oft. Ein zweiter Zaehler daneben waere ein Feld, das
+   * nur die Rueckkehr-Zusammenfassung braucht und das im Vordergrund jeden Takt mitliefe.
+   * Der Bus meldet den Tod ohnehin; hier hoert einer zu, solange die Rechnung laeuft.
+   */
+  let kills = 0
+  const stopCounting = on('enemy.killed', () => {
+    kills += 1
+  })
+
+  /*
+   * Takte und Schrittweite (siehe `OFFLINE_MAX_TICKS`).
+   *
+   * Der Regelfall ist die Offline-Taktrate. Reicht das Taktbudget fuer die angerechnete
+   * Zeit nicht, wird der **Schritt groeber** statt die Zeit gekuerzt: Der Spieler bekommt
+   * seine ganze Abwesenheit angerechnet, und was leidet, ist allein die Aufloesung, mit
+   * der sie nachgespielt wird. Andersherum - Zeit kuerzen, Aufloesung halten - haette der
+   * Spieler weniger bekommen und es nicht einmal gemerkt.
+   */
+  const ticks = Math.max(1, Math.min(OFFLINE_MAX_TICKS, Math.floor(simulated * OFFLINE_TICK_RATE)))
+  const step = simulated / ticks
+  try {
+    for (let i = 0; i < ticks; i++) stepBattle(state, step)
+  } finally {
+    // Auch wenn unterwegs etwas schiefgeht: Das Spiel darf danach nicht stumm weiterlaufen.
+    state.runtime.combat.observed = true
+    stopCounting()
   }
 
-  // Gezaehlt wird am Ende ueber das Gold: Die Zahl der Kills je Takt abzugreifen hiesse,
-  // in der heissesten Schleife des Spiels eine Zeile fuer die Anzeige zu haben. Der
-  // Wellenzaehler des Gefechts weiss es ohnehin.
-  kills = state.runtime.combat.killsThisWave
-
-  // Niemand ist da, der einsammelt (GDD 12 Abschnitt 3) - das Feld wird abgeraeumt.
+  // Was schon vor der Abwesenheit im Feld lag, wandert mit auf das Konto: Es ist dort
+  // besser aufgehoben als im Feld, und dem Spieler geht dadurch nichts verloren.
   collectAll(state)
 
   const result: OfflineResult = {
@@ -145,4 +181,3 @@ export function simulateOffline(
   })
   return result
 }
-

@@ -54,6 +54,17 @@ const THROTTLE: Record<string, number> = {
 /** Wie viele Stimmen hoechstens gleichzeitig klingen duerfen. */
 const MAX_VOICES = 16
 
+/**
+ * Die mitgelieferten Aufnahmen (`docs/anlagen.md`).
+ *
+ * Nur zwei, und beide fuer dasselbe: das Aufheben von etwas. Es ist der Klang, den der
+ * Spieler am haeufigsten hoert, und ein gerechneter Piepton wuerde dort schnell laestig.
+ */
+const SAMPLES: Record<string, string> = {
+  coin: '/sfx/coin.ogg',
+  pod: '/sfx/pod.ogg',
+}
+
 type Voice = { osc: OscillatorNode; gain: GainNode }
 
 export function mountAudio(volume: number): Audio {
@@ -67,11 +78,11 @@ export function mountAudio(volume: number): Audio {
   const lastAt = new Map<string, number>()
 
   /**
-   * Die mitgelieferte Aufnahme fuer das Einsammeln. Sie wird beim ersten Ton geholt und
-   * bleibt dann im Speicher - eine Datei von 30 KB, die man hundertmal je Welle hoert.
+   * Die mitgelieferten Aufnahmen. Sie werden beim Anlegen des Apparats geholt und bleiben
+   * dann im Speicher - zusammen sechzig Kilobyte fuer die beiden Klaenge, die der Spieler
+   * am haeufigsten hoert.
    */
-  let coinBuffer: AudioBuffer | null = null
-  let coinPending = false
+  const buffers = new Map<string, AudioBuffer>()
 
   function ensure(): AudioContext | null {
     if (broken) return null
@@ -93,7 +104,7 @@ export function mountAudio(volume: number): Audio {
       master = context.createGain()
       master.gain.value = level
       master.connect(context.destination)
-      loadCoin(context)
+      for (const [name, path] of Object.entries(SAMPLES)) loadSample(context, name, path)
       return context
     } catch {
       // Kein Klangapparat verfuegbar - das Spiel laeuft weiter, nur stumm.
@@ -102,19 +113,16 @@ export function mountAudio(volume: number): Audio {
     }
   }
 
-  function loadCoin(ctx: AudioContext): void {
-    if (coinBuffer || coinPending) return
-    coinPending = true
-    void fetch('/sfx/coin.ogg')
+  function loadSample(ctx: AudioContext, name: string, path: string): void {
+    void fetch(path)
       .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(response.status)))
       .then((data) => ctx.decodeAudioData(data))
       .then((buffer) => {
-        coinBuffer = buffer
+        buffers.set(name, buffer)
       })
       .catch(() => {
         // Fehlt die Datei, bleibt es beim gerechneten Ton. Ein fehlendes Geraeusch darf nie
         // eine Fehlermeldung ergeben.
-        coinPending = false
       })
   }
 
@@ -172,11 +180,15 @@ export function mountAudio(volume: number): Audio {
     }
   }
 
-  /** Die mitgelieferte Muenz-Aufnahme, sonst ein gerechneter Ersatz. */
-  function sample(kind: string, buffer: AudioBuffer | null, gainValue: number): void {
+  /** Eine mitgelieferte Aufnahme, sonst ein gerechneter Ersatz. */
+  function sample(kind: string, name: string, gainValue: number): void {
     const ctx = ensure()
     if (!ctx || !master || level <= 0) return
+
+    const buffer = buffers.get(name)
     if (!buffer) {
+      // Noch nicht geladen oder nicht vorhanden: Der gerechnete Ton springt ein, damit im
+      // ersten Augenblick nach dem Start nichts stumm bleibt.
       tone(kind, 880, 1500, 0.08, 0.1, 'square')
       return
     }
@@ -208,8 +220,8 @@ export function mountAudio(volume: number): Audio {
     on('boss.spawned', () => tone('boss', 90, 200, 0.7, 0.12, 'sawtooth')),
     on('station.damaged', () => tone('damage', 180, 70, 0.16, 0.09, 'square')),
     on('station.destroyed', () => tone('lost', 240, 40, 1.1, 0.16, 'sawtooth')),
-    on('gold.collected', () => sample('coin', coinBuffer, 0.35)),
-    on('pod.collected', () => tone('pod', 520, 1040, 0.25, 0.11)),
+    on('gold.collected', () => sample('coin', 'coin', 0.35)),
+    on('pod.collected', () => sample('pod', 'pod', 0.5)),
     on('pod.dropped', () => tone('pod', 700, 420, 0.2, 0.07)),
     on('upgrade.bought', () => tone('ui', 520, 780, 0.12, 0.08)),
     on('tower.bought', () => tone('ui', 440, 880, 0.2, 0.1)),
@@ -219,6 +231,10 @@ export function mountAudio(volume: number): Audio {
     on('wave.started', () => tone('wave', 180, 320, 0.28, 0.07)),
     on('wave.cleared', () => tone('wave', 620, 880, 0.22, 0.08)),
     on('event.triggered', () => tone('event', 260, 660, 0.45, 0.12)),
+    // Die Drohne meldet sich beim Landen - sie steht am Rand, und ohne Ton uebersieht man
+    // sie, waehrend vorne die Welle laeuft.
+    on('trader.arrived', () => tone('trader', 400, 700, 0.5, 0.11)),
+    on('trader.bought', () => tone('ui', 480, 820, 0.16, 0.09)),
     on('prestige.done', () => tone('prestige', 160, 900, 1.2, 0.16)),
   ]
 
@@ -248,4 +264,3 @@ function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0
   return Math.max(0, Math.min(1, value))
 }
-

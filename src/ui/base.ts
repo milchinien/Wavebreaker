@@ -361,4 +361,3 @@ function rarityKey(
 ): 'rarity.common' | 'rarity.rare' | 'rarity.epic' | 'rarity.legendary' | 'rarity.mythic' {
   return `rarity.${rarity}` as const
 }
-

@@ -236,4 +236,3 @@ function textRule(): TestResult {
       : {}),
   }
 }
-

@@ -47,7 +47,7 @@ function placeAll(state: GameState, defId: string, count: number): string[] {
   const uids: string[] = []
 
   for (let i = 0; i < count; i++) {
-    const module = { uid: `x${i}`, defId, rarity: 'common' as const, placement: null }
+    const module = { uid: `x${i}`, defId, rarity: 'common' as const, traits: [], placement: null }
     station.inventory.push(module)
     const edge = freeEdges(station).find((candidate) => candidate.ownerUid === CORE_UID) as FreeEdge
     if (place(station, module.uid, edge) === null) uids.push(module.uid)
@@ -232,11 +232,7 @@ export function economySuite(): void {
   check('ein Turm-Upgrade wirkt nicht auf andere Turmarten', () => {
     const state = rig()
     placeAll(state, 'autocannon', 1)
-    const cannonBefore = moduleStats(
-      { ...dummy('cannon') },
-      undefined,
-      state.run.upgrades,
-    ).final.damage
+    const cannonBefore = moduleStats({ ...dummy('cannon') }, undefined, state).final.damage
 
     state.run.gold = 1e9
     buyUpgrade(state, 'tower.autocannon.damage')
@@ -271,7 +267,7 @@ export function economySuite(): void {
     const before = collectRadius(state)
     state.run.gold = 1e9
     buyUpgrade(state, 'global.collectRadius')
-    assert(collectRadius(state) > before)
+    assert(collectRadius(state) > before, 'der Sammelradius muss wachsen')
   })
 
   check('am Maximum kostet nichts mehr und laesst sich nichts mehr kaufen', () => {
@@ -286,10 +282,35 @@ export function economySuite(): void {
 
   check('jeder Upgrade-Pfad hat eine Wirkung und eine Obergrenze', () => {
     for (const def of UPGRADES) {
-      assert(def.amount > 0, `${def.id} hat keine Wirkung`)
+      /*
+       * `amount` ist der Zuwachs je Stufe als Multiplikator. Genau ein Pfad hat dort eine
+       * Null: der Goldsammler. Seine Stufe wird nicht multipliziert, sondern von
+       * `sim/helpers.ts` gelesen - Radius und Tempo des Helfers haengen daran.
+       *
+       * Ausgenommen wird deshalb **dieser eine Pfad namentlich** und nicht "alle mit
+       * amount 0". Sonst waere ein vergessener Zuwachs bei einem neuen Pfad kein Fehler
+       * mehr, sondern eine stille Ausnahme - und genau davor soll diese Zusicherung
+       * schuetzen.
+       */
+      if (def.id !== 'global.collector') {
+        assert(def.amount > 0, `${def.id} hat keine Wirkung`)
+      }
       assert(def.maxLevel > 0, `${def.id} hat keine Obergrenze`)
       assert(def.baseCost > 0, `${def.id} ist umsonst`)
     }
+  })
+
+  check('der Goldsammler ist hinter seinem Prestige-Knoten verschlossen', () => {
+    const state = createInitialState(7)
+    state.run.gold = 1e9
+
+    // Ohne den Knoten gibt es den Pfad nicht - auch nicht ueber einen Umweg am Menue vorbei.
+    assertEqual(nextUpgradeCost(state, 'global.collector'), null)
+    assertEqual(buyUpgrade(state, 'global.collector'), false)
+
+    state.permanent.prestigeNodes.push('helper.collector')
+    assert(nextUpgradeCost(state, 'global.collector') !== null, 'jetzt muss er kaufbar sein')
+    assertEqual(buyUpgrade(state, 'global.collector'), true)
   })
 
   check('Buff-Module haben keine Kampfwert-Upgrades', () => {
@@ -420,6 +441,7 @@ function dummy(defId: string) {
     kind: 'tower' as const,
     defId,
     rarity: 'common' as const,
+    traits: [] as string[],
     sides: 4 as const,
     center: { x: 0, y: 0 },
     rotation: 0,
@@ -427,4 +449,3 @@ function dummy(defId: string) {
     sharedEdges: [],
   }
 }
-

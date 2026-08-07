@@ -125,4 +125,3 @@ export const SPRITES = {
   /** Funkenwurf bei einem kritischen Treffer - zwoelf Bilder, gold. */
   spark: loadStrip('/fx/spark.png', 12),
 } as const
-

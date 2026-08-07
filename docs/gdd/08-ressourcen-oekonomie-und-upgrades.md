@@ -219,4 +219,3 @@ Upgrades sollen:
 - keine sinnlosen Werte besitzen
 
 Jede Verbesserung soll dem Spieler zeigen: *"Meine Basis wird stärker."*
-

@@ -414,4 +414,3 @@ export function buyFromTraderAt(state: GameState, index: number): boolean {
 export function closeTrader(state: GameState): void {
   dismissTrader(state)
 }
-

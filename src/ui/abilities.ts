@@ -111,6 +111,3 @@ function card(state: GameState, ability: AbilityDef, onChange: () => void): HTML
 
   return button
 }
-
-}
-

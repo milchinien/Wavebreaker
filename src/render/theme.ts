@@ -201,4 +201,3 @@ export const CORE_BREATH_RATE = 1.7
 
 /** Zusaetzliches Leuchten im Augenblick eines Treffers auf die Station. */
 export const CORE_HIT_GLOW = 26
-

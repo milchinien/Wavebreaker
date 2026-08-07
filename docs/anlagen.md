@@ -37,7 +37,10 @@ Farbe die Vorlage gezeichnet ist.
 | `bar-hatch.png` | Game UI collection · Bars/Blue · Asset 10 | Schraffur in Fortschritts- und Lebensleisten |
 | `corner.png` | Game UI collection · Bars/Blue · Asset 5 | Eckwinkel am Spielfeldrand |
 | `plate.png` | Game UI collection · Button with border/Blue · Asset 8 | Schild unter Beschriftungen |
-| `arrow-left.png` / `arrow-right.png` | Craftpix `2 Frames` | (abgelöst durch `prev`/`next`) |
+
+Die früheren `arrow-left.png` / `arrow-right.png` aus dem Craftpix-Rahmensatz sind entfallen:
+Sie trugen ihren Rahmen selbst, fielen dadurch aus der Formensprache heraus und ließen sich
+nicht mitfärben. Die Wellenpfeile sind jetzt `prev`/`next` als Maske in einem normalen Knopf.
 
 ## Münzen (`public/coins/`)
 
@@ -68,6 +71,22 @@ zerfallenden Gegner, Gold für die Belohnung — dieselbe Aufteilung wie in der 
 `monogram.ttf` — Pixelschrift für alle Zahlen auf Feld und Oberfläche. Nur ab 14 px
 verwenden, darunter zerfällt sie.
 
+## Klang (`public/sfx/`)
+
+| Datei | Quelle | Ereignis |
+|---|---|---|
+| `coin.ogg` | `Coins sounds [OGG]` · `1_Coins.ogg` | `gold.collected` |
+| `pod.ogg` | `Coins sounds [OGG]` · `5_Coins.ogg` | `pod.collected` |
+
+**Nur diese beiden sind Aufnahmen.** Alles andere — Schüsse, Treffer, Explosionen, Bosse,
+Fähigkeiten, Menütöne — rechnet `src/app/audio.ts` aus Oszillatoren. Das ist keine
+Sparmaßnahme, sondern eine Entscheidung: Ein Klangapparat aus Oszillatoren braucht keine
+Ladezeit, lässt sich in Tonhöhe und Länge genau an das Ereignis anpassen und trifft den
+Neon-Look besser als ein Sammelsurium fremder Aufnahmen.
+
+Die Ausnahme sind die beiden Aufhebe-Klänge: Es ist der Ton, den der Spieler hundertmal je
+Welle hört, und ein gerechneter Piepton wird dort schnell lästig.
+
 ## Lizenzen
 
 | Paket | Lizenz |
@@ -76,8 +95,8 @@ verwenden, darunter zerfällt sie.
 | Game UI collection FREE version | SunGraphica, gamedevmarket.net |
 | Cyan Blue Neon Arcade UI Pack | Uryon Games / Sophie Wodey — Nutzung frei, Weitergabe der Rohdateien nicht |
 | Super Pixel Effects Gigapack (Free) | Craftpix-Lizenz |
+| Coins sounds [OGG] | siehe Beilage des Pakets in `assets/raw` |
 | monogram | siehe `assets/raw/monogram/credits.txt` |
 
 **Wichtig:** Die Rohpakete dürfen nicht weitergegeben werden. Deshalb liegt in `public/`
 immer nur der zugeschnittene Ausschnitt, der im Spiel auch erscheint.
-

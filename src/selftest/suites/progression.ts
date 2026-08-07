@@ -271,4 +271,3 @@ export function progressionSuite(): void {
 function assertDeepEqualLength(list: readonly unknown[], expected: number): void {
   assertEqual(list.length, expected)
 }
-

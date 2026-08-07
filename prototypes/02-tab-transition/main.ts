@@ -236,4 +236,3 @@ window.addEventListener('keydown', (event) => {
     return box ? { x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.width), h: Math.round(box.height) } : null
   },
 }
-

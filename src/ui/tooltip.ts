@@ -70,4 +70,3 @@ export function showTooltip(
 export function hideTooltip(): void {
   if (element) element.hidden = true
 }
-

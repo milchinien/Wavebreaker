@@ -216,4 +216,3 @@ export function cameraSuite(): void {
     assertEqual(camera.targetZoom, before)
   })
 }
-

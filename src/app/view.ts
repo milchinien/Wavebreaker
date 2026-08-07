@@ -47,4 +47,3 @@ export function resetStationViewCache(): void {
   cachedRevision = -1
   cached = null
 }
-

@@ -27,7 +27,14 @@ import {
   eventRewardFor,
 } from '../../data/balance.ts'
 import { EVENTS, PODS, eventsForWave, podsForWave } from '../../data/events.ts'
-import { createInitialState, type GameState } from '../../app/state.ts'
+import {
+  TRADER_STAY_SECONDS,
+  TRADER_STOCK_SIZE,
+  TRADER_WAVE_MAX,
+  TRADER_WAVE_MIN,
+} from '../../data/balance.ts'
+import { TRADER_STOCK, stockForWave, traderStockById } from '../../data/trader.ts'
+import { createInitialState, type GameState, type Trader } from '../../app/state.ts'
 import { invalidateStationView, stationView } from '../../app/view.ts'
 import { syncStation } from '../../sim/battle.ts'
 import {
@@ -46,6 +53,14 @@ import {
   stepEvents,
 } from '../../sim/events.ts'
 import { spawnEnemy } from '../../sim/enemies.ts'
+import {
+  buyFromTrader,
+  dismissTrader,
+  isValidTrader,
+  maybeSendTrader,
+  reachTraderAt,
+  stepTrader,
+} from '../../sim/trader.ts'
 import { startWave } from '../../sim/waves.ts'
 
 /** Ein Zustand mit stehender Station - Ereignisse, die Gegner erscheinen lassen, brauchen sie. */
@@ -423,5 +438,234 @@ export function encountersSuite(): void {
     assertEqual(isValidPod({ id: 1, defId: 'pod.gold', x: 'nein', y: 0 }), false)
     assertEqual(isValidPod(null), false)
   })
-}
 
+  suite('sim/trader · Haendler-Drohne')
+
+  /** Eine gelandete Drohne mit vollem Sortiment auf dieser Welle. */
+  function landed(state: GameState, wave: number): Trader {
+    startWave(state, wave)
+    state.run.nextTraderWave = wave
+    const trader = maybeSendTrader(state, state.runtime.rng)
+    if (!trader) throw new Error('die Drohne muss landen')
+    return trader
+  }
+
+  check('jede Ware hat Preis, Gewicht und eine Beschreibung', () => {
+    for (const entry of TRADER_STOCK) {
+      assert(entry.price > 0, `${entry.id} ist umsonst`)
+      assert(entry.weight > 0, `${entry.id} kann nie erscheinen`)
+      assert(entry.description.length > 0, `${entry.id} sagt nicht, was es tut`)
+      assert(entry.minWave >= 1, `${entry.id} hat eine unsinnige Mindestwelle`)
+    }
+    assert(stockForWave(1).length > 0, 'auf Welle 1 muss etwas zu kaufen sein')
+  })
+
+  check('der Abstand liegt zwischen den Grenzen', () => {
+    const state = ready()
+    const rng = createRng(31)
+    startWave(state, 20)
+
+    maybeTriggerEvent(state, rng) // stoert nicht, teilt sich aber den Generator
+    maybeSendTrader(state, rng)
+    const gap = state.run.nextTraderWave - 20
+    assert(
+      gap >= TRADER_WAVE_MIN && gap <= TRADER_WAVE_MAX,
+      `Abstand ${gap} liegt ausserhalb von ${TRADER_WAVE_MIN}..${TRADER_WAVE_MAX}`,
+    )
+  })
+
+  check('sie landet mit vollem Sortiment und in Reichweite der Station', () => {
+    const state = ready()
+    const trader = landed(state, 25)
+
+    assertEqual(trader.stock.length, TRADER_STOCK_SIZE)
+    assertEqual(trader.visited, false)
+    assertEqual(trader.left, TRADER_STAY_SECONDS)
+
+    const distance = Math.hypot(trader.x, trader.y)
+    assert(distance >= 150 && distance <= 400, `sie landete ${Math.round(distance)} weit weg`)
+  })
+
+  check('ihr Sortiment hat keine Doppel', () => {
+    // Drei gleiche Karten waeren keine Wahl - dieselbe Regel wie beim Perk-Angebot.
+    for (let seed = 1; seed <= 20; seed++) {
+      const state = ready(seed)
+      const trader = landed(state, 45)
+      const ids = new Set(trader.stock.map((offer) => offer.defId))
+      assertEqual(ids.size, trader.stock.length, `Seed ${seed} hat Doppel`)
+    }
+  })
+
+  check('sie bietet nie Ware an, die es auf dieser Welle noch nicht gibt', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const state = ready(seed)
+      const trader = landed(state, 3)
+      for (const offer of trader.stock) {
+        assert(traderStockById(offer.defId).minWave <= 3, `${offer.defId} auf Welle 3`)
+      }
+    }
+  })
+
+  check('zwei Drohnen stehen nie gleichzeitig im Feld', () => {
+    const state = ready()
+    const first = landed(state, 30)
+    state.run.nextTraderWave = 30
+    assertEqual(maybeSendTrader(state, state.runtime.rng), null)
+    assertEqual(state.run.trader, first)
+  })
+
+  check('sie fliegt nach ihrer Frist weiter', () => {
+    const state = ready()
+    landed(state, 30)
+
+    stepTrader(state, TRADER_STAY_SECONDS - 1)
+    assert(state.run.trader !== null, 'kurz vorher steht sie noch da')
+
+    stepTrader(state, 2)
+    assertEqual(state.run.trader, null)
+  })
+
+  check('erreicht wartet sie - die Uhr laeuft nicht weiter', () => {
+    // Ein Laden, der waehrend des Einkaufs abhebt, waere keine Gelegenheit, sondern eine
+    // Falle. Das ist die wichtigste Zusicherung dieses Abschnitts.
+    const state = ready()
+    const trader = landed(state, 30)
+
+    assertEqual(reachTraderAt(state, { x: trader.x, y: trader.y }), true)
+    assertEqual(trader.visited, true)
+
+    stepTrader(state, TRADER_STAY_SECONDS * 5)
+    assertEqual(state.run.trader, trader, 'sie muss stehen bleiben')
+  })
+
+  check('sie oeffnet nur, wenn der Zeiger sie wirklich erreicht', () => {
+    const state = ready()
+    const trader = landed(state, 30)
+
+    assertEqual(reachTraderAt(state, { x: trader.x + 500, y: trader.y }), false)
+    assertEqual(trader.visited, false)
+    assertEqual(reachTraderAt(state, { x: trader.x, y: trader.y }), true)
+    // Ein zweiter Aufruf oeffnet nicht noch einmal - sonst blitzte das Fenster bei jeder
+    // Zeigerbewegung neu auf.
+    assertEqual(reachTraderAt(state, { x: trader.x, y: trader.y }), false)
+  })
+
+  check('ohne Gold laesst sich nichts kaufen', () => {
+    const state = ready()
+    const trader = landed(state, 30)
+    state.run.gold = 0
+
+    assertEqual(buyFromTrader(state, 0), false)
+    assertEqual(trader.stock[0]?.sold, false)
+  })
+
+  check('ein Posten laesst sich genau einmal kaufen', () => {
+    const state = ready()
+    const trader = landed(state, 30)
+    state.run.gold = 1e9
+
+    assertEqual(buyFromTrader(state, 0), true)
+    assertEqual(trader.stock[0]?.sold, true)
+    assertEqual(buyFromTrader(state, 0), false, 'ein zweites Mal nicht')
+  })
+
+  check('jede Warenart wirkt wirklich', () => {
+    /*
+     * Der Durchlauf ueber die **vollstaendige** Tabelle ist die Abnahme: Eine neue Ware
+     * muss ohne neuen Code wirken. Geprueft wird je Art die Groesse, die sie veraendert.
+     */
+    for (const def of TRADER_STOCK) {
+      const state = ready(3)
+      const trader = landed(state, Math.max(def.minWave, 45))
+      state.run.gold = 1e9
+
+      // Das gewuerfelte Sortiment gegen genau diese eine Ware tauschen.
+      trader.stock = [
+        {
+          defId: def.id,
+          perkId: def.effect.kind === 'perk' ? 'perk.damage.1' : null,
+          price: 1,
+          sold: false,
+        },
+      ]
+
+      const before = {
+        upgrades: Object.values(state.run.upgrades).reduce((sum, level) => sum + level, 0),
+        boons: state.runtime.boons.length,
+        perks: state.run.perks.length,
+        offer: state.run.towerOffer.length,
+      }
+
+      assertEqual(buyFromTrader(state, 0), true, def.id)
+
+      switch (def.effect.kind) {
+        case 'upgrade': {
+          const after = Object.values(state.run.upgrades).reduce((sum, level) => sum + level, 0)
+          assertEqual(after, before.upgrades + def.effect.levels, def.id)
+          break
+        }
+        case 'boon':
+          assertEqual(state.runtime.boons.length, before.boons + 1, def.id)
+          break
+        case 'perk':
+          assertEqual(state.run.perks.length, before.perks + 1, def.id)
+          break
+        case 'tower':
+          assert(state.run.towerOffer.length > before.offer, def.id)
+          break
+      }
+    }
+  })
+
+  check('ein gekaufter Bonus laeuft ueber dieselbe Leiste wie ein Ereignis', () => {
+    // Zwei Systeme mit eigenen Boni haetten zwei Uhren und zwei Stellen, an denen einer
+    // haengen bleiben kann.
+    const state = ready()
+    const trader = landed(state, 30)
+    state.run.gold = 1e9
+    trader.stock = [{ defId: 'trade.boonDamage', perkId: null, price: 1, sold: false }]
+
+    buyFromTrader(state, 0)
+    assertEqual(state.runtime.combat.eventBonus.damage, 0.4)
+
+    stepEvents(state, 121)
+    assertEqual(state.runtime.combat.eventBonus.damage, undefined)
+  })
+
+  check('eine Turmware ueberschreibt kein offenes Angebot', () => {
+    const state = ready()
+    const trader = landed(state, 45)
+    state.run.gold = 1e9
+    state.run.towerOffer = [{ defId: 'autocannon', rarity: 'common', traits: [] }]
+    trader.stock = [{ defId: 'trade.tower', perkId: null, price: 1, sold: false }]
+
+    const before = JSON.stringify(state.run.towerOffer)
+    buyFromTrader(state, 0)
+    assertEqual(JSON.stringify(state.run.towerOffer), before)
+  })
+
+  check('weggeschickt kommt sie nicht zurueck', () => {
+    const state = ready()
+    landed(state, 30)
+    dismissTrader(state)
+    assertEqual(state.run.trader, null)
+
+    // Und der Termin steht bereits in der Zukunft - der naechste Takt holt sie nicht sofort.
+    assert(state.run.nextTraderWave > 30, 'sonst landete gleich die naechste')
+  })
+
+  check('eine gelesene Drohne wird geprueft, nicht geglaubt', () => {
+    const good = {
+      x: 1,
+      y: 2,
+      left: 10,
+      visited: false,
+      stock: [{ defId: 'trade.upgrade1', perkId: null, price: 5, sold: false }],
+    }
+    assertEqual(isValidTrader(good), true)
+    assertEqual(isValidTrader({ ...good, stock: [{ ...good.stock[0], defId: 'trade.weg' }] }), false)
+    assertEqual(isValidTrader({ ...good, left: 'bald' }), false)
+    assertEqual(isValidTrader({ ...good, visited: 1 }), false)
+    assertEqual(isValidTrader(null), false)
+  })
+}

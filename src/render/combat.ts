@@ -157,6 +157,9 @@ export function drawEnemies(
   height: number,
 ): void {
   ctx.save()
+  // Runde Ecken: Die breite Schein-Linie stellt sonst an jeder Spitze einen Zacken auf,
+  // der laenger ist als der halbe Gegner.
+  ctx.lineJoin = 'round'
   for (const enemy of enemies) {
     const def = enemyById(enemy.defId)
     const center = worldToScreen(camera, enemy.pos, width, height)
@@ -189,25 +192,38 @@ export function drawEnemies(
     const hidden = enemy.cloak < 0
     const alpha = hidden ? 0.28 : 1
 
-    // Gegner sind leuchtende Umrisse, keine gefuellten Klumpen: Die Fuellung deutet den
-    // Koerper nur an, die Aussage traegt die Kante. So bleiben auch dichte Wellen lesbar,
-    // und der Blick faellt weiter auf die helle Station statt auf den Gegnerteppich.
-    tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null)
+    /*
+     * Gegner sind leuchtende Umrisse, keine gefuellten Klumpen: Die Fuellung deutet den
+     * Koerper nur an, die Aussage traegt die Kante. So bleiben auch dichte Wellen lesbar,
+     * und der Blick faellt weiter auf die helle Station statt auf den Gegnerteppich.
+     *
+     * Die Kante wird deshalb **zweimal** gezogen: einmal breit und blass als Schein, einmal
+     * schmal und voll als Linie. Das ist der Unterschied zwischen einem Koerper, der von
+     * innen glimmt, und einer Roehre, die brennt - und nur die Roehre ist Neon. Vorher trug
+     * die Fuellung ein Siebtel Deckkraft und die Kante einen einzigen Strich; ein Pulk sah
+     * dadurch aus wie ein Feld heller Flecken, in dem die Formen untergingen.
+     */
+    tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null, enemy.spin)
     ctx.fillStyle = def.color
-    ctx.globalAlpha = 0.14 * alpha
+    ctx.globalAlpha = 0.06 * alpha
     ctx.fill()
 
-    ctx.globalAlpha = alpha
+    const elite = enemy.elite.length > 0
     ctx.strokeStyle = def.color
-    ctx.lineWidth = 2
     ctx.shadowColor = def.color
-    ctx.shadowBlur = enemy.dockedTo !== null ? 12 : 7
+
+    // Der Schein. Er sitzt unter der Linie, damit die Kante scharf bleibt.
+    ctx.globalAlpha = (elite ? 0.4 : 0.28) * alpha
+    ctx.lineWidth = elite ? 6 : 4.5
     // Ein Elite traegt einen zusaetzlichen Neon-Effekt und bleibt sonst er selbst -
     // "verstaerkter Tank", nicht neuer Gegnertyp (GDD 07 Abschnitt 6).
-    if (enemy.elite.length > 0) {
-      ctx.lineWidth = 3
-      ctx.shadowBlur = 18
-    }
+    ctx.shadowBlur = elite ? 22 : enemy.dockedTo !== null ? 16 : 11
+    ctx.stroke()
+
+    // Die Linie.
+    ctx.globalAlpha = alpha
+    ctx.lineWidth = elite ? 2.4 : 1.6
+    ctx.shadowBlur = elite ? 10 : 6
     ctx.stroke()
     ctx.shadowBlur = 0
 
@@ -235,7 +251,7 @@ export function drawEnemies(
     if (enemy.chillLeft > 0) {
       ctx.globalAlpha = 0.3 * alpha
       ctx.fillStyle = PALETTE.edge
-      tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null)
+      tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null, enemy.spin)
       ctx.fill()
     }
 
@@ -645,17 +661,26 @@ function writePixelText(
   ctx.fillText(text, Math.round(centerX - width / 2), Math.round(centerY))
 }
 
+/**
+ * Der Umriss eines Gegners.
+ *
+ * `spin` ist sein Wanken aus den Beruehrungen mit Nachbarn (`sim/enemies.ts`). Es kommt
+ * **auf** die feste Lage der Form obendrauf und ist dort auf rund 20 Grad begrenzt: Die Form
+ * nennt die Gegnerart (GDD 07 Abschnitt 3), und ein Quadrat, das sich frei drehen duerfte,
+ * waere bei 45 Grad eine Raute - also eine andere Art.
+ */
 function tracePolygon(
   ctx: CanvasRenderingContext2D,
   shape: EnemyShape,
   center: Vec2,
   radius: number,
   docked: boolean,
+  spin = 0,
 ): void {
   const sides = sidesOfShape(shape)
   // Angedockte Gegner stehen still - eine leichte Drehung macht sie trotzdem lesbar.
   // Die Raute ist ein gedrehtes Quadrat - daher der feste Versatz.
-  const rotation = (docked ? Math.PI / sides : 0) + (shape === 'diamond' ? Math.PI / 4 : 0)
+  const rotation = (docked ? Math.PI / sides : 0) + (shape === 'diamond' ? Math.PI / 4 : 0) + spin
 
   ctx.beginPath()
   for (let i = 0; i < sides; i++) {
@@ -1205,3 +1230,11 @@ export function drawPickups(
       ctx.shadowBlur = 9 * landing
       ctx.beginPath()
       ctx.arc(center.x, center.y, size / 2, 0, Math.PI * 2)
+      /* [REKONSTRUIERT] Ab hier war die Datei in keiner Sitzung erfasst - die letzte
+         Leseausgabe endete bei Zeile 1207. Nachgebaut nach dem gleichlaufenden
+         Ersatzzweig fuer liegende Muenzen (siehe `drawCoins`, Zeile 854 ff.). */
+      ctx.fill()
+    }
+  }
+  ctx.restore()
+}

@@ -81,11 +81,11 @@ export function applyUpgrades(
  * Buff-Module bekommen hier nichts ab: Ihre Eigenschaften wirken auf die Buffstaerke und
  * damit in `sim/buffs.ts`, weil sie selbst keine Kampfwerte haben.
  */
-export function applyTraits(base: CombatStats, traits: readonly string[]): CombatStats {
-  if (traits.length === 0) return base
+export function applyTraits(base: CombatStats, module: PlacedModule): CombatStats {
+  if (module.traits.length === 0) return base
 
   const bonus: Partial<Record<StatKey, number>> = {}
-  for (const id of traits) {
+  for (const id of module.traits) {
     if (!isKnownTrait(id)) continue
     const effect = traitById(id).effect
     // Additiv wie ueberall sonst: Zwei Eigenschaften zu je zehn Prozent sind zwanzig,
@@ -182,7 +182,7 @@ export function moduleStats(
 ): ModuleStats {
   // Eigenschaften gehoeren zum Turm und nicht zum Run - sie gelten deshalb auch ohne
   // Zustand, etwa im Vergleich zweier Bauvarianten.
-  const base = applyTraits(baseStats(module.defId, module.kind, module.rarity), module.traits)
+  const base = applyTraits(baseStats(module.defId, module.kind, module.rarity), module)
   const upgraded = state
     ? applyTimed(applyPerks(applyUpgrades(base, module, state.run.upgrades), state), state)
     : base
@@ -224,12 +224,13 @@ export function fireInterval(stats: CombatStats): number {
 }
 
 /**
- * Reichweite des Hauptturms.
+ * Reichweite des Hauptturms - der Kreis, den der Spieler um seine Station sieht.
  *
- * Sie ist der Rueckfallwert des Wirkungsbereichs (`rangeCircles` in `sim/towers.ts`): Vor
- * dem ersten Takt kennt die Simulation noch keine Module, und ohne diesen Wert spraenge der
- * Umriss im zweiten Bild von nichts auf seine volle Groesse. Der Kern steht immer da - also
- * gibt es immer mindestens seinen Kreis.
+ * Er ist die eine Reichweite, die dauerhaft angezeigt wird: Sie gehoert zum Kern, und der
+ * Kern steht immer da. Reichweiten einzelner Tuerme bleiben transient (GDD 13 Abschnitt 4).
+ *
+ * Vor dem ersten Takt kennt die Simulation noch keine Module - dann gilt der Grundwert des
+ * Kerns, damit der Kreis schon im allerersten Bild richtig steht statt aufzuspringen.
  */
 export function coreRange(state: GameState): number {
   const live = effectiveTowerStats(state, CORE_UID)
@@ -290,4 +291,3 @@ export function theoreticalDps(
   }
   return total
 }
-

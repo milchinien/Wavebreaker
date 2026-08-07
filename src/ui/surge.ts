@@ -46,4 +46,3 @@ export function mountSurge(overlay: HTMLElement): Surge {
     },
   }
 }
-

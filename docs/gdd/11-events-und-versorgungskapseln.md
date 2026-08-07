@@ -178,4 +178,3 @@ Ein langer Run soll sich nicht wie eine Wiederholung anfühlen. Der Spieler erle
 Der Spieler soll denken: *"Interessant, was bekomme ich?"* oder *"Gehe ich dieses Risiko ein?"*
 
 Jeder Run entwickelt sich dadurch etwas anders.
-

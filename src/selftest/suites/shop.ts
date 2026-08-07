@@ -321,4 +321,3 @@ export function shopSuite(): void {
     assertEqual(meltTowers(state, uids), null, 'sonst ueberschriebe der Gang das Angebot')
   })
 }
-

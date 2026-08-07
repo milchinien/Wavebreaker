@@ -11,6 +11,7 @@ import { assert, assertClose, assertEqual, check, suite } from '../../core/asser
 import { MODULE_SIDE } from '../../core/geometry.ts'
 import { dist, type Vec2 } from '../../core/vec.ts'
 import {
+  ENEMY_APPROACH_SPEED_FACTOR,
   ENEMY_ATTACK_INTERVAL,
   ENEMY_BASE_DAMAGE,
   ENEMY_BASE_HP,
@@ -23,6 +24,7 @@ import { stepBattle, syncStation } from '../../sim/battle.ts'
 import { placeModule } from '../../app/actions.ts'
 import { createCombatState, damageStation, stepEffects, PLACING_LIFE } from '../../sim/combat.ts'
 import {
+  inCoverage,
   nearestModule,
   spawnEnemy,
   stepEnemies,
@@ -31,17 +33,9 @@ import {
 } from '../../sim/enemies.ts'
 import { spawnProjectile, stepProjectiles } from '../../sim/projectiles.ts'
 import { fireInterval, moduleStats } from '../../sim/stats.ts'
-import {
-  CORE_CENTER,
-  CORE_UID,
-  freeEdges,
-  place,
-  type FreeEdge,
-  type PlacedModule,
-} from '../../sim/station.ts'
+import { CORE_UID, freeEdges, place, type FreeEdge } from '../../sim/station.ts'
 import { findTarget } from '../../sim/targeting.ts'
-import { rangeCircles, stationRange, stepTowers } from '../../sim/towers.ts'
-import { rangeOutline } from '../../render/combat.ts'
+import { stepTowers } from '../../sim/towers.ts'
 import { clearField, healStationFull, startWave } from '../../sim/waves.ts'
 
 const STEP = 1 / TICK_RATE
@@ -133,6 +127,74 @@ export function combatSuite(): void {
     assert(dist(enemy.pos, { x: 0, y: 0 }) < before, 'er muss naeher gekommen sein')
   })
 
+  check('ausserhalb jeder Reichweite marschiert er schneller an', () => {
+    const state = rig()
+    const combat = state.runtime.combat
+    combat.coverage = rangeCircles(state)
+    const reach = stationRange(state)
+
+    // Beide auf derselben Achse, weit genug auseinander, dass sie sich nicht anstossen.
+    const drinnen = spawnEnemy(state, 'drone', 0) as Enemy
+    drinnen.pos = { x: reach - 20, y: 0 }
+    const draussen = spawnEnemy(state, 'drone', 0) as Enemy
+    draussen.pos = { x: reach + 200, y: 0 }
+
+    const vorher = { drinnen: drinnen.pos.x, draussen: draussen.pos.x }
+    stepEnemies(state, STEP)
+
+    const nah = vorher.drinnen - drinnen.pos.x
+    const fern = vorher.draussen - draussen.pos.x
+    assert(nah > 0, 'beide muessen sich zur Station bewegen')
+    assertClose(
+      fern,
+      nah * ENEMY_APPROACH_SPEED_FACTOR,
+      1e-9,
+      'ungedeckt genau um den Anmarschfaktor weiter',
+    )
+  })
+
+  check('die Tempogrenze ist dieselbe wie die der Zielwahl', () => {
+    const state = rig()
+    const combat = state.runtime.combat
+    combat.coverage = rangeCircles(state)
+    const circle = combat.coverage[0] as RangeCircle
+    const enemy = spawnEnemy(state, 'drone', 0) as Enemy
+
+    // Genau so weit draussen, dass sein Rand den Kreis noch beruehrt.
+    enemy.pos = { x: circle.center.x + circle.range + enemy.radius, y: circle.center.y }
+    assert(inCoverage(combat.coverage, enemy), 'beruehrt reicht - er laeuft normal')
+    assertEqual(
+      findTarget([enemy], circle.center, circle.range),
+      enemy,
+      'und genau hier findet ihn auch ein Turm',
+    )
+
+    // Eine Einheit weiter: keiner von beiden mehr.
+    enemy.pos.x += 1
+    assert(!inCoverage(combat.coverage, enemy), 'einen Schritt weiter ist er ungedeckt')
+    assertEqual(findTarget([enemy], circle.center, circle.range), null, 'und kein Ziel mehr')
+  })
+
+  check('eine Verlangsamung wirkt auch im Anmarsch', () => {
+    const state = rig()
+    const combat = state.runtime.combat
+    combat.coverage = rangeCircles(state)
+
+    const enemy = spawnEnemy(state, 'drone', 0) as Enemy
+    enemy.pos = { x: stationRange(state) + 200, y: 0 }
+    enemy.chillFactor = 0.5
+
+    const before = enemy.pos.x
+    stepEnemies(state, STEP)
+    const moved = before - enemy.pos.x
+    assertClose(
+      moved,
+      enemy.speed * 0.5 * ENEMY_APPROACH_SPEED_FACTOR * STEP,
+      1e-9,
+      'Frost multipliziert mit dem Anmarsch, statt von ihm ueberschrieben zu werden',
+    )
+  })
+
   check('er dockt an, sobald er die Aussenkante beruehrt', () => {
     const state = rig()
     const enemy = spawnEnemy(state, 'drone', 0) as Enemy
@@ -158,6 +220,65 @@ export function combatSuite(): void {
     const at = { ...enemy.pos }
     runTicks(state, 60, (s) => stepEnemies(s, STEP))
     assertClose(dist(at, enemy.pos), 0, 1e-9, 'er darf sich nicht mehr bewegen')
+  })
+
+  check('zwei Gegner auf demselben Fleck schieben sich auseinander', () => {
+    // Der Fall ist kein Gedankenspiel: Eine Brut erscheint auf ihrem Erzeuger.
+    const state = rig()
+    const a = planted(state, { x: 400, y: 0 }, 100)
+    const b = planted(state, { x: 400, y: 0 }, 100)
+
+    runTicks(state, 60, (s) => stepEnemies(s, STEP))
+    assert(dist(a.pos, b.pos) > 1, 'sie duerfen nicht deckungsgleich stehen bleiben')
+    // Aber eben nicht auseinandergeschossen: Der Stoss klingt ab, bevor sie sich verlieren.
+    assert(dist(a.pos, b.pos) < a.radius + b.radius, 'sie bleiben ein Pulk')
+  })
+
+  check('wer mittig geschoben wird, dreht sich nicht', () => {
+    // Der Stoss laeuft durch beide Mittelpunkte - dabei kann nichts kippen. Genau das
+    // trennt Schieben von Streifen.
+    const state = rig()
+    const standing = planted(state, { x: 400, y: 0 }, 100)
+    const runner = spawnEnemy(state, 'drone', 0) as Enemy
+    runner.pos = { x: 400 + standing.radius, y: 0 }
+
+    runTicks(state, 30, (s) => stepEnemies(s, STEP))
+    assertClose(standing.spin, 0, 1e-9, 'der Stehende bleibt in seiner Lage')
+    assertClose(runner.spin, 0, 1e-9, 'und der Laufende auch')
+  })
+
+  check('wer seitlich streift, dreht sich - und beide gegeneinander', () => {
+    const state = rig()
+    const standing = planted(state, { x: 400, y: 0 }, 100)
+    const runner = spawnEnemy(state, 'drone', 0) as Enemy
+    // Versetzt: Der Laufende erwischt ihn an der Schulter, nicht mittig.
+    runner.pos = { x: 400 + standing.radius, y: standing.radius * 0.7 }
+
+    runTicks(state, 30, (s) => stepEnemies(s, STEP))
+    assert(Math.abs(standing.spin) > 1e-4, 'der Gestreifte muss sich drehen')
+    assert(standing.spin * runner.spin < 0, 'und beide gegeneinander, wie zwei Zahnraeder')
+    assert(
+      Math.abs(standing.spin) <= SPIN_MAX + 1e-9 && Math.abs(runner.spin) <= SPIN_MAX + 1e-9,
+      'nie so weit, dass die Form eine andere Gegnerart behauptet',
+    )
+  })
+
+  check('ein angedockter Gegner wird nicht weggeschoben', () => {
+    /*
+     * Sonst risse ihn das Gedraengel von seinem Modul los, er dockte im naechsten Takt
+     * erneut an - und die Station naehme Schaden im Takt des Gedraengels statt im Takt
+     * seiner Schlaege.
+     */
+    const state = rig()
+    const docked = planted(state, { x: 400, y: 0 }, 100)
+    docked.dockedTo = CORE_UID
+    const at = { ...docked.pos }
+
+    const runner = spawnEnemy(state, 'drone', 0) as Enemy
+    runner.pos = { x: 400 + docked.radius, y: 2 }
+
+    runTicks(state, 60, (s) => stepEnemies(s, STEP))
+    assertClose(dist(at, docked.pos), 0, 1e-9, 'er steht, wo er steht')
   })
 
   check('angedockte Gegner senken die Stations-HP fortlaufend', () => {
@@ -197,6 +318,24 @@ export function combatSuite(): void {
 
   suite('sim/targeting')
 
+  check('ohne Ziel in Reichweite wird nicht geschossen', () => {
+    const state = rig()
+    planted(state, { x: 5000, y: 0 }, 100)
+    assertEqual(findTarget(state.runtime.combat.enemies, { x: 0, y: 0 }, 200), null)
+  })
+
+  check('der naechste Gegner ist das Standardziel', () => {
+    const state = rig()
+    const far = planted(state, { x: 180, y: 0 }, 100)
+    const near = planted(state, { x: 90, y: 0 }, 100)
+    assertEqual(findTarget(state.runtime.combat.enemies, { x: 0, y: 0 }, 400)?.id, near.id)
+    assert(far.id !== near.id, 'zwei verschiedene Gegner')
+  })
+
+  check('angedockte Gegner werden bevorzugt, auch wenn andere naeher sind', () => {
+    // Ohne diese Regel schiessen die Tuerme auf Nachrueckende, waehrend die Station
+    // zerlegt wird (GDD 07 Abschnitt 2).
+    const state = rig()
     planted(state, { x: 60, y: 0 }, 100)
     const docked = planted(state, { x: 200, y: 0 }, 100)
     docked.dockedTo = CORE_UID
@@ -225,8 +364,8 @@ export function combatSuite(): void {
     const stats = moduleStats(tower, undefined).final
     const outward = Math.hypot(tower.center.x, tower.center.y)
     const at = {
-      x: (tower.center.x / outward) * (outward + stats.range * 0.5),
-      y: (tower.center.y / outward) * (outward + stats.range * 0.5),
+      x: (tower.center.x / outward) * (outward + stats.range * 0.9),
+      y: (tower.center.y / outward) * (outward + stats.range * 0.9),
     }
     planted(state, at, 100)
 
@@ -298,8 +437,10 @@ export function combatSuite(): void {
     const enemy = planted(state, { x: distance, y: 0 }, hp)
     enemy.dockedTo = CORE_UID // still stehen lassen, ohne den Kern zu beschaedigen
 
+    // Der toedliche Schuss ist der dritte. Er faellt nach zwei Nachladezeiten und braucht
+    // danach die Flugzeit - gemessen bis zum Rand des Gegners, nicht bis zu seinem Zentrum.
     const interval = fireInterval(stats)
-    const expected = 2 * interval + distance / stats.projectileSpeed
+    const expected = 2 * interval + (distance - enemy.radius) / stats.projectileSpeed
 
     let ticks = 0
     while (enemy.active && ticks < TICK_RATE * 30) {
@@ -448,15 +589,63 @@ export function combatSuite(): void {
     assertEqual(state.run.waveRecord, 12, 'ein Rueckschritt senkt den Rekord nicht')
   })
 
+  suite('app/actions · Platzierungsquittung')
+
+  check('ein gesetztes Modul rastet ein - und der Vermerk verfaellt von selbst', () => {
+    /*
+     * GDD 13 Abschnitt 10: "Platzieren von Modulen" gehoert zu den Dingen, die sichtbar
+     * sein muessen. Geprueft wird der **Vermerk**, nicht das Bild: dass er beim Andocken
+     * entsteht, dass er dem richtigen Modul gehoert, und - das ist der eigentliche Punkt -
+     * dass er wieder verschwindet. Ein Eintrag, der liegen bleibt, waere ein Modul, das
+     * fuer immer aufleuchtet, und ein Speicher, der mit jedem Bau waechst.
+     */
+    const state = rig()
+    const combat = state.runtime.combat
+    const module = state.run.station.inventory[0]
+    assert(module !== undefined, 'das Startlager muss ein Modul haben')
+
+    invalidateStationView(state)
+    const edge = stationView(state).freeEdges[0]
+    assert(edge !== undefined, 'die Station muss eine freie Kante haben')
+
+    assertEqual(combat.placings.size, 0)
+    assertEqual(placeModule(state, module.uid, edge), null)
+    assertEqual(combat.placings.size, 1)
+    assert(combat.placings.has(module.uid), 'der Vermerk gehoert dem gesetzten Modul')
+
+    // Kurz danach steht er noch, spaeter nicht mehr.
+    stepEffects(state, PLACING_LIFE * 0.5)
+    assert(combat.placings.has(module.uid), 'nach der halben Zeit muss er noch stehen')
+    stepEffects(state, PLACING_LIFE)
+    assertEqual(combat.placings.size, 0, 'danach muss er verfallen sein')
+  })
+
+  check('waehrend der Abwesenheit entsteht keine Quittung', () => {
+    // Sie ist reine Anzeige. Ohne Zuschauer waere sie Arbeit fuer den Papierkorb - dieselbe
+    // Regel wie bei Splittern und Druckwellen.
+    const state = rig()
+    state.runtime.combat.observed = false
+
+    const module = state.run.station.inventory[0]
+    assert(module !== undefined, 'das Startlager muss ein Modul haben')
+    invalidateStationView(state)
+    const edge = stationView(state).freeEdges[0]
+    assert(edge !== undefined, 'die Station muss eine freie Kante haben')
+
+    placeModule(state, module.uid, edge)
+    assertEqual(state.runtime.combat.placings.size, 0)
+  })
+
   check('ein Gegner mit voller HP hat die Werte seiner Welle', () => {
     const state = rig()
     startWave(state, 1)
-    const enemy = spawnEnemy(state, 'drone', 0) as Enemy
-    assertClose(enemy.maxHp, ENEMY_BASE_HP, 1e-9, 'Welle 1 ist der Grundwert')
+    // Den Wert festhalten statt den Gegner: `startWave` raeumt das Feld, der Gegner
+    // wandert in den Pool - und der naechste Spawn ist dasselbe Objekt.
+    const early = (spawnEnemy(state, 'drone', 0) as Enemy).maxHp
+    assertClose(early, ENEMY_BASE_HP, 1e-9, 'Welle 1 ist der Grundwert')
 
     startWave(state, 11)
-    const later = spawnEnemy(state, 'drone', 0) as Enemy
-    assert(later.maxHp > enemy.maxHp * 2, 'Welle 11 muss deutlich haerter sein')
+    const later = (spawnEnemy(state, 'drone', 0) as Enemy).maxHp
+    assert(later > early * 2, `Welle 11 muss deutlich haerter sein: ${later} gegen ${early}`)
   })
 }
-

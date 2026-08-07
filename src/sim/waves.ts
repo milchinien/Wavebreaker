@@ -244,7 +244,7 @@ export function stepWave(state: GameState, dt: number): void {
   while (combat.spawnIndex < plan.spawns.length) {
     const next = plan.spawns[combat.spawnIndex] as WaveSpawn
     if (next.at > combat.timer) break
-    if (!spawnEnemy(state, next.defId, next.angle)) break // Obergrenze erreicht
+
     const enemy = spawnEnemy(state, next.defId, next.angle)
     if (!enemy) break // Obergrenze erreicht
 
@@ -263,4 +263,3 @@ export function stepWave(state: GameState, dt: number): void {
     emit('wave.cleared', { wave: state.run.wave })
   }
 }
-

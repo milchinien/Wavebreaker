@@ -98,4 +98,3 @@ export function createRng(seed: number): Rng {
 export function randomSeed(): number {
   return Math.floor(Math.random() * UINT32) >>> 0
 }
-

@@ -92,7 +92,7 @@ function rollStock(state: GameState, rng: Rng): TraderOffer[] {
     offers.push({
       defId: def.id,
       // Der Perk steht schon jetzt fest - sonst waere die Karte eine Behauptung.
-      perkId: def.effect.kind === 'perk' ? (rng.pick(PERKS).id as string) : null,
+      perkId: def.effect.kind === 'perk' ? rng.pick(PERKS).id : null,
       price: Math.max(1, Math.round(def.price * base)),
       sold: false,
     })
@@ -298,4 +298,3 @@ function isValidOffer(value: unknown): value is TraderOffer {
   const perkId = entry['perkId']
   return perkId === null || typeof perkId === 'string'
 }
-

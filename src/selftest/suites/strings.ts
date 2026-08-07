@@ -38,4 +38,3 @@ export function stringsSuite(): void {
     assertEqual(hasString('gibt.es.nicht'), false)
   })
 }
-

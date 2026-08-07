@@ -18,6 +18,7 @@ import { t } from '../data/strings.ts'
 import type { GameState } from '../app/state.ts'
 import { markHintSeen, pendingHint } from '../sim/hints.ts'
 import { setSlideLabel } from './slide.ts'
+import { createTypewriter } from './typewriter.ts'
 
 export type HintPanel = {
   /** Pro Bild aufrufen - prueft nur, ob sich der faellige Hinweis geaendert hat. */
@@ -39,6 +40,18 @@ export function mountHints(state: GameState, overlay: HTMLElement): HintPanel {
   card.append(text, button)
   overlay.appendChild(card)
 
+  /*
+   * Der Hinweis **schreibt sich** (`ui/typewriter.ts`).
+   *
+   * Er ist der einzige Text im Spiel, der ungefragt kommt: Niemand hat ein Fenster
+   * geoeffnet, niemand hat geklickt - er faellt mitten in eine Handlung hinein. Genau
+   * deshalb faellt er sonst leicht durch. Der Zettel faehrt auf, und **dann** laeuft der
+   * Satz an; die Bewegung im Text sagt "hier steht etwas Neues", ohne dass der Zettel
+   * groesser, lauter oder aufdringlicher werden muesste. Das ist das Gegenteil dessen, was
+   * GDD 14 Abschnitt 4a ausschliesst - er unterbricht nichts, er faellt nur auf.
+   */
+  const writer = createTypewriter()
+
   let shownId = ''
 
   button.addEventListener('click', () => {
@@ -48,6 +61,9 @@ export function mountHints(state: GameState, overlay: HTMLElement): HintPanel {
     // sechzehn Millisekunden spaeter wirkt, fuehlt sich taub an.
     shownId = ''
     card.hidden = true
+    // Der naechste Hinweis kann derselbe sein - nach dem Zuruecksetzen in den Einstellungen
+    // faellt die ganze Reihe noch einmal. Ohne dieses Vergessen stuende er dann stumm da.
+    writer.reset()
   })
 
   return {
@@ -58,17 +74,21 @@ export function mountHints(state: GameState, overlay: HTMLElement): HintPanel {
       shownId = id
 
       card.hidden = hint === null
-      if (!hint) return
+      if (!hint) {
+        writer.reset()
+        return
+      }
 
-      text.textContent = t(hint.key)
       // Die Auftrittsbewegung neu anstossen, falls unmittelbar ein zweiter Hinweis folgt.
       card.classList.remove('enter')
       void card.offsetWidth
       card.classList.add('enter')
+
+      writer.write({ node: text, text: t(hint.key) })
     },
     detach() {
+      writer.reset()
       card.remove()
     },
   }
 }
-

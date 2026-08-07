@@ -162,4 +162,3 @@ function nearestTarget(state: GameState, helper: Helper): { x: number; y: number
 
   return best ?? CORE_CENTER
 }
-

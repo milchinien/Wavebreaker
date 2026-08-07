@@ -13,7 +13,7 @@
 import type { Vec2 } from '../core/vec.ts'
 import { MAX_PROJECTILES, PROJECTILE_MAX_LIFETIME } from '../data/balance.ts'
 import type { GameState } from '../app/state.ts'
-import { applyDamage } from './combat.ts'
+import { applyBurn, applyChain, applyChill, applyDamage, applyExplosion } from './combat.ts'
 import type { Enemy } from './enemies.ts'
 
 export type Projectile = {
@@ -32,7 +32,23 @@ export type Projectile = {
   color: string
   /** Bisherige Flugzeit in Sekunden. */
   life: number
+  /**
+   * Was beim Einschlag zusaetzlich passiert (E14).
+   *
+   * Es haengt am **Geschoss** und nicht am Turm: Wenn es einschlaegt, kann der Turm laengst
+   * abgerissen oder umgesetzt sein. Ein Geschoss traegt also alles mit, was es tun soll -
+   * dieselbe Ueberlegung wie bei Schaden und Farbe.
+   */
+  payload: ProjectilePayload | null
   active: boolean
+}
+
+/** Wirkung eines Einschlags jenseits des reinen Schadens. */
+export type ProjectilePayload = {
+  explode?: { radius: number; damage: number }
+  chain?: { hops: number; falloff: number; range: number }
+  burn?: { dps: number; duration: number }
+  chill?: { factor: number; duration: number }
 }
 
 export type ProjectileSpec = {
@@ -40,7 +56,7 @@ export type ProjectileSpec = {
   speed: number
   crit: boolean
   color: string
-}
+} & ProjectilePayload
 
 function blankProjectile(id: number): Projectile {
   return {
@@ -53,6 +69,7 @@ function blankProjectile(id: number): Projectile {
     crit: false,
     color: '#ffffff',
     life: 0,
+    payload: null,
     active: false,
   }
 }
@@ -83,6 +100,17 @@ export function spawnProjectile(
   projectile.crit = spec.crit
   projectile.color = spec.color
   projectile.life = 0
+  // Nur anlegen, wenn es etwas zu tragen gibt - der weitaus haeufigste Schuss im Spiel ist
+  // ein gewoehnlicher, und der soll kein Objekt je Schuss kosten.
+  projectile.payload =
+    spec.explode || spec.chain || spec.burn || spec.chill
+      ? {
+          ...(spec.explode ? { explode: spec.explode } : {}),
+          ...(spec.chain ? { chain: spec.chain } : {}),
+          ...(spec.burn ? { burn: spec.burn } : {}),
+          ...(spec.chill ? { chill: spec.chill } : {}),
+        }
+      : null
   projectile.active = true
 
   combat.projectiles.push(projectile)
@@ -96,7 +124,41 @@ export function releaseProjectile(state: GameState, projectile: Projectile): voi
 
   projectile.active = false
   projectile.targetId = -1
+  // Sonst traegt der naechste Schuss aus dem Pool die Explosion seines Vorgaengers mit.
+  projectile.payload = null
   combat.projectilePool.push(projectile)
+}
+
+/**
+ * Der Einschlag: erst der Schaden, dann was das Geschoss mitgebracht hat.
+ *
+ * Die Reihenfolge ist wichtig. Brand und Frost werden **vor** dem Schaden gesetzt, damit
+ * sie auch dann noch am Gegner stehen, wenn der Treffer ihn nicht toetet; Explosion und
+ * Kettenblitz laufen **nach** ihm, weil sie den Ort des Einschlags brauchen und der Gegner
+ * dabei sterben darf.
+ */
+function impact(state: GameState, projectile: Projectile, target: Enemy): void {
+  const payload = projectile.payload
+  const at = { x: target.pos.x, y: target.pos.y }
+
+  if (payload?.burn) applyBurn(state, target, payload.burn.dps, payload.burn.duration)
+  if (payload?.chill) applyChill(state, target, payload.chill.factor, payload.chill.duration)
+
+  applyDamage(state, target, projectile.damage, { crit: projectile.crit })
+
+  if (payload?.explode) {
+    applyExplosion(state, at, payload.explode.radius, payload.explode.damage, target)
+  }
+  if (payload?.chain) {
+    applyChain(
+      state,
+      target,
+      payload.chain.hops,
+      payload.chain.falloff,
+      projectile.damage,
+      payload.chain.range,
+    )
+  }
 }
 
 export function stepProjectiles(state: GameState, dt: number): void {
@@ -124,7 +186,7 @@ export function stepProjectiles(state: GameState, dt: number): void {
 
     // Treffer, sobald das Geschoss den Gegner in diesem Schritt erreichen wuerde.
     if (distance <= stride + target.radius) {
-      applyDamage(state, target, projectile.damage, { crit: projectile.crit })
+      impact(state, projectile, target)
       releaseProjectile(state, projectile)
       continue
     }
@@ -135,4 +197,3 @@ export function stepProjectiles(state: GameState, dt: number): void {
     projectile.pos.y += projectile.dir.y * stride
   }
 }
-

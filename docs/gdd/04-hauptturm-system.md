@@ -16,6 +16,13 @@ Grundregeln:
 - kann nicht entfernt oder verkauft werden
 - besitzt eigene Angriffssysteme und Fähigkeiten
 - wird nicht während eines laufenden Runs gewechselt
+- ist ein **Hexagon mit sechs Anschlusskanten** und liefert damit die ersten sechs Bauplätze
+- **erhält Buffs von angrenzenden Buff-Türmen** wie jedes andere Modul
+
+Der letzte Punkt ist keine Nebensache: Weil der Hauptturm mit Abstand den höchsten Einzelschaden
+der Station liefert, sind die sechs Kernkanten die wertvollsten Bauplätze überhaupt — und ein
+Buff-Turm direkt am Kern erreicht als viertes Ziel den Kern selbst. Ohne diese Regel wären
+Buff-Türme in kleinen Basen rechnerisch wertlos (→ [03, Abschnitt 9](03-modulare-basis-und-bauregeln.md)).
 
 ---
 
@@ -302,4 +309,3 @@ Der Spieler entscheidet nicht nur *"Wie stark werde ich?"*, sondern *"Welche Art
 | C | Prism Core | Laser und Spezialtürme |
 
 Alle spielen dasselbe Spiel — mit völlig anderer Strategie.
-

@@ -1,0 +1,292 @@
+﻿Datei : src\style.css
+Luecke: Zeilen 2952 bis 3239  (288 Zeilen)
+
+---- Anker davor ----
+    width: 176px;
+    padding: 7px 8px;
+  .resource-bar .res {
+    font-size: 25px;
+
+---- Anker danach ----
+.shop-panel .wide-button + .chip {
+  margin-top: 8px;
+/* --- Prestige (GDD 10, GDD 13 Abschnitt 6) ------------------------------- */
+.prestige-panel {
+
+======== Fundstelle 1  |  rueckwaerts ab Anker danach  |  Anker 2 Zeilen  |  88 Inhaltszeilen  |  01QexX4hhGi5mWBuRAHqGQQJ/Edit/neu ========
+/* --- Turmauswahl (GDD 06 Abschnitt 1, GDD 13 Abschnitt 6) ---------------- */
+
+/*
+ * Grosse Auswahlkarten - "der Spieler entscheidet bewusst" (GDD 13 Abschnitt 6). Deshalb
+ * steht auf der Karte alles, was den Turm ausmacht: Art, Raritaet und die gewuerfelten
+ * Eigenschaften. Eine Karte, die nur den Namen zeigt, waere ein Blindkauf.
+ */
+.offer-panel {
+  width: min(560px, calc(100% - 28px));
+}
+
+.offer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.offer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 12px 14px;
+  border: 1px solid var(--rarity, var(--line));
+  border-radius: 12px;
+  background: var(--fill-card);
+  box-shadow: 0 0 18px -5px var(--rarity, transparent), var(--shadow-card);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--dur-tap) var(--ease-out),
+    box-shadow var(--dur-tap) var(--ease-out);
+}
+
+.offer-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0 30px -4px var(--rarity, var(--cyan)), var(--shadow-lift);
+}
+
+.offer-card:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.offer-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.offer-head b {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.offer-text {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.offer-traits {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+}
+
+.offer-traits li {
+  padding: 1px 0;
+  color: var(--rarity, var(--text-dim));
+}
+
+.offer-traits li.muted {
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+/* Eine ausgewaehlte Schmelzkarte im Lager - sie brennt, bevor sie verschwindet. */
+ul.inventory .card.melting {
+  border-color: var(--gold);
+  box-shadow: 0 0 20px -4px var(--gold), inset 0 0 14px -6px var(--gold);
+}
+
+ul.sources.traits li {
+  color: var(--rarity, var(--text-dim));
+}
+
+/* Preis rechts, Beschriftung links - der Knopf sagt beides auf einmal. */
+.wide-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.wide-button b {
+  font-family: var(--font-pixel);
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--gold);
+}
+
+.shop-panel .wide-button + .wide-button,
+
+======== Fundstelle 2  |  rueckwaerts ab Anker danach  |  Anker 2 Zeilen  |  126 Inhaltszeilen  |  01BGULKw85QVq8N747W7GvYj/Read/Ergebnis ========
+
+.return-list dt {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.return-list dd {
+  margin: 0;
+  font-family: var(--font-number);
+  font-size: 13px;
+  text-align: right;
+  color: var(--edge);
+}
+
+/*
+ * Die Energiewelle eines Prestiges (GDD 13 Abschnitt 10).
+ *
+ * Drei Lagen in einem Element, weil sie zusammen **eine** Bewegung sind:
+ *
+ *   der Kern       ein greller Punkt in der Mitte, der sofort da ist und sofort geht
+ *   die Welle      ein Ring, der über das ganze Fenster hinausläuft
+ *   der Nachhall   eine violette Tönung, die zuletzt verblasst
+ *
+ * `background` trägt alle drei als Verläufe, `transform: scale` treibt sie auseinander.
+ * Getrennte Elemente wären genauer steuerbar und würden dabei genau das verlieren, was den
+ * Effekt ausmacht: dass er als **ein** Stoß gelesen wird.
+ *
+ * Der Schleier liegt außerhalb der Zeigerbedienung (`pointer-events: none`). Eine
+ * Animation, die knapp eine Sekunde lang Klicks schluckt, wäre eine Wartezeit mit Licht.
+ */
+.surge {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 9%),
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(127, 216, 255, 0) 14%,
+      rgba(127, 216, 255, 0.85) 22%,
+      rgba(180, 92, 255, 0.5) 30%,
+      rgba(180, 92, 255, 0) 44%
+    ),
+    radial-gradient(circle at 50% 50%, rgba(180, 92, 255, 0.28) 0%, rgba(180, 92, 255, 0) 70%);
+}
+
+.surge.firing {
+  animation: surge 1100ms var(--ease-out);
+}
+
+@keyframes surge {
+  0% {
+    opacity: 0;
+    transform: scale(0.15);
+  }
+  /* Der Stoß: voll da, noch klein. Alles davor ist Anlauf, alles danach Ausbreitung. */
+  12% {
+    opacity: 1;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(3.4);
+  }
+}
+
+/*
+ * Der Hinweiszettel (GDD 14 Abschnitt 4a).
+ *
+ * Er liegt am **unteren Rand ueber der Leiste** und nicht in der Mitte: Ein Hinweis haelt
+ * nichts an, also darf er auch nicht in der Bahn stehen. `pointer-events` bleibt am Knopf
+ * und nicht am Zettel - wer daneben klickt, klickt auf das Spielfeld.
+ */
+.hint-card {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(520px, calc(100% - 32px));
+  padding: 10px 12px 10px 16px;
+  border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--line));
+  border-radius: 12px;
+  background: var(--fill-panel);
+  box-shadow: 0 0 26px -8px var(--gold), var(--shadow-card);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.hint-card[hidden] {
+  display: none;
+}
+
+.hint-card.enter {
+  animation: enter-up var(--dur-card) var(--ease-out);
+}
+
+.hint-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.hint-card .chip {
+  flex: 0 0 auto;
+  pointer-events: auto;
+}
+
+/* Eine ausgewaehlte Schmelzkarte im Lager - sie brennt, bevor sie verschwindet. */
+ul.inventory .card.melting {
+  border-color: var(--gold);
+  box-shadow: 0 0 20px -4px var(--gold), inset 0 0 14px -6px var(--gold);
+}
+
+ul.sources.traits li {
+  color: var(--rarity, var(--text-dim));
+}
+
+/* Preis rechts, Beschriftung links - der Knopf sagt beides auf einmal. */
+.wide-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.wide-button b {
+  font-family: var(--font-pixel);
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--gold);
+}
+
+.shop-panel .wide-button + .wide-button,
+
+======== Fundstelle 3  |  rueckwaerts ab Anker danach  |  Anker 2 Zeilen  |  22 Inhaltszeilen  |  01CTjpLuUzsRAaXWJs6sYBeT/Read/Ergebnis ========
+/* Eine ausgewaehlte Schmelzkarte im Lager - sie brennt, bevor sie verschwindet. */
+ul.inventory .card.melting {
+  border-color: var(--gold);
+  box-shadow: 0 0 20px -4px var(--gold), inset 0 0 14px -6px var(--gold);
+}
+
+ul.sources.traits li {
+  color: var(--rarity, var(--text-dim));
+}
+
+/* Preis rechts, Beschriftung links - der Knopf sagt beides auf einmal. */
+.wide-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.wide-button b {
+  font-family: var(--font-pixel);
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--gold);
+}
+
+.shop-panel .wide-button + .wide-button,
+

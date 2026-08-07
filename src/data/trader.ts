@@ -156,4 +156,3 @@ export function isKnownTraderStock(id: string): boolean {
 export function stockForWave(wave: number): TraderStockDef[] {
   return TRADER_STOCK.filter((entry) => wave >= entry.minWave)
 }
-

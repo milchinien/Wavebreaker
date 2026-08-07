@@ -141,4 +141,3 @@ export function buffLinks(summary: StationSummary): { from: string; to: string }
   }
   return links
 }
-

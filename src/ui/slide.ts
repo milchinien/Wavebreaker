@@ -40,4 +40,3 @@ export function slideLabel(text: string): HTMLSpanElement {
 export function setSlideLabel(button: HTMLElement, text: string): void {
   button.replaceChildren(slideLabel(text))
 }
-

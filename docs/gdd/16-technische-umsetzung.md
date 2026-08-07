@@ -325,4 +325,3 @@ Das Spiel soll sich anfühlen wie eine futuristische Kampfstation, die über vie
 Der Spieler baut nicht einfach eine Ansammlung von Türmen — er erschafft seine eigene einzigartige Maschine.
 
 Jede Basis erzählt eine Geschichte: welche Türme gewählt wurden, welche Raritäten gefunden wurden, welche Entscheidungen getroffen wurden, welche Prestige-Upgrades erreicht wurden.
-

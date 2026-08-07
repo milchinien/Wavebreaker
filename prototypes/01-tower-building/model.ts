@@ -48,4 +48,3 @@ export type Station = {
   /** Turmplaetze; Start 4 laut GDD 03 §6. Der Hauptturm zaehlt nicht mit. */
   slots: number
 }
-

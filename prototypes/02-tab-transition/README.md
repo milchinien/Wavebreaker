@@ -81,16 +81,31 @@ von Hand entschieden werden.
 
 ## Übernahme ins Spiel
 
-Noch nichts. Erst nach der offenen Frage oben, und dann in dieser Reihenfolge:
+**Übernommen — ohne die Bibliothek** (`src/ui/flip.ts`, 2026-08-03).
 
-1. Wenn die Bewegung überzeugt, ist der nächste Schritt **nicht** anime.js im Spiel, sondern
-   die Frage, ob dieselben ~60 Zeilen FLIP ohne Abhängigkeit reichen: `getBoundingClientRect`
-   vor und nach dem Umschreiben von `data-view`, Differenz als Transform, per WAAPI
-   weganimieren. Das Spiel hat heute **null** Laufzeit-Abhängigkeiten, und das ist eine
-   bewusste Entscheidung.
-2. Was anime.js darüber hinaus mitbringt (Ein-/Austritte, verschachtelte Knoten,
-   Zeitleisten), braucht der Wechsel im Spiel nicht — die Ein- und Austritte macht das
-   Stilblatt heute schon.
-3. Der Prototyp bleibt als Referenz für die Werte liegen: `duration: 520`, `ease: outExpo`,
-   `stagger: 38 ms`, Abtritt kürzer als Auftritt (260 gegen 520).
+Das Verfahren ist ins Spiel gewandert, anime.js nicht. Gebraucht wurden davon rund 130 Zeilen:
+messen, `data-view` umschreiben, wieder messen, die Differenz per WAAPI als `translate`
+weganimieren. Das Spiel hat weiterhin **null** Laufzeit-Abhängigkeiten, und das ist eine
+bewusste Entscheidung.
 
+Was der Prototyp beigetragen hat und was im Spiel anders wurde:
+
+| Prototyp | Spiel | Warum |
+|---|---|---|
+| `stagger` je nach Richtung | keine Staffelung | Im Spiel wandern nur drei bis vier Panels, und sie hängen räumlich zusammen. Eine Staffelung machte daraus eine Reihenfolge, die es nicht gibt. |
+| Größe wird mitanimiert | Größe springt, nur der Ort wandert | Genau ein Panel ändert seine Größe (die Upgrade-Kacheln), und dessen Inhalt fährt ohnehin gestaffelt neu auf. Es wandert jetzt nur mit seiner Oberkante nach oben in die schon fertige Leiste — wie eine Schublade. |
+| `ease: outExpo`, 520 ms | `--ease-out` aus dem Stilblatt, 420 ms | Die Kurve liegt im Spiel schon an einer Stelle. Sie dort zu holen statt sie zu wiederholen, war die einzige Änderung, die der Prototyp nicht vorweggenommen hat. |
+| Ein- und Austritte vom Motor | Ein- und Austritte aus dem Stilblatt | Die Richtung eines Auf- oder Abtritts ist Gestaltung. Das Spiel hatte sie schon, und sie ist besser als eine allgemeine. |
+
+Zwei Dinge kamen erst beim Einbau heraus:
+
+- **Nicht jeder gemessene Unterschied ist ein Weg.** Die mittig gesetzte Bereichsüberschrift
+  rückt schon dann zur Seite, wenn das nächste Wort länger ist. Sie hat ihren Platz nicht
+  gewechselt, nur ihre Breite — sie bestellt die Wanderung deshalb im Stilblatt ab
+  (`--flip: 0`) und bekommt stattdessen ihren eigenen Auftritt, wenn ihr Text wechselt.
+- **WAAPI weiß nichts von `prefers-reduced-motion`.** Die Antwort auf „läuft Bewegung?" steht
+  jetzt als `--motion` an einer Stelle im Stilblatt, und beide Ebenen lesen sie. Vorher hätte
+  es zwei gegeben, und eine davon wäre irgendwann vergessen worden.
+
+Der Prototyp bleibt als Vergleichsstück liegen: Der Schalter in seiner Kopfleiste zeigt
+weiterhin beide Verfahren nebeneinander.

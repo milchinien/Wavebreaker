@@ -18,24 +18,90 @@
 
 ## Offen
 
+0. **Die Randmarke unterscheidet Boss und Drohne nicht** — `drawApproach` zeichnet für jeden
+   Gegner dasselbe Winkelzeichen in derselben Größe. Ein anrollender Boss ist damit optisch
+   so laut wie ein Schwarmkrümel, obwohl sein Radius das Vierfache ist.
+   (War Punkt 4; die Punkte 2 und 3 sind mit dem Münzbild hinfällig geworden — Münzen auf
+   dem Feld tragen keine Zahl mehr, also gibt es weder zwei Schriftgrade noch eine
+   springende Beschriftungsschwelle.)
+
 1. ~~**Gegner erscheinen aus dem Nichts**~~ — **hinfällig, nicht umgesetzt (2026-08-03).**
    Nachgemessen: Der Erscheinungsring liegt bei `SPAWN_RING_MARGIN` = 420 Einheiten, das Bild
    reicht nur `FIT_MARGIN` = 90 über die Station hinaus. Sichtbar sind je nach Fenster ±138
    bis ±436 Einheiten, der Ring liegt bei 476 bis 555 — in **jeder** gemessenen Konfiguration
    außerhalb. Ein Aufziehen am Erscheinungsort sähe niemand. Was hier fehlt, ist etwas
    anderes: ein Hinweis am Bildrand, aus welcher Richtung etwas kommt.
-2. **Zahlen auf dem Feld haben zwei Größen** — Münzbeschriftungen stehen bei 16 × Zoom,
-   aufsteigende Beträge bei 18 × Zoom. Zwei Schriftgrade nebeneinander für dieselbe Art
-   Zahl; einer davon sollte gehen.
-3. **Beim Einsammeln springen die Beschriftungen an** — dieselbe Ursache wie die eben
-   behobene Größenwanderung, nur eine Ebene weiter: Die Beschriftungsschwelle hängt am
-   Anteil an der **Summe**, und die schrumpft beim Einsammeln. Liegen zwanzig gleiche
-   Münzen, trägt keine eine Zahl; sammelt man auf zwölf herunter, tragen plötzlich alle eine.
-4. **Die Randmarke unterscheidet Boss und Drohne nicht** — `drawApproach` zeichnet für jeden
-   Gegner dasselbe Winkelzeichen in derselben Größe. Ein anrollender Boss ist damit optisch
-   so laut wie ein Schwarmkrümel, obwohl sein Radius das Vierfache ist.
+2. ~~**Zahlen auf dem Feld haben zwei Größen**~~ — hinfällig: Münzen tragen keine Zahl mehr,
+   damit steht auf dem Feld nur noch ein Schriftgrad.
+3. ~~**Beim Einsammeln springen die Beschriftungen an**~~ — hinfällig aus demselben Grund.
 
 ## Erledigt
+
+- **Knöpfe antworten mit einer rollenden Beschriftung** (2026-08-03) — Unter dem Zeiger fährt
+  die Beschriftung eines Knopfes eine Zeile nach oben aus dem Rahmen heraus, während dieselbe
+  Beschriftung von unten nachrückt; der Rahmen schneidet ab, was dabei herausfährt. Auf dem
+  Kaufknopf rollt nur die Beschriftung, der Preis bleibt stehen. Gesperrte Knöpfe rühren sich
+  nicht. Die Zweitfassung steht in `data-slide` und wird vom Stilblatt geholt — im Baum steht
+  der Text genau einmal.
+  Vorher sagte ein berührter Knopf dasselbe wie ein gewählter: heller werden. Farbe ist in
+  dieser Oberfläche aber schon vergeben — sie trennt „gewählt" von „gesperrt". Die Bewegung
+  stellt sich nicht in diese Reihe und nimmt keiner Farbe ihre Bedeutung weg.
+
+- **Der Angriffsradius steht um die Station, der Sammelradius verschwindet** (2026-08-03) —
+  Um die Station liegt jetzt dauerhaft der Reichweitenkreis des Hauptturms: eine sehr blasse
+  Fläche mit klarer Kante, die langsam atmet. Der Kreis am Zeiger, der den Sammelradius
+  zeigte, ist ersatzlos weg, und der Sammelradius selbst ist von 90 auf 34 Einheiten
+  geschrumpft — genau die Größe eines Stapels.
+  Vorher hießen zwei Anzeigen „Reichweite" und meinten Verschiedenes: Die eine sagte etwas
+  über die Maus, die andere über das Spiel. Jetzt gibt es nur noch die zweite, und
+  Einsammeln ist wieder eine Bewegung, die man ausführen muss, statt eines Radius, der
+  ohnehin schon über allem lag.
+
+- **Das Bild ist herausgezoomt** (2026-08-03) — In den Bildausschnitt geht jetzt ein
+  gedeckelter Bruchteil der Hauptturm-Reichweite ein (0,9, höchstens 260 Einheiten), der
+  feste Rand fiel von 90 auf 70, die Zoom-Obergrenze von 2,2 auf 1,35.
+  Nachgemessen auf 420 × 660: Zoom 0,66 statt 1,44, ein Modul 37 px statt 80. Der
+  Angriffskreis passt damit ins Bild, und Gegner sind zu sehen, bevor sie an der Station
+  stehen — vorher füllte die Startstation aus einem einzigen Sechseck das halbe Bild.
+
+- **Die untere Leiste gibt das Spielfeld frei** (2026-08-03) — Die beiden Statuskarten sind
+  aus der Leiste verschwunden; ihre Zahlen stehen jetzt als schmale Schilder über dem Feld
+  (Gold oben links, Welle oben rechts, Stations-HP als Leiste direkt über der Bedienung).
+  Das Upgrade-Panel hat eine feste Höhe statt 32 vh.
+  Nachgemessen auf 960 × 640 nimmt die Leiste 22,7 Prozent der Bildhöhe ein statt 44 — das
+  Spielfeld hat sich von gut der Hälfte auf gut drei Viertel vergrößert. Die
+  Navischaltflächen sind dabei nicht kleiner geworden, sondern größer (62 statt 56 px):
+  Zwischen Basis und Kampf wird ständig gewechselt.
+
+- **Münzen sind Münzen** (2026-08-03) — Liegendes Gold wird als Bild aus dem Münzsatz
+  gezeichnet, in drei Wertstufen (bronze, silber, gold) und mit einem Glanzlauf, dessen
+  Versatz aus dem Ort der Münze kommt. Die aufgedruckte Zahl ist weg.
+  Der Wert steht damit in Größe **und** Metall, beide nach demselben Maß — dem Vielfachen
+  des Durchschnitts. Eine Zahl auf einer 14 Pixel großen Scheibe war ohnehin nur bei wenigen
+  lesbar und machte aus liegendem Gold eine Tabelle.
+
+- **Treffer und Tod tragen Bilder** (2026-08-03) — Der Einschlag am Gegner ist ein blauer
+  Aufschlag, ein kritischer Treffer ein goldener Funkenwurf, der Zerfall eine violette
+  Explosion — alle drei aus dem Effektsatz, alle drei an bestehende Ereignisse gehängt.
+  Der Treffer auf die eigene Station behält bewusst den gezeichneten Magenta-Ring: Blau und
+  Gold ließen einen Schlag gegen das eigene Haus wie einen Erfolg aussehen. Fehlt ein Bild
+  noch, bleibt überall die gezeichnete Fassung stehen — ein fehlender Anlagenteil darf nie
+  ein leeres Feld ergeben.
+
+- **Bereichswechsel sind Bewegungen** (2026-08-03) — Das Alte tritt erst ab (150 ms, in
+  seine eigene Richtung, mit Weichzeichnung), dann wechselt der Bereich, dann fahren die
+  neuen Panels gestaffelt auf (~40 ms je Nachbar). Gleichzeitig tritt das Spielfeld über die
+  Kamera einen Wimpernschlag zurück und kommt von selbst wieder.
+  Der Wechsel wirkt dadurch wie eine Maschine, die umschaltet, statt wie zwei Bilder
+  hintereinander — auch die Ebene, die eigentlich stehen bliebe, bewegt sich mit. Ein
+  zweiter Tipp während des Wechsels startet keinen zweiten, schreibt aber das Ziel um.
+
+- **Neon statt blau** (2026-08-03) — Der Grund ist tiefer geworden und trägt jetzt einen
+  Schein um die Mitte und eine Abdunklung zu den Ecken; jede Kante in der Oberfläche hat
+  einen äußeren und einen inneren Schein, festgelegt in drei Stufen an einer Stelle
+  (`--glow-*`). Rahmen, Leisten und Symbole kommen aus dem Anlagensatz (`docs/anlagen.md`).
+  Erst der **innere** Schein macht aus einem Rahmen eine Leuchtröhre — ohne ihn ist Neon nur
+  ein blauer Strich.
 
 - **Die Größe einer Münze bleibt beim Einsammeln stehen** (2026-08-03) — Der Radius folgt
   jetzt dem Vielfachen des Durchschnitts statt dem Anteil an der Summe; nachgemessen bleibt
@@ -179,6 +245,25 @@
   Die Nachbarschaftsregel ist damit gerichtet ablesbar: Man sieht nicht nur, *dass* zwei
   Module verbunden sind, sondern *wer wem* hilft — ohne einen Satz Text.
 
+- **Was bleibt, wandert** (2026-08-03) — Der Bereichswechsel schaltet jetzt in einem einzigen
+  Bild um; bewegt wird danach nur noch die Optik. Panels, die es in beiden Bereichen gibt,
+  fahren von ihrem alten an ihren neuen Platz (FLIP, `src/ui/flip.ts`, ~130 Zeilen ohne
+  Abhängigkeit), und nur was wirklich verschwindet, tritt ab — dafür an seinen letzten Ort
+  genagelt, damit es beim Gehen nichts mehr verschiebt.
+  Zwischen Kampf und Upgrades verschwindet kein einziges Panel; vorher ließ das Spiel trotzdem
+  alle fünf abtreten und wieder auffahren und behauptete damit einen Wechsel, den es nicht
+  gab. Nachgemessen wandern dort Rumpfleiste, Temporegler, Navileiste und Upgrade-Panel je
+  195 Pixel nach oben, statt zu blinken. Nebenbei fiel die Wartezeit von 160 ms zwischen Klick
+  und Wechsel weg, und mit ihr die Buchhaltung für den zweiten Klick.
+
+- **Der Ausgang schreibt sich selbst** (2026-08-03) — Eine geschaffte Welle setzt VICTORY in
+  grünem Neon in die Mitte des Feldes, eine verlorene DEFEAT in Magenta samt Ruck; der
+  Schriftzug tippt sich Buchstabe für Buchstabe mit ungleichmäßigem Anschlag und blinkendem
+  Cursor, steht anderthalb Sekunden und geht von selbst wieder.
+  Eine Welle endete bisher in einem einzigen Bild — der Zähler sprang, das Feld war leer.
+  Der laufende Anschlag gibt dem Ausgang eine *Dauer* und zieht das Auge in die Mitte,
+  während die Wellenmeldung oben weiter die Einzelheit trägt.
+
 - **Wellenübergang** (2026-08-03) — Jede neue Welle wird einmal groß über dem Feld benannt
   und verschwindet von selbst wieder, in Bosswellen in Magenta; die Boss-Leiste fährt mit
   Anlauf auf, und ein gefallener Boss hallt in drei Ringen nach, die verschieden schnell
@@ -222,4 +307,3 @@
   untere Leiste von unten; der gewählte Reiter quittiert mit einem kurzen Stupser.
   Der Wechsel zwischen Kampf und Basis wirkt dadurch wie ein Umschalten derselben Maschine
   statt wie ein Bildwechsel, und das Auge findet nach dem Klick sofort wieder, wo es war.
-

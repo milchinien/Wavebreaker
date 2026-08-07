@@ -82,6 +82,24 @@ export type TowerDef = {
   description: string
 }
 
+/**
+ * Zur Reichweite: Sie ist bei **allen** Tuermen auf 70 % ihres urspruenglichen Wertes
+ * gekuerzt (2026-08-04).
+ *
+ * Der Grund liegt nicht am einzelnen Turm, sondern an der Summe. Was der Spieler sieht, ist
+ * die Vereinigung aller Wirkungskreise (`rangeCircles` in `sim/towers.ts`), und ein Turm
+ * bringt seinen Anbauabstand mit: Er sitzt rund 65 bis 97 Einheiten vor dem Kern und legt
+ * seine Reichweite **dort** an. Der Marksman kam damit auf 485 Einheiten ab der Mitte,
+ * mehr als das Doppelte des Kerns (220) - die Station verschwand in ihrem eigenen
+ * Wirkungsbereich, und weil der Bildausschnitt ihn mit einrechnet, wurde sie im Bild
+ * entsprechend klein.
+ *
+ * Gekuerzt wurde **anteilig und ausnahmslos**, nicht turmweise nachjustiert: Jeder Abstand
+ * zwischen zwei Tuermen bleibt damit genau erhalten, der Marksman reicht weiter als der
+ * Laser und der Flamer bleibt der kuerzeste. Ein Deckel haette dieselbe Zahl fuer mehrere
+ * Tuerme erzwungen und ihre Rangfolge eingeebnet - und "Reichweite: sehr hoch" aus GDD 05
+ * meint einen Vergleich unter Tuermen, keinen festen Wert.
+ */
 export const TOWERS: readonly TowerDef[] = [
   {
     id: 'autocannon',
@@ -89,7 +107,7 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 4,
     emblem: 'bars',
     category: 'attack',
-    stats: makeStats(8, 6, 140, 0.05, 520),
+    stats: makeStats(8, 6, 100, 0.05, 520),
     accent: '#46c8ff',
     description: 'Rapid fire. Low damage per shot, very high rate.',
   },
@@ -99,7 +117,7 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 4,
     emblem: 'chevron',
     category: 'attack',
-    stats: makeStats(90, 0.6, 200, 0.1, 300),
+    stats: makeStats(90, 0.6, 140, 0.1, 300),
     accent: '#ffcc33',
     description: 'Heavy gun. High damage, slow, good range.',
   },
@@ -136,7 +154,7 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 3,
     emblem: 'chevron',
     category: 'attack',
-    stats: makeStats(220, 0.35, 420, 0.25, 900),
+    stats: makeStats(220, 0.35, 295, 0.25, 900),
     // Keine eigene Mechanik - seine Identitaet ist die Zielwahl. Genau so soll ein neuer
     // Turm im Regelfall aussehen: ein Datensatz.
     targetMode: 'strongest',
@@ -149,7 +167,7 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 3,
     emblem: 'chevron',
     category: 'area',
-    stats: makeStats(55, 0.8, 230, 0.05, 260),
+    stats: makeStats(55, 0.8, 160, 0.05, 260),
     mechanic: { kind: 'explosive', radius: 90, share: 0.7 },
     unlock: 'tech.rocket',
     accent: '#ff9a3c',
@@ -162,7 +180,7 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 3,
     emblem: 'bars',
     category: 'special',
-    stats: makeStats(34, 6, 260, 0.08, 0),
+    stats: makeStats(34, 6, 180, 0.08, 0),
     mechanic: { kind: 'beam' },
     unlock: 'tech.laser',
     accent: '#2ee0c0',
@@ -175,7 +193,7 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 6,
     emblem: 'star',
     category: 'special',
-    stats: makeStats(26, 2.2, 190, 0.05, 700),
+    stats: makeStats(26, 2.2, 135, 0.05, 700),
     mechanic: { kind: 'chain', hops: 3, falloff: 0.6 },
     unlock: 'tech.tesla',
     accent: '#b45cff',
@@ -187,7 +205,7 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 3,
     emblem: 'bars',
     category: 'area',
-    stats: makeStats(9, 5, 120, 0.02, 420),
+    stats: makeStats(9, 5, 85, 0.02, 420),
     mechanic: { kind: 'burn', dps: 26, duration: 3 },
     accent: '#ff6a2d',
     description: 'Short range, sets enemies on fire. The burn keeps working after the shot.',
@@ -198,7 +216,7 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 4,
     emblem: 'star',
     category: 'special',
-    stats: makeStats(14, 1.6, 200, 0.03, 480),
+    stats: makeStats(14, 1.6, 140, 0.03, 480),
     mechanic: { kind: 'chill', factor: 0.55, duration: 2.5 },
     accent: '#7fd8ff',
     description: 'Slows what it hits. Buys the other towers time.',
@@ -221,7 +239,7 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 5,
     emblem: 'star',
     category: 'area',
-    stats: makeStats(140, 0.7, 250, 0.12, 320),
+    stats: makeStats(140, 0.7, 175, 0.12, 320),
     mechanic: { kind: 'explosive', radius: 130, share: 0.85 },
     unlock: 'tech.plasma',
     accent: '#ff2d78',
@@ -233,7 +251,7 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 5,
     emblem: 'core',
     category: 'special',
-    stats: makeStats(70, 1.1, 240, 0.1, 300),
+    stats: makeStats(70, 1.1, 170, 0.1, 300),
     mechanic: { kind: 'chill', factor: 0.4, duration: 3.5 },
     accent: '#8f7dff',
     description: 'Black energy spheres that slow everything they touch.',
@@ -267,4 +285,3 @@ export function towerById(id: string): TowerDef {
 export function isKnownTower(id: string): boolean {
   return BY_ID.has(id)
 }
-

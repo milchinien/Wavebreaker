@@ -2,7 +2,7 @@
  * Embleme: das Zeichen im Inneren eines Moduls. Reine Wiedererkennung, keine Mechanik -
  * die steckt in der Grundflaeche (Anzahl der Anschlusskanten, GDD 03 Abschnitt 7).
  *
- * Waechst mit den Inhalten: E1 kennt nur den Kern, die Turm-Embleme kommen in E3.
+ * Waechst mit den Inhalten. Die restlichen Zeichen kommen mit den Tuermen in E14.
  */
 
 import type { Vec2 } from '../core/vec.ts'
@@ -78,4 +78,3 @@ export function drawEmblem(
 
   ctx.restore()
 }
-

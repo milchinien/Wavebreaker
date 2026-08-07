@@ -18,7 +18,6 @@
 
 import type { SpeedFactor } from '../core/loop.ts'
 import { t } from '../data/strings.ts'
-import { setSlideLabel } from './slide.ts'
 
 export type SettingsControls = {
   speed(): SpeedFactor
@@ -77,7 +76,7 @@ export function mountSettings(root: HTMLElement, controls: SettingsControls): Se
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'chip'
-    setSlideLabel(button, t('hud.speedShort', { factor }))
+    button.textContent = t('hud.speedShort', { factor })
     button.addEventListener('click', () => {
       controls.setSpeed(factor)
       update()
@@ -109,10 +108,8 @@ export function mountSettings(root: HTMLElement, controls: SettingsControls): Se
     button.className = 'chip'
     // Null heisst "stumm" und nicht "null Prozent": Der Spieler sucht einen Ausschalter,
     // keinen Wert am Ende einer Reihe.
-    setSlideLabel(
-      button,
-      step === 0 ? t('settings.mute') : t('settings.volumeStep', { value: Math.round(step * 100) }),
-    )
+    button.textContent =
+      step === 0 ? t('settings.mute') : t('settings.volumeStep', { value: Math.round(step * 100) })
     button.addEventListener('click', () => {
       controls.setVolume(step)
       update()
@@ -125,12 +122,12 @@ export function mountSettings(root: HTMLElement, controls: SettingsControls): Se
   const hintButton = document.createElement('button')
   hintButton.type = 'button'
   hintButton.className = 'chip'
-  setSlideLabel(hintButton, t('settings.reset'))
+  hintButton.textContent = t('settings.reset')
   hintButton.addEventListener('click', () => {
     controls.resetHints()
     // Eine Quittung, weil das Zuruecksetzen sonst nichts Sichtbares tut: Der erste Hinweis
     // erscheint erst, wenn seine Bedingung wieder zutrifft.
-    setSlideLabel(hintButton, t('settings.hintsDone'))
+    hintButton.textContent = t('settings.hintsDone')
   })
   row(root, t('settings.hints')).appendChild(hintButton)
 
@@ -138,7 +135,7 @@ export function mountSettings(root: HTMLElement, controls: SettingsControls): Se
   const cameraButton = document.createElement('button')
   cameraButton.type = 'button'
   cameraButton.className = 'chip'
-  setSlideLabel(cameraButton, t('settings.reset'))
+  cameraButton.textContent = t('settings.reset')
   cameraButton.addEventListener('click', () => controls.resetCamera())
   row(root, t('settings.camera')).appendChild(cameraButton)
 
@@ -152,6 +149,9 @@ export function mountSettings(root: HTMLElement, controls: SettingsControls): Se
     for (const [factor, button] of speedButtons) button.classList.toggle('active', factor === current)
 
     setToggle(buffButton, controls.buffLines())
+    setToggle(effectButton, controls.effects())
+    setToggle(motionButton, controls.motion())
+
     const volume = controls.volume()
     for (const entry of volumeButtons) {
       entry.button.classList.toggle('active', Math.abs(entry.value - volume) < 0.01)
@@ -198,9 +198,3 @@ function row(root: HTMLElement, label: string): HTMLElement {
   root.appendChild(line)
   return controls
 }
-
-  line.append(name, controls)
-  root.appendChild(line)
-  return controls
-}
-

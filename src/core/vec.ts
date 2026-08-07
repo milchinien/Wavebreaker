@@ -36,4 +36,3 @@ export function approach(current: number, target: number, rate: number, dt: numb
   const k = 1 - Math.exp(-rate * dt)
   return current + (target - current) * k
 }
-

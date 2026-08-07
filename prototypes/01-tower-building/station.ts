@@ -223,4 +223,3 @@ export function move(st: Station, uid: string, to: FreeEdge): void {
   inst.placement = { center, rotation }
   inst.poly = poly
 }
-

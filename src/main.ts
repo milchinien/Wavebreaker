@@ -152,8 +152,10 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
   // Hängt sich an `prestige.done` und tut sonst nichts - wie der Klang ein Anschluss,
   // kein Einbau.
   mountSurge(targets.overlay)
-  // Dasselbe für den Ausgang einer Welle: VICTORY oder DEFEAT, groß in der Mitte.
-  mountOutcome(targets.overlay, () => preferences.motion)
+  // Dasselbe für den Ausgang einer Welle: VICTORY oder DEFEAT, groß in der Mitte. Ob sich
+  // der Schriftzug schreibt, fragt er selbst am Stilblatt nach (`--motion`) - so hört er
+  // auch auf die Einstellung des Betriebssystems und nicht nur auf den Schalter im Spiel.
+  mountOutcome(targets.overlay)
 
   // Seit es das echte HUD gibt, ist die Entwickleranzeige nur noch auf Anforderung da -
   // im normalen Bild hat sie nichts verloren.
@@ -379,4 +381,3 @@ function showSelfTestReport(canvas: HTMLCanvasElement, root: HTMLElement): void 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[char] ?? char)
 }
-

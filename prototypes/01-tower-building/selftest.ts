@@ -553,4 +553,3 @@ export function runSelfTests(): TestResult[] {
 
   return [...results]
 }
-

@@ -141,4 +141,3 @@ function droneSpecOf(
 function accentOf(module: PlacedModule): string {
   return module.kind === 'tower' ? towerById(module.defId).accent : '#7fd8ff'
 }
-

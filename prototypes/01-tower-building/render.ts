@@ -405,4 +405,3 @@ export function render(
   else drawDetachPreview(ctx, app, cam, w, h)
   if (app.showEdgeDebug) drawEdgeDebug(ctx, app, cam, w, h)
 }
-

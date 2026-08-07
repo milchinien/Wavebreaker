@@ -194,4 +194,3 @@ export function pointInPolygon(point: Vec2, poly: readonly Vec2[]): boolean {
   }
   return true
 }
-

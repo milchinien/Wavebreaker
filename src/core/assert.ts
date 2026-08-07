@@ -89,4 +89,3 @@ export function takeResults(): TestResult[] {
   currentSuite = 'allgemein'
   return taken
 }
-

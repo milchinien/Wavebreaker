@@ -30,6 +30,20 @@ Gegner erscheinen auf einem **Ring rund um die Station** — aus allen Richtunge
 
 Daraus folgt: Die Station muss in alle Richtungen verteidigt werden. Wo ein Turm steht, bestimmt, welche Seite er gut abdeckt (→ [05, Abschnitt 4](05-turm-system-und-turmtypen.md)).
 
+### Anmarsch: schnell, bis es zählt
+
+Der Erscheinungsring liegt weit außerhalb jeder Reichweite. Solange ein Gegner **keinen Wirkungskreis berührt**, läuft er deshalb mit doppeltem Tempo; sobald er einen auch nur streift, fällt er auf sein normales Tempo zurück.
+
+| | Regel |
+|---|---|
+| Grenze | dieselbe, an der die Zielwahl greift — Rand des Gegners am Rand des Kreises |
+| Wirkung | Faktor auf das Lauftempo, **multiplikativ** zu Verlangsamungen |
+| Sichtbarkeit | genau die gezeichnete Fläche (→ [13, Abschnitt 4](13-ui-und-visuelles-design.md)) |
+
+**Warum:** Der Weg vom Ring bis zur ersten Reichweite ist keine Spielentscheidung — dort geschieht nichts, was der Spieler beeinflussen könnte. Ihn schnell zu durchlaufen kostet keine Tiefe und gibt jeder Welle Zug. Die Grenze liegt bewusst dort, wo auch geschossen wird: Der gezeichnete Bereich bedeutet damit weiterhin genau eine Sache, und der Tempowechsel ist die Ankündigung des ersten Schusses statt einer zweiten, unsichtbaren Linie.
+
+Eine Verlangsamung bleibt im Anmarsch wirksam: Sie multipliziert mit, statt vom Anmarschtempo überschrieben zu werden. Sonst wäre ein Frost- oder Zeitverzerrungs-Effekt auf einen Gegner, der gerade wieder aus der Reichweite gerät, folgenlos.
+
 ### Spawn-Takt: gestaffelt
 
 Die Gegner einer Welle erscheinen **nicht auf einmal**, sondern strömen in kurzen Abständen nach, bis das Kontingent der Welle aufgebraucht ist.
@@ -335,4 +349,3 @@ Damit ist jede Welle eine in sich abgeschlossene Prüfung: Schaffe ich diese Wel
 **Kein Game Over.** Scheitert der Spieler an einer Welle, beginnt **dieselbe Welle erneut** — mit voller HP. Er verliert keinen Fortschritt, sammelt weiter Gold, kauft Upgrades und verbessert seinen Build.
 
 > Weil jede Welle voll geheilt startet, entsteht die Schwierigkeit ausschließlich aus der Frage, ob die Verteidigung den Gegnerdruck **innerhalb einer Welle** aushält. Das macht das Balancing pro Welle berechenbar und passt zum Idle-Charakter.
-

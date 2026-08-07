@@ -499,4 +499,3 @@ export function contentSuite(): void {
     assertEqual(enemyById(second.defId).id, 'drone')
   })
 }
-

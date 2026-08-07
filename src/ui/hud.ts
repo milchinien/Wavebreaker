@@ -664,4 +664,3 @@ function iconButton(name: IconName, title: string, onClick: () => void): HTMLBut
 function clamp(value: number): number {
   return Math.max(0, Math.min(1, value))
 }
-

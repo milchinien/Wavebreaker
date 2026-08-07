@@ -322,4 +322,3 @@ function drawBackground(ctx: CanvasRenderingContext2D, width: number, height: nu
   ctx.fillStyle = shade
   ctx.fillRect(0, 0, width, height)
 }
-

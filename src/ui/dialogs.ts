@@ -53,6 +53,7 @@ import { moduleTile, towerIcon } from './icons.ts'
 import { createMotes } from './motes.ts'
 import { setSlideLabel } from './slide.ts'
 import { hideTooltip, showTooltip } from './tooltip.ts'
+import { createTypewriter } from './typewriter.ts'
 
 export type Dialogs = {
   /** Pro Bild aufrufen - baut nur neu, wenn sich das Angebot geaendert hat. */
@@ -185,6 +186,29 @@ export function mountDialogs(
   returnBackdrop.appendChild(returnPanel)
   overlay.appendChild(returnBackdrop)
 
+  /*
+   * Die Anrede jedes Fensters schreibt sich (`ui/typewriter.ts`).
+   *
+   * Ein Fenster faehrt auf, und in dem Augenblick steht alles fertig da: Ueberschrift, Satz,
+   * drei Karten. Der Blick geht sofort auf die Karten - dort wird geklickt -, und der Satz
+   * darueber, der sagt, **warum** man gerade waehlt, wird ueberlesen. Der Anschlag dreht das
+   * um: Er nimmt den Blick fuer eine knappe Sekunde nach oben, bevor unten etwas zu holen
+   * ist. Beim Ereignis ist das der ganze Sinn der Sache - seine Beschreibung ist die einzige
+   * Erzaehlung des Spiels und stuende sonst als Kleingedrucktes ueber den Optionen.
+   *
+   * **Die Karten selbst tippen nicht.** Drei Karten, die gleichzeitig losschreiben, sind
+   * kein Anschlag mehr, sondern Flimmern - und man liest sie nicht der Reihe nach, sondern
+   * vergleicht sie. Sie fahren auf wie bisher.
+   *
+   * Je Fenster ein eigener Anschlag: Zwei Fenster koennen uebereinanderliegen (das Ereignis
+   * wartet unter dem Aufstieg), und ein gemeinsamer Anschlag schriebe dann in beiden.
+   */
+  const levelWriter = createTypewriter()
+  const offerWriter = createTypewriter()
+  const eventWriter = createTypewriter()
+  const traderWriter = createTypewriter()
+  const returnWriter = createTypewriter()
+
   /**
    * Woran erkannt wird, dass sich etwas geaendert hat.
    *
@@ -209,10 +233,14 @@ export function mountDialogs(
     towerBackdrop.hidden = offer.length === 0
     if (offer.length === 0) {
       towerCards.replaceChildren()
+      offerWriter.reset()
       return
     }
 
-    towerTitle.textContent = t('offer.title')
+    offerWriter.write(
+      { node: towerTitle, text: t('offer.title') },
+      { node: towerHint, text: t('offer.hint') },
+    )
     towerCards.replaceChildren()
     offer.forEach((entry, index) => {
       towerCards.appendChild(offerCard(entry, index, onChange, state))
@@ -233,26 +261,31 @@ export function mountDialogs(
     lastEvent = signature
 
     eventBackdrop.hidden = event === null
-    const offer = state.run.towerOffer
-    const signature = offer.map((entry) => `${entry.defId}:${entry.rarity}:${entry.traits.join('+')}`).join('|')
-    if (signature === lastOffer) return
-    lastOffer = signature
+    if (!event) {
+      eventCards.replaceChildren()
+      eventWriter.reset()
+      return
+    }
 
-    towerBackdrop.hidden = offer.length === 0
-    eventText.textContent = event.description
-      towerCards.replaceChildren()
+    // Erst der Name des Ereignisses, dann seine Beschreibung - ein Anschlag ueber zwei
+    // Zeilen, nicht zwei Anschlaege nebeneinander.
+    eventWriter.write(
+      { node: eventTitle, text: event.title },
+      { node: eventText, text: event.description },
+    )
+    eventCards.replaceChildren()
     for (const choice of event.choices) {
       eventCards.appendChild(eventCard(state, choice, onChange))
     }
   }
-    offerWriter.write({ node: towerTitle, text: t('offer.title') })
-    towerCards.replaceChildren()
+
+  /**
    * Das Sortiment der Haendler-Drohne.
-      towerCards.appendChild(offerCard(entry, index, onChange, state))
+   *
    * Es geht erst auf, wenn der Spieler sie **erreicht** hat - die Drohne landet in der
    * Arena, und dorthin muss man fahren (GDD 11 Abschnitt 7). Ein Fenster, das von selbst
    * aufginge, machte aus dem Weg dorthin eine Formalie.
-  /**
+   *
    * Anders als bei den anderen Fenstern werden die Karten nicht bei jeder Aenderung neu
    * gebaut: Wer einen Posten kauft, soll die anderen an ihrem Platz wiederfinden. Neu
    * gebaut wird nur bei einer **anderen** Drohne; Preis und Zustand schreibt `update`.
@@ -268,9 +301,13 @@ export function mountDialogs(
       traderRows = []
       traderCards.replaceChildren()
 
+      if (!open) traderWriter.reset()
+
       if (trader && open) {
-        traderTitle.textContent = t('trader.title')
-        traderText.textContent = t('trader.hint')
+        traderWriter.write(
+          { node: traderTitle, text: t('trader.title') },
+          { node: traderText, text: t('trader.hint') },
+        )
         trader.stock.forEach((offer, index) => {
           const row = traderCard(state, offer, index, onChange)
           traderRows.push(row)
@@ -306,10 +343,11 @@ export function mountDialogs(
     returnBackdrop.hidden = !shown
     if (!summary) {
       returnList.replaceChildren()
+      returnWriter.reset()
       return
     }
 
-    returnTitle.textContent = t('offline.title')
+    returnWriter.write({ node: returnTitle, text: t('offline.title') })
     returnList.replaceChildren()
     entry(returnList, t('offline.time'), formatDuration(summary.seconds))
     entry(returnList, t('offline.counted'), formatDuration(summary.simulated))
@@ -345,6 +383,7 @@ export function mountDialogs(
     if (pending === 0) {
       cards.replaceChildren()
       motes.setTones([])
+      levelWriter.reset()
       // Der Hinweis haengt an der Karte, nicht am Fenster - ohne diese Zeile stuende er
       // nach einem Klick weiter im Bild, waehrend seine Karte laengst weg ist.
       hideTooltip()
@@ -359,8 +398,10 @@ export function mountDialogs(
     // Die erreichte Stufe ist die, fuer die gerade gewaehlt wird - also die naechste nach
     // der zuletzt abgeholten, nicht die hoechste erreichte. Sonst stuende bei drei offenen
     // Aufstiegen dreimal dieselbe Zahl.
-    title.textContent = t('levelup.title', { level: state.run.level + 1 })
-    hint.textContent = t('levelup.hint')
+    levelWriter.write(
+      { node: title, text: t('levelup.title', { level: state.run.level + 1 }) },
+      { node: hint, text: t('levelup.hint') },
+    )
     more.textContent = pending > 1 ? t('levelup.more', { count: pending - 1 }) : ''
 
     cards.replaceChildren()
@@ -373,6 +414,9 @@ export function mountDialogs(
     update,
     detach() {
       hideTooltip()
+      for (const writer of [levelWriter, offerWriter, eventWriter, traderWriter, returnWriter]) {
+        writer.reset()
+      }
       backdrop.remove()
       towerBackdrop.remove()
       eventBackdrop.remove()
@@ -663,5 +707,4 @@ function perkInfo(state: GameState, perk: PerkDef): string {
 
   return head + rarity + text + rows + foot
 }
-
 

@@ -29,7 +29,7 @@ import { stepDrones } from './drones.ts'
 import { stepHelpers } from './helpers.ts'
 import { stepProgression } from './progression.ts'
 import { stepProjectiles } from './projectiles.ts'
-import { pruneCooldowns, stepTowers } from './towers.ts'
+import { pruneCooldowns, rangeCircles, stepTowers } from './towers.ts'
 import { maybeSendTrader, stepTrader } from './trader.ts'
 import { restartWave, stepWave } from './waves.ts'
 import type { BuffResult } from './buffs.ts'
@@ -77,6 +77,21 @@ export function stepBattle(state: GameState, dt: number): void {
   stepTrader(state, dt)
 
   stepWave(state, dt)
+  /*
+   * Die Wirkungskreise dieses Takts - **vor** der Bewegung, weil das Anmarschtempo daran
+   * haengt (GDD 07 Abschnitt 2).
+   *
+   * Hier und nicht in `sim/enemies.ts`: Diese Datei ist die einzige, die sowohl Gegner als
+   * auch Tuerme kennen darf. Wuerde `enemies` bei `towers` nachfragen, entstuende der Kreis
+   * `enemies -> towers -> combat -> enemies`, und die Reihenfolge waere nicht mehr an einer
+   * Stelle abzulesen.
+   *
+   * Der Preis ist ein zweiter Durchlauf durch die Werte-Kette je Takt - `stepTowers` rechnet
+   * sie weiter unten erneut. Die Reihenfolge laesst nichts anderes zu: Ereignisse und
+   * Faehigkeiten haben eben erst geschrieben, ein Ergebnis vom letzten Takt waere einen Takt
+   * alt und der Kreis damit falsch, sobald ein Buff greift.
+   */
+  combat.coverage = rangeCircles(state)
   // Erst was der Gegner **kann**, dann wohin er geht: Ein Teleporter soll in demselben
   // Takt springen, in dem er sich sonst bewegt hätte, nicht einen später.
   stepEnemyAbilities(state, dt)
@@ -104,4 +119,3 @@ export function stepBattle(state: GameState, dt: number): void {
   // Zum Schluss: Erst jetzt steht fest, was dieser Takt an Erfahrung gebracht hat.
   stepProgression(state)
 }
-

@@ -30,4 +30,3 @@ Was bewusst weggelassen wird, damit die Frage nicht verwässert.
 ## Übernahme ins Spiel
 
 Was davon wird im Spiel neu implementiert — und was bleibt hier liegen?
-

@@ -247,4 +247,3 @@ Auch die **Qualität der Eigenschaften** wird über den Prestige-Baum freigescha
 
 Türme, Inventar und alle Turm-Upgrades werden beim Prestige zurückgesetzt. Erhalten bleiben die freigeschalteten Raritäten, Eigenschaften und Turmtypen.
 → [10 – Prestige-System](10-prestige-system.md)
-

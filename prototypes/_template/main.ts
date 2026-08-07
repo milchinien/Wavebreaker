@@ -76,4 +76,3 @@ function frame(now: number): void {
 }
 
 requestAnimationFrame(frame)
-

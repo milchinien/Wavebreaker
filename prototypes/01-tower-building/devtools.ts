@@ -25,12 +25,15 @@ export function growRandom(st: Station, count: number, seed = 1): number {
   const rnd = makeRng(seed)
   let placed = 0
 
+  // Das Turmplatz-Limit ist eine Spielregel, keine Baubeschraenkung des Werkzeugs.
+  st.slots = Math.max(st.slots, count)
+
   while (st.placed.length < count) {
     const options: { defId: string; edgeIndex: number; ownerUid: string }[] = []
     const edges = freeEdges(st)
     for (const fe of edges) {
       for (const def of TOWERS) {
-        if (canPlace(st, def.id, fe, 'devtools') === null) {
+        if (canPlace(st, def.id, fe) === null) {
           options.push({ defId: def.id, edgeIndex: fe.edgeIndex, ownerUid: fe.ownerUid })
         }
       }
@@ -45,4 +48,3 @@ export function growRandom(st: Station, count: number, seed = 1): number {
   }
   return placed
 }
-

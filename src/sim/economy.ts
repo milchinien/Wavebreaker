@@ -33,16 +33,31 @@ export type Coin = {
 
 /** Wie viel Gold ein Gegner faellen laesst - samt globalem Gold-Bonus (GDD 08 Abschnitt 5.3). */
 export function goldValueFor(state: GameState, enemy: Enemy): number {
-  return enemy.goldReward * globalMultiplier(state.run.upgrades, 'goldBonus')
+  return enemy.goldReward * globalMultiplier(state, 'goldBonus')
 }
 
 /** Sammelradius samt globalem Upgrade. */
 export function collectRadius(state: GameState): number {
-  return COLLECT_RADIUS * globalMultiplier(state.run.upgrades, 'collectRadius')
+  return COLLECT_RADIUS * globalMultiplier(state, 'collectRadius')
 }
 
 export function dropGold(state: GameState, pos: Vec2, amount: number): void {
   if (!Number.isFinite(amount) || amount <= 0) return
+
+  /*
+   * Waehrend der Abwesenheit sieht niemand zu, und niemand faehrt mit dem Zeiger ueber das
+   * Feld. Das Gold wird deshalb **direkt gutgeschrieben** - so steht es in GDD 12
+   * Abschnitt 3, und es ist die einzige Stelle, an der die Regel "Gold wird eingesammelt"
+   * eine Ausnahme kennt.
+   *
+   * Der Nebeneffekt ist erheblich: Ohne diese Zeile lagen nach acht Stunden zehntausende
+   * Muenzen im Feld, die bei jedem weiteren Fund neu verdichtet werden wollten. Das war
+   * der weitaus groesste Posten der ganzen Rechnung.
+   */
+  if (!state.runtime.combat.observed) {
+    grantReward(state, { gold: amount }, 'offline')
+    return
+  }
 
   const coins = state.run.coins
   coins.push({ x: pos.x, y: pos.y, value: amount, count: 1 })
@@ -148,6 +163,20 @@ export function collectAt(
 }
 
 /**
+ * Das ganze Feld abraeumen.
+ *
+ * Nur fuer den Abwesenheitsertrag (GDD 12 Abschnitt 3): Waehrend niemand da ist, gibt es
+ * auch niemanden, der mit dem Zeiger ueber das Feld faehrt. Im laufenden Spiel gibt es
+ * diese Abkuerzung nicht - dort ist das Einsammeln die zentrale aktive Handlung.
+ *
+ * Laeuft ueber `collectAt` mit unendlichem Radius statt ueber einen eigenen Weg, damit
+ * Gold auch hier nur an einer einzigen Stelle vom Feld in die Kasse kommt.
+ */
+export function collectAll(state: GameState): number {
+  return collectAt(state, { x: 0, y: 0 }, Infinity)
+}
+
+/**
  * Gesamtwert des Goldes im Umkreis eines Punktes - ohne es einzusammeln.
  *
  * Reine Auskunft fuer die Anzeige: Der Sammelradius soll anziehen, sobald etwas darin
@@ -167,4 +196,3 @@ export function goldOnField(state: GameState): number {
   for (const coin of state.run.coins) total += coin.value
   return total
 }
-

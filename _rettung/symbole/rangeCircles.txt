@@ -1,0 +1,149 @@
+﻿Gesucht: rangeCircles
+Erwaehnungen: 15, davon Definitionen: 3
+
+======== 01AdKuuazG #4 Read/Ergebnis E:/spiele/Desktop/The Tower/src/sim/towers.ts ========
+ * ihre Aussengrenze als Scheibe. Der Unterschied ist keine Feinheit: Eine Scheibe um die
+ * groesste Reichweite verspraeche Deckung auf der Gegenseite, wo kein Turm steht.
+ *
+ * Der Kern ist dabei kein Sonderfall - er ist ein Modul mit eigenen Werten und liefert
+ * seinen Kreis wie jeder Turm.
+ */
+export function rangeCircles(state: GameState): RangeCircle[] {
+  const combat = state.runtime.combat
+  const circles: RangeCircle[] = []
+
+  for (const module of combat.modules) {
+    if (!canFire(module)) continue
+
+    const stats = moduleStats(module, combat.buffs.get(module.uid), state).final
+    if (!shoots(stats)) continue
+
+    circles.push({ center: module.center, range: stats.range })
+  }
+
+  // Vor dem ersten Takt kennt die Simulation noch keine Module. Dann gilt der Grundwert des
+  // Kerns, damit der Kreis schon im allerersten Bild steht statt aufzuspringen.
+  if (circles.length === 0) circles.push({ center: CORE_CENTER, range: coreRange(state) })
+
+  return circles
+}
+
+/**
+ * Die Aussengrenze einer fertigen Kreisliste: weiter als so weit trifft nichts mehr.
+ *
+ * Nimmt die Kreise entgegen, statt sie selbst zu holen. Der Zeichenpfad braucht **beides**
+ * je Bild - die Liste fuer den Wirkungsbereich, die Zahl fuer den Bildausschnitt - und
+ * `rangeCircles` ist nicht billig: Es rechnet fuer jedes Modul die volle Werte-Kette durch
+ * und legt dabei je Modul sechs Zwischenobjekte an. Zweimal je Bild war das doppelte Arbeit
+ * und doppelter Muell fuer den Speicherbereiniger, dessen Aufraeumen man als Ruckler sieht.
+ */
+export function outerReach(circles: readonly RangeCircle[]): number {
+  let reach = 0
+  for (const circle of circles) {
+    reach = Math.max(reach, dist(CORE_CENTER, circle.center) + circle.range)
+  }
+  return reach
+}
+
+/**
+ * Die Aussengrenze der Station - dieselbe Zahl, aber selbst geholt.
+ *
+ * Eine einzelne Zahl, und deshalb bewusst **nicht** das, was gezeichnet wird - sie sagt
+ * nichts darueber, in welche Richtung diese Reichweite gilt. Fuer Aufrufer, die nur die Zahl
+ * brauchen und keine Kreise in der Hand halten.
+ */
+export function stationRange(state: GameState): number {
+  return outerReach(rangeCircles(state))
+}
+
+/** Die Spezialmechanik eines Moduls. Der Hauptturm hat keine. */
+function mechanicOf(module: PlacedModule): TowerMechanic | null {
+  if (module.kind === 'core') return null
+  return towerById(module.defId).mechanic ?? null
+}
+
+/**
+ * Ein einzelner Schuss - hier faechert sich die Mechanik auf (GDD 05 Abschnitt 2).
+ *
+ * Jeder Zweig ist **eine Zeile Wirkung**: Die Mechaniken selbst liegen in `sim/combat.ts`
+ * und kennen keinen Turm. Ein neuer Turm mit vorhandener Mechanik faellt deshalb in einen
+ * bestehenden Zweig und beruehrt diese Funktion nicht - genau das ist die Abnahme von E14.
+ */
+   ...
+
+======== 01AdKuuazG #6 Grep/Ergebnis  ========
+src\render\scene.ts:18:import { outerReach, rangeCircles } from '../sim/towers.ts'
+src\render\scene.ts:97:  // Liste fuer den Wirkungsbereich. `rangeCircles` rechnet fuer jedes Modul die volle
+src\render\scene.ts:99:  const circles = rangeCircles(state)
+src\render\scene.ts:101:  fitTo(camera, view.polys, width, height, rangeAllowance(outerReach(circles)))
+src\selftest\suites\combat.ts:28:  stepEnemies,
+src\selftest\suites\combat.ts:43:import { rangeCircles, stationRange, stepTowers } from '../../sim/towers.ts'
+src\selftest\suites\combat.ts:132:    runTicks(state, 60, (s) => stepEnemies(s, STEP))
+src\selftest\suites\combat.ts:140:    runTicks(state, 60 * 60, (s) => stepEnemies(s, STEP))
+src\selftest\suites\combat.ts:155:    stepEnemies(state, STEP)
+src\selftest\suites\combat.ts:159:    runTicks(state, 60, (s) => stepEnemies(s, STEP))
+src\selftest\suites\combat.ts:166:    stepEnemies(state, STEP)
+src\selftest\suites\combat.ts:370:    assertEqual(rangeCircles(state).length, 1) // nur der Kern
+src\selftest\suites\combat.ts:373:    const circles = rangeCircles(state)
+src\selftest\suites\combat.ts:387:    const vorher = rangeCircles(state).length
+src\selftest\suites\combat.ts:389:    assertEqual(rangeCircles(state).length, vorher)
+src\selftest\suites\combat.ts:394:    const kern = stationRange(state)
+src\selftest\suites\combat.ts:404:    assertClose(stationRange(state), Math.max(kern, abstand + eigene), 1e-6)
+src\selftest\suites\combat.ts:406:    assert(stationRange(state) >= kern, 'ein Turm darf den Wirkungsbereich nie schrumpfen')
+src\sim\battle.ts:26:import { releaseStaleDocks, stepEnemies, stepEnemyAbilities } from './enemies.ts'
+src\sim\battle.ts:83:  stepEnemies(state, dt)
+src\render\combat.ts:895: * schiesst (`rangeCircles` in `sim/towers.ts`). Ein einzelner Kreis um den Kern waere in
+src\sim\enemies.ts:485:export function stepEnemies(state: GameState, dt: number): void {
+src\sim\stats.ts:229: * Sie ist der Rueckfallwert des Wirkungsbereichs (`rangeCircles` in `sim/towers.ts`): Vor
+src\sim\towers.ts:91: * Reichweitenkreis um die Station (`stationRange`). Ein Kreis, der etwas anderes verspricht,
+src\sim\towers.ts:125:export function rangeCircles(state: GameState): RangeCircle[] {
+src\sim\towers.ts:150: * `rangeCircles` ist nicht billig: Es rechnet fuer jedes Modul die volle Werte-Kette durch
+src\sim\towers.ts:154:export function outerReach(circles: readonly RangeCircle[]): number {
+src\sim\towers.ts:169:export function stationRange(state: GameState): number {
+src\sim\towers.ts:170:  return outerReach(rangeCircles(state))
+   ...
+
+======== 011XLKayxr #20 Read/Ergebnis E:\spiele\Desktop\The Tower\src\sim\towers.ts ========
+ * ihre Aussengrenze als Scheibe. Der Unterschied ist keine Feinheit: Eine Scheibe um die
+ * groesste Reichweite verspraeche Deckung auf der Gegenseite, wo kein Turm steht.
+ *
+ * Der Kern ist dabei kein Sonderfall - er ist ein Modul mit eigenen Werten und liefert
+ * seinen Kreis wie jeder Turm.
+ */
+export function rangeCircles(state: GameState): RangeCircle[] {
+  const combat = state.runtime.combat
+  const circles: RangeCircle[] = []
+
+  for (const module of combat.modules) {
+    if (!canFire(module)) continue
+
+    const stats = moduleStats(module, combat.buffs.get(module.uid), state).final
+    if (!shoots(stats)) continue
+
+    circles.push({ center: module.center, range: stats.range })
+  }
+
+  // Vor dem ersten Takt kennt die Simulation noch keine Module. Dann gilt der Grundwert des
+  // Kerns, damit der Kreis schon im allerersten Bild steht statt aufzuspringen.
+  if (circles.length === 0) circles.push({ center: CORE_CENTER, range: coreRange(state) })
+
+  return circles
+}
+
+/**
+ * Die Aussengrenze einer fertigen Kreisliste: weiter als so weit trifft nichts mehr.
+ *
+ * Nimmt die Kreise entgegen, statt sie selbst zu holen. Der Zeichenpfad braucht **beides**
+ * je Bild - die Liste fuer den Wirkungsbereich, die Zahl fuer den Bildausschnitt - und
+ * `rangeCircles` ist nicht billig: Es rechnet fuer jedes Modul die volle Werte-Kette durch
+ * und legt dabei je Modul sechs Zwischenobjekte an. Zweimal je Bild war das doppelte Arbeit
+ * und doppelter Muell fuer den Speicherbereiniger, dessen Aufraeumen man als Ruckler sieht.
+ */
+export function outerReach(circles: readonly RangeCircle[]): number {
+  let reach = 0
+  for (const circle of circles) {
+    reach = Math.max(reach, dist(CORE_CENTER, circle.center) + circle.range)
+  }
+  return reach
+   ...
+

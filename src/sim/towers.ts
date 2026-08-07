@@ -265,4 +265,3 @@ export function pruneCooldowns(state: GameState): void {
     if (!alive.has(uid)) combat.cooldowns.delete(uid)
   }
 }
-

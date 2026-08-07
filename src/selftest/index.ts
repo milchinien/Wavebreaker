@@ -80,4 +80,3 @@ export function summarize(results: TestResult[]): TestSummary {
     ok: failed === 0,
   }
 }
-

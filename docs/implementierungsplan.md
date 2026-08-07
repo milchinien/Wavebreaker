@@ -477,75 +477,129 @@ Werte **aller** Türme dieses Typs.
 
 ## 7. Phase C — Progression (E10–E13)
 
-### E10 — Level und Perks
+### E10 — Level und Perks ✔ erledigt
 
 | Datei | Funktion | Zweck |
 |---|---|---|
-| `data/perks.ts` | `PERKS: PerkDef[]` | Auswahlmöglichkeiten je Levelaufstieg |
-| `sim/progression.ts` | `grantXp(state, amount): void` | über `grantReward` |
-| | `xpForLevel(level): number` | Kurve aus `data/balance.ts` |
-| | `pendingLevelUps(state): number` | mehrere Aufstiege stapeln sich |
-| | `offerPerks(state, rng): PerkDef[]` | drei Vorschläge |
-| | `choosePerk(state, perkId): void` | anwenden und vermerken |
-| `sim/stats.ts` | `applyPerks(...)` | Perks fließen in dieselbe Werte-Kette |
-| `ui/dialogs.ts` | `showLevelUpDialog(state, options)` | GDD 13 §6 |
+| `data/perks.ts` | `PERKS: PerkDef[]` · `perkById` | Auswahlmöglichkeiten je Levelaufstieg |
+| `data/balance.ts` | `XP_BASE` · `XP_EXPONENT` · `MAX_LEVEL` · `PERK_CHOICES` | die Kurve an einem Ort |
+| `sim/progression.ts` | `xpForLevel(level)` · `cumulativeXp(level)` | Kurve und Schwellen, gepuffert |
+| | `levelFromXp(xp)` · `currentLevel(state)` | **abgeleitete** Stufe |
+| | `pendingLevelUps(state)` · `levelProgress(state)` | offene Aufstiege, Leiste |
+| | `offerPerks(rng)` · `currentOffer(state)` | drei Vorschläge, gewichtet, ohne Doppel |
+| | `choosePerk(state, perkId)` · `stepProgression(state)` | annehmen, `level.up` melden |
+| | `perkStatBonus` · `perkGlobalBonus` · `perkCount` | Wirkung |
+| `sim/stats.ts` | `applyPerks(...)` · `globalMultiplier(state, key)` | Perks fließen in dieselbe Werte-Kette |
+| `ui/dialogs.ts` | `mountDialogs(state, overlay, onChange)` | GDD 13 §6 |
 
-**Abnahme:** XP steigt durch Kills, Levelaufstieg öffnet die Auswahl, Perks wirken dauerhaft im Run.
-**Beweis:** Perk-Effekte erscheinen in `effectiveTowerStats`, nicht als Sonderfall im Kampfcode.
+**Abweichungen vom Plan, mit Begründung**
+
+| Punkt | Entscheidung |
+|---|---|
+| `grantXp` gibt es nicht | XP wurde bereits in E7 über `grantReward({ xp })` vergeben. Eine zweite Funktion daneben wäre ein zweiter Weg zu derselben Ressource — genau das, was `grantReward` verhindern soll. Der Perk-Bonus auf XP sitzt an der Kill-Stelle, weil er zum Töten gehört und nicht zu jeder Belohnung. |
+| Stufe ist **abgeleitet**, XP wird nie verbraucht | `run.xp` ist die Gesamtsumme, `run.level` zählt nur die *abgeholten* Perks. Zwei Zahlen, die dasselbe wissen, laufen sonst auseinander: eine Belohnung, die den Aufstieg vergisst, ein Wellenneustart, der doppelt zählt. Nebenbei stapeln sich mehrere Aufstiege damit von selbst. |
+| Das Angebot liegt im **Spielstand** | Läge es in den Laufzeitdaten, würfelte ein Neuladen neue Karten — eine Auswahl, die man beliebig wiederholen kann, ist keine. Dafür Speicherversion 4 samt Migration. |
+| `globalMultiplier` nimmt den Zustand statt der Upgrade-Liste | Upgrades **und** Perks wirken auf dieselben globalen Größen. Prestige (E13) hängt sich an derselben Stelle an und nirgends sonst. |
+| Perks ohne vorhandene Mechanik fehlen | Durchschuss, Abpraller, Verbrennung, Explosion und Kettenenergie (GDD 09 §3) brauchen `applyChain`/`applyBurn`/`applyExplosion` aus E14. Eine Karte anzubieten, die nichts tut, wäre schlimmer als eine kürzere Liste. Sie sind später **Einträge in `data/perks.ts`**, kein neuer Code. |
+
+**Abnahme:** XP steigt durch Kills, Levelaufstieg öffnet die Auswahl, Perks wirken dauerhaft im Run. ✔
+**Beweis:** `selftest/suites/progression.ts` — 24 Zusicherungen, darunter „ein Perk erscheint in
+`effectiveTowerStats`, nicht als Sonderfall" und „gleiche Perks summieren sich additiv, nicht
+multiplikativ".
 
 ---
 
-### E11 — Fähigkeiten
+### E11 — Fähigkeiten ✔ erledigt
 
 | Datei | Funktion | Zweck |
 |---|---|---|
-| `data/abilities.ts` | `ABILITIES: AbilityDef[]` | allgemeine plus kernspezifische |
-| `sim/abilities.ts` | `unlockAbility(state, id): void` | über Gold-Upgrade freigeschaltet |
-| | `equipAbility(state, id, slot): void` | 1 Slot zu Beginn, maximal 3 |
-| | `activateAbility(state, id): boolean` | nur Abklingzeit, kein Verbrauch (GDD 09 §7) |
-| | `stepCooldowns(state, dt): void` | laufen mit der Simulationszeit, nicht mit der Uhr |
-| `ui/hud.ts` | `renderAbilityBar(state)` | Symbol, Abklingzeit, Bereitschaft |
+| `data/abilities.ts` | `ABILITIES: AbilityDef[]` · `abilityById` | fünf Fähigkeiten mit vorhandener Mechanik |
+| `sim/abilities.ts` | `unlockAbility(state, id)` | über Gold freigeschaltet (GDD 09 §7) |
+| | `toggleEquipped(state, id)` · `slotCount(state)` | 1 Slot zu Beginn, maximal 3 |
+| | `activateAbility(state, id)` · `canActivate` | nur Abklingzeit, kein Verbrauch |
+| | `stepAbilities(state, dt)` | Simulationszeit, nicht Uhr |
+| | `cooldownLeft` · `activeLeft` · `resetAbilities` | Anzeige und Rücksetzung |
+| `sim/combat.ts` | `blastEnemies(state, center, radius, damage)` | Flächenschlag — ab E14 auch für Raketen |
+| `ui/hud.ts` | Fähigkeitenleiste | Symbol, Abklingzeit, Bereitschaft |
+| `ui/abilities.ts` | `mountAbilityPanel(...)` | Freischalten und Belegen im Upgrades-Bereich |
 
-**Abnahme:** Fähigkeit wirkt sofort und sichtbar, Abklingzeit läuft korrekt auch bei ×2/×4.
-**Beweis:** Abklingzeit in Simulationssekunden, nicht in Echtzeit — bei ×4 vergeht sie viermal so schnell.
+**Abweichungen vom Plan, mit Begründung**
+
+| Punkt | Entscheidung |
+|---|---|
+| `equipAbility(id, slot)` wurde `toggleEquipped(id)` | Ein Slot-Index als Parameter setzt eine Oberfläche voraus, die Slots einzeln anspricht. Die Karte hat einen Knopf, und der schaltet um. Sind alle Slots belegt, weicht der älteste — ein Klick soll etwas tun, statt „kein Platz" zu melden. |
+| Wirkung wird **geschrieben, nicht erfragt** | `stepAbilities` legt drei fertige Zahlen in `runtime.combat`: Wertboni, Schadensabwehr, Gegnertempo. Würden `damageStation` und `stats.ts` bei den Fähigkeiten nachfragen, entstünde ein Abhängigkeitskreis zwischen drei Dateien. |
+| Abklingzeiten sind **nicht** im Spielstand | Ein Cooldown über einen Programmstart hinweg mitzuführen hieße, ihn an die echte Uhr zu binden — genau das verbietet Abschnitt 3. Nach dem Laden beginnt die Welle ohnehin neu. |
+| Drohnenschwarm und Plasmaexplosion fehlen | Drohnen als bewegliche Einheiten kommen laut Abschnitt E14 (`sim/drones.ts`). Die kernspezifischen Fähigkeiten aus GDD 09 §11 folgen mit den weiteren Kernen in E13. |
+| Fähigkeits-**Stufen** (GDD 09 §9) fehlen noch | Freischalten, Belegen, Zünden und Abklingzeit stehen. Das Verbessern einzelner Stufen ist eine eigene Kostenkurve und gehört zum Turmkauf-/Upgrade-Ausbau — offener Punkt, siehe unten. |
+
+**Abnahme:** Fähigkeit wirkt sofort und sichtbar, Abklingzeit läuft korrekt auch bei ×2/×4. ✔
+**Beweis:** `selftest/suites/abilities.ts` — 17 Zusicherungen, darunter „die Abklingzeit läuft in
+Simulationssekunden, nicht an der Uhr" und „gleiche Simulationszeit in verschieden großen Schritten
+ergibt dasselbe".
 
 ---
 
-### E12 — Turmkauf, Raritäten, Schmelzen
+### E12 — Turmkauf, Raritäten, Schmelzen ✔ erledigt
 
 | Datei | Funktion | Zweck |
 |---|---|---|
-| `data/rarities.ts` | `RARITIES` · `TRAITS` | Farben, Multiplikatoren, Eigenschaften |
-| `sim/economy.ts` | `towerCost(state): number` | Grundpreis × 1,5 je Kauf (GDD 06) |
-| | `rollTowerOffer(state, rng): TowerOffer[]` | Auswahlkarten statt Zufallszuteilung |
-| | `buyTower(state, offerIndex): boolean` | erzeugt Instanz mit Rarität und Eigenschaften |
-| | `rollTraits(defId, rarity, rng): Trait[]` | 0/1/2/3/4 nach Rarität (GDD 06 §10) |
-| | `meltTowers(state, uids): MeltResult` | einziger Weg, Türme abzustoßen (GDD 06 §4) |
-| `ui/dialogs.ts` | `showTowerPurchase(state, offers)` | große Auswahlkarten (GDD 13 §6) |
+| `data/rarities.ts` | `TRAIT_SLOTS` · `RARITY_CHANCE` · `RARITY_RANGE` · `rarityWeights` | Fallchancen je Freischaltstand, Plätze je Stufe, Grenzen je Turmart |
+| `data/traits.ts` | `TRAITS` · `traitsFor(category, tier)` | Eigenschaften nach Qualitätsstufe und Turmaufgabe |
+| `sim/shop.ts` | `towerCost(state)` | Grundpreis × 1,5 je Kauf (GDD 06 §2) |
+| | `rollTowerOffer(state, rng)` · `rollTraits(...)` | fertig gewürfelte Auswahlkarten |
+| | `startTowerPurchase` · `takeTowerOffer` · `discardTowerOffer` | Wurf bezahlen, Karte annehmen, verwerfen |
+| | `meltTowers(state, uids)` | einziger Weg, Türme abzustoßen (GDD 06 §4) |
+| `sim/stats.ts` | `applyTraits(base, module)` | Eigenschaften in derselben Werte-Kette |
+| `sim/buffs.ts` | `buffPowerOf(module)` | Eigenschaften eines Verstärkers wirken auf die Buffstärke |
+| `ui/dialogs.ts` | Turmauswahl | große Auswahlkarten (GDD 13 §6) |
 
-**Abnahme:** Kauf, Rarität, Eigenschaften und Schmelzen greifen ineinander; kein Verkauf gegen Gold.
-**Beweis:** Eigenschaftsanzahl je Rarität stimmt; Kostenkurve stimmt; geschmolzene Türme sind
-endgültig weg und tauchen nirgends wieder auf.
+**Abweichungen vom Plan, mit Begründung**
+
+| Punkt | Entscheidung |
+|---|---|
+| Eigene Datei `sim/shop.ts` statt `sim/economy.ts` | `economy.ts` ist Gold **auf dem Feld** — fallen, verschmelzen, einsammeln. Der Turmkauf ist ein anderes Thema mit anderen Nachbarn (Raritäten, Eigenschaften, Prestige). Zusammen wären es zwei Systeme in einer Datei. |
+| Karten sind **vor** der Wahl fertig gewürfelt | Würfelte erst der Klick, wäre die Karte eine Behauptung und die Wahl ein Blindkauf. Deshalb trägt `TowerOffer` bereits Art, Rarität und Eigenschaften — und liegt im Spielstand, damit ein Neuladen nicht neu würfelt. |
+| Bezahlt wird der **Wurf**, nicht der Turm | Sonst sieht man sich Angebote an, bis eines gefällt. Der Preis steigt trotzdem erst mit der Annahme: Wer ein Angebot geworfen bekommt und das Spiel schließt, soll nicht den höheren Preis vorfinden. |
+| `buffPower` als eigene Eigenschaftsart | Verstärker haben **keine eigenen Kampfwerte** — „+20 % Schaden" wäre bei ihnen wirkungslos, und ein Turm mit wirkungslosen Eigenschaften ist ein Fehler. Sie wirken deshalb dort, wo auch ihre Rarität wirkt: auf die Buffstärke. |
+| Legendary und Mythic sind große Werte, keine Mechaniken | GDD 06 §10 nennt dort explodierende Projektile und Durchschuss. Beides braucht `applyExplosion`/`applyChain` aus E14. Später sind es weitere Einträge in `data/traits.ts`. |
+
+**Abnahme:** Kauf, Rarität, Eigenschaften und Schmelzen greifen ineinander; kein Verkauf gegen Gold. ✔
+**Beweis:** `selftest/suites/shop.ts` — 21 Zusicherungen, darunter „die Reihe entspricht der Tabelle
+des GDD" (100/150/225/338), „die Anzahl der Eigenschaften folgt der Rarität", „ohne freigeschaltete
+Eigenschaften bleiben die Plätze leer" und „geschmolzene Türme sind endgültig weg".
 
 ---
 
-### E13 — Prestige
+### E13 — Prestige ✔ erledigt
 
 | Datei | Funktion | Zweck |
 |---|---|---|
-| `data/prestige.ts` | `PRESTIGE_NODES: PrestigeNode[]` | Baum mit Kosten und Voraussetzungen |
-| `sim/prestige.ts` | `prestigePoints(state): number` | aus dem Run-Fortschritt |
-| | `canPrestige(state): boolean` | ab 1.000 gesammeltem Gold (GDD 10) |
-| | `doPrestige(state, coreId): void` | Run-Daten zurücksetzen, permanente behalten |
-| | `buyNode(state, nodeId): boolean` | Punkte ausgeben |
-| | `isUnlocked(state, id): boolean` | **Datenabfrage**, keine Codeverzweigung |
-| `sim/stats.ts` | `applyPrestige(...)` | fließt in dieselbe Werte-Kette |
-| `ui/prestige.ts` | `renderPrestigeTree(state)` | gesperrt/verfügbar/gekauft über Farbe |
-| `ui/dialogs.ts` | `showCoreSelection(state)` | Kernwahl nach jedem Prestige (GDD 04 §2) |
+| `data/prestige.ts` | `PRESTIGE_NODES` · `nodesOfArea` | Baum mit Kosten und Voraussetzungen |
+| `sim/prestige.ts` | `prestigePoints(state)` · `canPrestige(state)` | aus Wellenrekord und verdientem Gold |
+| | `doPrestige(state, coreId?)` | Run **ersetzen**, permanente Daten behalten |
+| | `buyNode(state, nodeId)` · `isAvailable` | Punkte ausgeben, Voraussetzungen prüfen |
+| | `isUnlocked(state, id)` | **Datenabfrage**, keine Codeverzweigung |
+| | `unlockedRarity` · `unlockedTraitTier` · `towerSlots` · `abilitySlots` · `availableSpeeds` | die eine Auskunftsstelle für Freischaltungen |
+| | `prestigeGlobalBonus` · `syncUnlocks` | Faktoren in die Werte-Kette, Grenzen in den Run |
+| `app/rewards.ts` | `spendPrestigePoints(state, amount)` | Gegenstück zu `spendGold` |
+| `ui/prestige.ts` | `mountPrestigePanel(...)` | gesperrt/verfügbar/gekauft über Farbe |
 
-**Abnahme:** Prestige setzt genau die Run-Daten zurück (GDD 16 §8), Punkte und Freischaltungen bleiben.
-**Beweis:** eine Liste aller Zustandsfelder wird im Test gegen „bleibt/wird zurückgesetzt" geprüft —
-das ist die fehleranfälligste Stelle des ganzen Spiels.
+**Abweichungen vom Plan, mit Begründung**
+
+| Punkt | Entscheidung |
+|---|---|
+| `doPrestige` **ersetzt** `run`, statt Feld für Feld zurückzusetzen | Eine Liste zurückzusetzender Felder müsste bei jedem neuen Feld gepflegt werden — und genau das vergisst man. Was neu entsteht, kann nicht vergessen werden. Dasselbe gilt für `runtime`. |
+| `applyPrestige` wurde `prestigeGlobalBonus` | Der Baum verändert heute keine Kampfwerte einzelner Türme, sondern globale Größen (Gold, XP) und Grenzen (Slots, Tempo). Eine Funktion, die Kampfwerte anfasst, gäbe es also ohne Wirkung. Kommt sie, hängt sie an derselben Stelle wie Perks. |
+| Punkte laufen über `grantReward` / `spendPrestigePoints` | Der Querschnittstest hat es beim ersten Lauf gemeldet: Prestige-Punkte sind eine Ressource wie Gold. Jetzt gibt es genau eine Datei, in der sich Ressourcen ändern. |
+| Kernwahl fehlt | Es gibt bisher genau **einen** Kern (Sentinel). Eine Auswahl mit einer Karte wäre eine Zwischenseite ohne Entscheidung. `doPrestige` nimmt den Kern bereits als Parameter, das Fenster kommt mit den weiteren Kernen in E14. |
+| Bereiche Spezialtürme, Haupttürme, Helfer, Basis fehlen | Sie schalten Inhalte frei, die es noch nicht gibt (E14, E17). Ein Knoten, der Punkte kostet und nichts freischaltet, wäre Betrug am Spieler. |
+
+**Abnahme:** Prestige setzt genau die Run-Daten zurück (GDD 16 §8), Punkte und Freischaltungen bleiben. ✔
+**Beweis:** `selftest/suites/prestige.ts` — 19 Zusicherungen. Die beiden Kernabsicherungen gehen
+**Feld für Feld** durch `run` und `permanent` und prüfen jedes einzeln gegen „wird zurückgesetzt"
+bzw. „bleibt" — nicht stichprobenartig. Dazu kommt: die Laufzeitdaten gehen mit dem Run, der
+Bestwert fällt nie, und gekaufte Turmplätze überleben das Zurücksetzen.
 
 ---
 
@@ -554,65 +608,11 @@ das ist die fehleranfälligste Stelle des ganzen Spiels.
 Ab hier ist die Architektur fertig. Die meisten Schritte sind **neue Datensätze**, kein neuer Code —
 genau das war das Ziel von GDD 16 §5.
 
-### E14 — Turminhalte
+### E14 — Turminhalte ✔ erledigt
 
-Restliche Turmarten aus GDD 05: Sniper, Laser, Raketen, Tesla, Flammen, Element-Türme, Drohnen-Modul,
-Schildgenerator, Plasma, Void.
-
-Neuer Code nur dort, wo eine **Mechanik** fehlt: Kettenblitz (Tesla), Dauerstrahl (Laser),
-Flächenexplosion (Raketen/Plasma), Verbrennung über Zeit (Flammen), Drohnen als bewegliche Einheiten.
-
-| Datei | Funktion |
-|---|---|
-| `sim/combat.ts` | `applyChain(state, from, hops, falloff)` · `applyBurn(state, enemy, dps, duration)` · `applyExplosion(state, pos, radius, damage)` |
-| `sim/drones.ts` | `spawnDrone` · `stepDrones` — belegen keinen Platz, sind nicht angreifbar (GDD 03 §6) |
-
-**Abnahme:** jede neue Turmart ist über einen Datensatz plus höchstens eine Mechanikfunktion erledigt.
-
----
-
-### E15 — Gegnerinhalte
-
-Gegnerklassen, Spezialgegner (Schild, Heilung, Teleport, Tarnung, Beschwörung), Elite-Modifikatoren,
-Bossarten aus GDD 07.
-
-| Datei | Funktion |
-|---|---|
-| `data/enemies.ts` | Datensätze je Klasse, Modifikator und Boss |
-| `sim/enemies.ts` | `applyEliteModifier(enemy, mod)` — Chance steigt mit der Welle |
-| `sim/combat.ts` | Widerstände und Schildlogik in `applyDamage` |
-
-**Abnahme:** neue Gegner erfordern keine Änderung am Kampfkern.
-
----
-
-### E16 — Ereignisse und Versorgungskapseln
-
-| Datei | Funktion | Zweck |
-|---|---|---|
-| `data/events.ts` | `EVENTS` · `PODS` | Risiko- und Entscheidungsereignisse, Kapselarten |
-| `sim/events.ts` | `maybeTriggerEvent(state, rng): GameEvent \| null` | alle 15–25 Wellen (GDD 11) |
-| | `resolveEvent(state, choiceId): void` | Belohnung über `grantReward` |
-| | `dropPod(state, pos, kind): void` · `collectPod(state, id): void` | Kapseln |
-| `ui/dialogs.ts` | `showEventDialog(state, event)` | Entscheidung mit klaren Folgen |
-
----
-
-### E17 — Offline-Fortschritt und Helfer
-
-| Datei | Funktion | Zweck |
-|---|---|---|
-| `sim/offline.ts` | `simulateOffline(state, seconds): OfflineResult` | **dieselbe** Logik im Schnelldurchlauf |
-| | `capOfflineTime(seconds): number` | Obergrenze aus `data/balance.ts` |
-| `sim/helpers.ts` | `stepHelpers(state, dt)` | Goldsammler und weitere (GDD 12) |
-Ab hier ist die Architektur fertig. Die meisten Schritte sind **neue Datensätze**, kein neuer Code —
-genau das war das Ziel von GDD 16 §5.
-**Warum das erst hier geht:** Die Offline-Simulation setzt voraus, dass die gesamte Kampf- und
-Wirtschaftslogik ohne Browser lauffähig ist. Wer das früher baut, baut eine zweite, abweichende
-Simulation — der klassische Fehler in Idle-Spielen.
 Zehn neue Turmarten aus GDD 05: Marksman, Rocket Battery, Laser Lance, Tesla Coil, Flame Projector,
-**Beweis:** eine Stunde offline liefert (bis auf Zufall) dasselbe Ergebnis wie eine Stunde im
-Vordergrund bei ×1.
+Cryo Emitter, Shield Generator, Plasma Cannon, Void Sphere, Drone Bay.
+
 | Datei | Funktion | Zweck |
 |---|---|---|
 | `data/towers.ts` | `TowerMechanic` | die Spezialmechanik als Datensatzfeld — ohne Angabe: gewöhnliches Geschoss |
@@ -620,14 +620,14 @@ Vordergrund bei ×1.
 | | `applyChain(state, from, hops, falloff, damage, range)` | Tesla |
 | | `applyBurn(state, enemy, dps, duration)` | Flammen |
 | | `applyChill(state, enemy, factor, duration)` | Eis und Void |
-| Effekte | Schüsse, Treffer, Explosionen, Laser, Buff-Anzeigen, Platzierungsanimation, Prestige-Animation (GDD 13 §10) |
-| Hinweise | einmalige Hinweise je neuem System, wegklickbar, ohne Pause (GDD 14 §4a) — inklusive des Hinweises zum **Zeitpunkt** des Buff-Turms |
+| | `spawnBeam(...)` · `stepEnemyStates(...)` | Dauerstrahl, Altern von Brand und Frost |
+| `sim/projectiles.ts` | `ProjectilePayload` · `impact(...)` | das Geschoss trägt mit, was beim Einschlag passiert |
 | `sim/drones.ts` | `stepDrones(state, dt)` | belegen keinen Platz, sind nicht angreifbar (GDD 03 §6) |
-| Audio | `core/events.ts` bekommt einen Zuhörer, der Klänge abspielt. Begrenzung pro Zeitfenster, Ausdünnen bei ×2/×4 (GDD 13 §11) |
+| `sim/stats.ts` | `hullFromModules(state)` | der Schildgenerator, der als einziger nicht schießt |
 | `data/prestige.ts` | Bereich `tech` | Raketen 150, Laser 250, Tesla 500, Drohnen 2.000, Plasma 10.000 |
 
-**Wichtig:** Audio wird **angeschlossen**, nicht eingebaut. Wenn die Ereignispunkte ab E0 gemeldet
-werden, ist das hier ein Nachmittag statt einer Woche.
+**Abweichungen vom Plan, mit Begründung**
+
 | Punkt | Entscheidung |
 |---|---|
 | `spawnDrone` gibt es nicht — Drohnen sind **abgeleitet** | Gespeicherte Drohnen müssten bei jedem Umbau mit der Station abgeglichen werden, und genau dort entstehen Karteileichen. `stepDrones` zieht sie je Takt aus den vorhandenen Modulen nach: Modul weg, Drohnen weg. Es gibt keinen Zustand, der auseinanderlaufen kann. |
@@ -635,20 +635,20 @@ werden, ist das hier ein Nachmittag statt einer Woche.
 | Der Laser trifft sofort statt mit Geschoss | Ein „Dauerstrahl" mit Flugzeit wäre ein Widerspruch. Er wird als kurzlebige Linie abgelegt; bei sechs Schuss je Sekunde ergibt das den durchgehenden Strahl aus dem GDD. |
 | Element-Türme sind keine eigene Kategorie | GDD 05 nennt Feuer, Eis, Blitz, Plasma. Alle vier sind vorhandene Mechaniken mit anderen Zahlen — Feuer = `burn`, Eis = `chill`, Blitz = `chain`, Plasma = `explosive`. Sie wären reine Datensätze und stehen deshalb erst an, wenn sie sich von den bestehenden Türmen unterscheiden. |
 | Legendary-Eigenschaften bleiben große Werte | Durchschuss und explodierende Projektile aus GDD 06 §10 wären jetzt möglich — sie brauchen aber einen Eigenschaftstyp, der eine Mechanik anhängt statt einen Wert. Offener Punkt, siehe unten. |
-| Regel | Prüfung |
+
 **Abnahme:** jede neue Turmart ist über einen Datensatz plus höchstens eine Mechanikfunktion erledigt. ✔
-| `sim/` und `core/` fassen kein DOM und kein Canvas an | Suche nach `document`/`canvas` in beiden Ordnern muss leer sein |
-| Kein direkter Zugriff auf `Date.now()`/`performance.now()` außerhalb von `core/loop.ts` | Suche |
+**Beweis:** `selftest/suites/content.ts` — der Marksman ist der Beleg: extreme Reichweite, eigene
+Zielpriorität, **keine** Mechanikfunktion. Dazu Zusicherungen je Mechanik, darunter „das getroffene
 Ziel bekommt den Flächenschaden nicht doppelt" und „ein Kettenblitz trifft niemanden zweimal".
-| Belohnungen entstehen nur in `grantReward` | Suche nach `state.gold +=` außerhalb von `app/rewards.ts` |
-| Zahlen im Code stehen in `data/`, nicht in `sim/` | Sichtprüfung beim Durchgang |
-| Jeder Spielertext kommt aus `data/strings.ts` | Suche nach Zeichenketten in `ui/` |
-| Neue Regeln bekommen eine Zusicherung im Selbsttest | Test läuft mit |
-| Nach jeder Etappe: `typecheck` sauber, Selbsttests grün, Spielstand lädt noch | vor dem nächsten Schritt |
+
+---
+
+### E15 — Gegnerinhalte ✔ erledigt
+
 Acht Spezialgegner, zwei Belohnungsgegner, sechs Elite-Modifikatoren und vier weitere Bosse.
-**Spielstand-Migration:** Ab E0 hat jeder Spielstand eine Version. Wer ein Feld hinzufügt, erhöht
-die Version und schreibt eine Migration — auch während der Entwicklung. Sonst ist jeder Testspielstand
-nach jeder Etappe wertlos, und man testet nur noch mit frischen Spielständen.
+
+| Datei | Funktion | Zweck |
+|---|---|---|
 | `data/enemies.ts` | `EnemyAbility` | Schild, Reflektor, Berserker, Heiler, Verstärker, Tarnung, Teleport, Beschwörung |
 | | `ELITE_MODIFIERS` · `eliteById` | Swift, Reinforced, Regenerating, Volatile, Bullion, Archive |
 | | `bossForWave(wave)` | der höchste zuständige Boss löst seinen Vorgänger ab |
@@ -656,11 +656,11 @@ nach jeder Etappe wertlos, und man testet nur noch mit frischen Spielständen.
 | | `maybeMakeElite` · `applyEliteModifier` · `eliteChance` | Chance steigt mit der Welle, ab Welle 50 |
 | `sim/combat.ts` | Schild und Reflektor in `applyDamage`, `berserkFactor` in `dockedDamage` | Verteidigung als Feld, nicht als Fallunterscheidung |
 | `sim/targeting.ts` | eine Zeile für die Tarnung | wer getarnt ist, ist kein Ziel |
-| Eigener Zahlentyp (Mantisse/Exponent) | löst ein Problem, das erst um Welle 7.400 einträte (Abschnitt 3) |
-| Offline-Simulation | braucht die fertige Kampflogik, sonst entsteht eine zweite abweichende Simulation (E17) |
-| Audio | nur Anschlusspunkte ab E0, Klänge zuletzt (GDD 13 §11) |
-| Viele Turm- und Gegnerarten | erst wenn ein Datensatz genügt; vorher wird jede Variante dreimal umgebaut |
-| Sparsame Neuberechnung von Buffs | vollständige Neuberechnung kostet unter 1 ms und ist fehlerfrei (GDD 03 §10) |
+
+**Abweichungen vom Plan, mit Begründung**
+
+| Punkt | Entscheidung |
+|---|---|
 | Eine gemeinsame Uhr je Gegner statt einer je Fähigkeit | Zwei Uhren wären zwei Felder mehr im Pool und ein Fehler mehr beim Zurücklegen. Ein Gegner mit zwei getakteten Fähigkeiten führt sie im Gleichschritt aus — bei höchstens drei Fähigkeiten je Gegner ist das nicht zu bemerken. |
 | Getarnte Gegner werden durchscheinend, nicht unsichtbar | Regelgetreu wäre unsichtbar, spielbar ist es nicht: Der Spieler sähe einen Gegner aus dem Nichts an seiner Station stehen. Ein Schemen sagt „der ist da, deine Türme sehen ihn nicht" — und **die Türme** ignorieren ihn wirklich. |
 | Bosse werden keine Elites | Ein Boss ist bereits die Zäsur der Welle. Ihn zusätzlich zu verstärken macht ihn nicht interessanter, nur länger. |
@@ -670,52 +670,147 @@ nach jeder Etappe wertlos, und man testet nur noch mit frischen Spielständen.
 **Beweis:** `selftest/suites/content.ts` — 30 Zusicherungen. Darunter der wichtigste Fall: „ein
 Gegner aus dem Pool erbt nichts von seinem Vorgänger". Der Test zum Verstärker hat außerdem einen
 echten Fehler gefunden — die Deckelung verglich den Schaden gegen sich selbst und war damit nie
-| Wellenfaktor, Turm-Basiswerte, XP-Kurve, Prestige-Formel, Drop-Chancen | nach E9 am laufenden Spiel (GDD 15 §16) |
-| Zeichenbudget: maximale Gegner und Geschosse | Messung in E18, Obergrenze steht ab E4 als Konstante |
-| Baugefühl, Formunterscheidbarkeit, Buff-Linien, Wirkung der Keile | Urteil am Bild — offen aus [Prototyp 01](../prototypes/01-tower-building/README.md#ergebnis) |
+wirksam; zwei Verstärker trieben den Schaden ins Astronomische.
 
-### E16 — Ereignisse und Versorgungskapseln
+---
+
+### E16 — Ereignisse und Versorgungskapseln ✔ erledigt
+
+Vier Ereignisse aus GDD 11 §5 und §6, fünf Kapselarten aus §8.
 
 | Datei | Funktion | Zweck |
 |---|---|---|
 | `data/events.ts` | `EVENTS` · `PODS` | Risiko- und Entscheidungsereignisse, Kapselarten |
-| `sim/events.ts` | `maybeTriggerEvent(state, rng): GameEvent \| null` | alle 15–25 Wellen (GDD 11) |
-| | `resolveEvent(state, choiceId): void` | Belohnung über `grantReward` |
-| | `dropPod(state, pos, kind): void` · `collectPod(state, id): void` | Kapseln |
-| `ui/dialogs.ts` | `showEventDialog(state, event)` | Entscheidung mit klaren Folgen |
+| | `EventEffect` | vier Wirkungsarten: Belohnung, Bonus, Verstärkung, zusätzliche Gegner |
+| `sim/events.ts` | `maybeTriggerEvent(state, rng)` | alle 15–25 Wellen, Abstand gewürfelt |
+| | `resolveEvent(state, choiceId)` | Belohnung über `grantReward`, Wirkungen in Datensatzreihenfolge |
+| | `stepEvents(state, dt)` | Wirkungen altern, `eventBonus` und `enemyPower` neu aufbauen |
+| | `dropPod` · `collectPod` · `collectPodsAt` · `maybeDropPod` | Kapseln |
+| `data/trader.ts` | `TRADER_STOCK` | zehn Warenposten, aus denen drei gezogen werden |
+| `sim/trader.ts` | `maybeSendTrader` · `stepTrader` · `reachTraderAt` | landen, Frist, erreichen |
+| | `buyFromTrader` · `dismissTrader` | kaufen und weiterschicken |
+| `sim/combat.ts` | `maybeDropPod` in `killEnemy` | Drop-Chance am Gegner, nicht an der Welle |
+| `sim/shop.ts` | `rollTowerOffer(..., floor?)` | die seltene Turmkapsel hebt die Untergrenze |
+| `sim/progression.ts` | `grantPerk(state, perkId)` | ein Perk ohne Aufstieg — die Drohne verkauft ihn |
+| `render/combat.ts` | `drawPods(...)` · `drawTrader(...)` | Sechseck bzw. Raute mit Fristring |
+| `ui/dialogs.ts` | Ereignis- und Händlerfenster | Entscheidung mit klaren Folgen |
+
+**Abweichungen vom Plan, mit Begründung**
+
+| Punkt | Entscheidung |
+|---|---|
+| Ereignisse werden aus `sim/battle.ts` ausgelöst, nicht aus `sim/waves.ts` | `sim/events.ts` braucht `spawnEnemy` und die Wellenzahl; riefe die Wellensteuerung ihrerseits die Ereignisse, entstünde ein Kreis. `battle.ts` bindet ohnehin alles zusammen und wird von niemandem in `sim/` eingebunden — es ist der einzige Ort, der beide kennen darf. |
+| Ereignisse schreiben **eigene** Felder (`eventBonus`, `enemyPower`) statt in die der Fähigkeiten | Ein Feld darf nur einen Schreiber haben. Beide Systeme bauen ihre Zahlen je Takt neu auf; schrieben sie dasselbe Feld, überschriebe der spätere den früheren, und welcher gewinnt, hinge an der Reihenfolge in `battle.ts`. Getrennt geschrieben, in `sim/stats.ts` gemeinsam gelesen — die beiden Quellen setzen dort nacheinander auf, so wie Buffs auf Upgrades. |
+| Die Verstärkung wirkt beim **Erscheinen**, nicht laufend | Ein Gegner, dessen Lebenspunkte sich mitten im Kampf ändern, ist nicht zu lesen — seine Leiste spränge. |
+| Der Wert einer Kapsel entsteht beim **Einsammeln**, nicht beim Fallen | Sonst wäre eine liegen gebliebene Kapsel eine Falle, und der Spieler müsste jede sofort holen. Genau das soll das freie Einsammeln nicht sein (GDD 08 §2). |
+| Die Händler-Drohne **landet in der Arena** und ist kein Menüpunkt | GDD 11 §7 sagt es nebenbei, und es ist das Prägende: Wer bei ihr kaufen will, muss hinfahren, während die Welle läuft. Aus einem Laden wird dadurch eine Entscheidung. |
+| Ihre Uhr steht still, sobald der Spieler sie erreicht | Ein Laden, der während des Einkaufs abhebt, wäre keine Gelegenheit, sondern eine Falle. |
+| Sie erfindet **keine** Wirkung | Alle vier Warenarten aus GDD 11 §7 gibt es schon: globales Upgrade (E8), zeitlich begrenzter Bonus (E16), Perk (E10), Turmangebot (E12). Genau deshalb war sie vorher ein offener Punkt und ist jetzt ein Datensatz — früher hätte sie vier eigene Mechaniken gebraucht. |
+| Sie steht neben dem Turmkauf, statt ihn zu ersetzen | Der Turmkauf verkauft **einen Wurf** zu einem Preis, der mit jedem Kauf steigt; die Frage ist "noch ein Turm oder Gold in die vorhandenen?". Die Drohne verkauft **fertige Ware** zu einem Preis, der mit der Welle steigt, und nicht nur Türme; die Frage ist "was von diesen drei Dingen brauche ich gerade?". Zwei verschiedene Entscheidungen — beide dürfen stehen. |
+| Ein gekaufter Bonus läuft über **dieselbe** Leiste wie ein Ereignis-Bonus | Zwei Systeme mit eigenen Boni hätten zwei Uhren, zwei Ablaufregeln und zwei Stellen, an denen einer hängen bleiben kann. |
+
+**Abnahme:** ein neues Ereignis ist ein Datensatz. ✔
+**Beweis:** `selftest/suites/encounters.ts` — die wichtigsten Zusicherungen laufen über die
+**vollständige** Tabelle: *jede* Option *jedes* Ereignisses wird gewählt und muss durchgehen,
+und *jede* Warenart der Drohne muss die Größe verändern, die sie verspricht. Ein neuer Eintrag
+ist damit automatisch mitgeprüft, ohne dass jemand einen Test schreibt.
 
 ---
 
-### E17 — Offline-Fortschritt und Helfer
+### E17 — Offline-Fortschritt und Helfer ✔ erledigt
 
 | Datei | Funktion | Zweck |
 |---|---|---|
-| `sim/offline.ts` | `simulateOffline(state, seconds): OfflineResult` | **dieselbe** Logik im Schnelldurchlauf |
-| | `capOfflineTime(seconds): number` | Obergrenze aus `data/balance.ts` |
-| `sim/helpers.ts` | `stepHelpers(state, dt)` | Goldsammler und weitere (GDD 12) |
-| `ui/dialogs.ts` | `showReturnSummary(state, result)` | Rückkehr-Zusammenfassung |
+| `sim/offline.ts` | `simulateOffline(state, seconds, view)` | **dieselbe** Logik im Schnelldurchlauf |
+| | `capOfflineTime(seconds)` · `offlineEfficiency(state)` | Obergrenze und Wirkungsgrad |
+| `sim/helpers.ts` | `stepHelpers(state, dt)` | Goldsammler (GDD 12 §11) |
+| | `collectorLevel` · `helperCount` · `helperRadius` · `helperSpeed` | zweistufige Freischaltung als Datenabfrage |
+| `sim/economy.ts` | `collectAll(state)` | das Feld abräumen — nur für die Abwesenheit |
+| `data/prestige.ts` | Bereiche `economy` und `helpers` | Offline 100/500, Sammler 500/2.000/5.000/15.000 |
+| `data/upgrades.ts` | `unlock?` am Pfad | der Sammler erscheint erst nach dem Prestige-Knoten |
+| `ui/dialogs.ts` | Rückkehr-Zusammenfassung | Zeit, Wellen, Gegner, Gold, XP, Level |
 
 **Warum das erst hier geht:** Die Offline-Simulation setzt voraus, dass die gesamte Kampf- und
 Wirtschaftslogik ohne Browser lauffähig ist. Wer das früher baut, baut eine zweite, abweichende
 Simulation — der klassische Fehler in Idle-Spielen.
 
-**Beweis:** eine Stunde offline liefert (bis auf Zufall) dasselbe Ergebnis wie eine Stunde im
-Vordergrund bei ×1.
+**Abweichungen vom Plan, mit Begründung**
+
+| Punkt | Entscheidung |
+|---|---|
+| Der Wirkungsgrad sitzt an der **Zeit**, nicht an der Belohnung | GDD 12 §7 verlangt, dass Offline nie stärker ist als aktives Spielen. Kürzt man die Zeit, fällt alles gleichmäßig geringer aus — Gold, Erfahrung, Wellenfortschritt — und die Belohnungsrechnung braucht keinen zweiten Weg. Kürzt man die Belohnung, muss jede künftige Ertragsart daran denken. |
+| Der Takt ist gröber (20 Hz statt 60) | Nachweislich harmlos: Geschosse treffen, sobald sie ihr Ziel im Schritt erreichen *würden* — sie können nicht daneben fliegen —, und Türme feuern mehrfach je Takt, wenn ihr Tempo über der Taktrate liegt. Gemessen laufen 60 Hz und 20 Hz über zehn Minuten um höchstens eine Welle auseinander; das ist als Zusicherung festgehalten. |
+| Ein **Taktbudget** statt unbegrenzter Rechnung | Die Rechnung läuft vor dem ersten Bild. Reicht das Budget nicht, wird der Schritt gröber statt die Zeit gekürzt: Der Spieler bekommt seine ganze Abwesenheit angerechnet, ungenauer wird nur die Auflösung. Andersherum bekäme er weniger und merkte es nicht einmal. |
+| Offline entstehen **keine optischen Effekte**, und Gold wird direkt gutgeschrieben | Beides steht so im GDD (12 §3), und beides ist zugleich der Unterschied zwischen zwei Sekunden und vierzig: Zehntausende Gegner erzeugten sonst je sechs Splitter, eine Druckwelle, zwei Goldfunken und eine Münze, die mit allen anderen verdichtet werden will. Der Schalter dafür heißt `observed` und wird im `finally` zwingend zurückgenommen. |
+| Die Obergrenze steht bei **vier** Stunden, nicht acht | An der Messung entstanden, nicht am Gefühl: Ein voller Deckel kostet 1,9 bis 2,7 Sekunden, in denen das Fenster steht. Acht Stunden wären das Doppelte — und vier Sekunden Stillstand vor dem ersten Bild sind keine Belohnung mehr. |
+| Nur **ein** Helfer | GDD 12 §12 nennt Reparatur-, Wartungs- und Forschungsdrohne als „weitere mögliche". Der Goldsammler ist der einzige, den das GDD ausführt; die anderen sind Ideen ohne Zahlen. Sie sind später Einträge in `sim/helpers.ts` und im Baum. |
+| Helfer sind abgeleitet wie Drohnen, behalten aber ihren Ort | Ihre Anzahl folgt der gekauften Stufe und wird je Takt nachgezogen — ein Helfer, den es nicht mehr geben darf, verschwindet von selbst. Der Ort dagegen muss bleiben: Eine Fahrt ohne Ausgangspunkt wäre ein Sprung. |
+
+**Abnahme:** eine Stunde offline liefert (bis auf Zufall) dasselbe Ergebnis wie eine Stunde im
+Vordergrund bei ×1. ✔
+**Beweis:** `selftest/suites/idle.ts` — verglichen wird gegen einen **Vordergrundlauf**, nicht
+gegen eine erwartete Zahl. Eine erwartete Zahl wäre eine zweite Rechnung neben der Simulation,
+und der ganze Sinn dieser Etappe ist, dass es keine zweite gibt. Eine eigene Zeile stellt
+sicher, dass der Vergleich nicht vergleicht, dass beide Seiten nichts getan haben.
 
 ---
 
-### E18 — Politur
+### E18 — Politur ✔ erledigt
 
-| Bereich | Inhalt |
+| Bereich | Umsetzung |
 |---|---|
-| Effekte | Schüsse, Treffer, Explosionen, Laser, Buff-Anzeigen, Platzierungsanimation, Prestige-Animation (GDD 13 §10) |
-| Hinweise | einmalige Hinweise je neuem System, wegklickbar, ohne Pause (GDD 14 §4a) — inklusive des Hinweises zum **Zeitpunkt** des Buff-Turms |
-| Einstellungen | Grafik, Effekte, Animationen, Lautstärke, Sprache |
-| Audio | `core/events.ts` bekommt einen Zuhörer, der Klänge abspielt. Begrenzung pro Zeitfenster, Ausdünnen bei ×2/×4 (GDD 13 §11) |
-| Leistung | Messung: gleichzeitige Gegner und Geschosse, Zeichenbudget (GDD 16 §15) |
+| Effekte | standen bereits (E4–E15): Mündungsfeuer, Rückstoß, Splitter, Druckwellen, Laser, Buff-Linien, Trefferblitze. E18 hat sie **abschaltbar** gemacht und die beiden fehlenden ergänzt |
+| Prestige | `surgeStation` in `sim/combat.ts` (sechs gestaffelte Ringe im Feld) plus `ui/surge.ts` (ein Blitz über dem ganzen Fenster) |
+| Platzieren | `placeFlash` in `sim/combat.ts` vermerkt den Augenblick, `render/station.ts` macht daraus das Einrasten des Moduls und einen auslaufenden Ring |
+| Hinweise | `sim/hints.ts` + `ui/hints.ts` — die acht Hinweise aus GDD 14 §4a, wegklickbar, ohne Pause, zurücksetzbar |
+| Einstellungen | `app/settings.ts` + `ui/settings.ts` — Tempo, Buff-Linien, Effekte, Bewegung, Lautstärke, Hinweise, Kamera |
+| Audio | `app/audio.ts` — ein Zuhörer am Ereignisbus, 18 Ereignisse, Mindestabstand je Klangart, höchstens 16 Stimmen |
+| Leistung | gemessen, Ergebnis samt Tabelle in `data/balance.ts` bei den Obergrenzen |
 
-**Wichtig:** Audio wird **angeschlossen**, nicht eingebaut. Wenn die Ereignispunkte ab E0 gemeldet
-werden, ist das hier ein Nachmittag statt einer Woche.
+**Die Leistungsmessung** (60 Simulationssekunden je Welle, volle Station aus sieben mythischen
+Türmen, Upgrades am Anschlag):
+
+| Welle | Gegner | Geschosse | Münzen | je Takt |
+|---|---|---|---|---|
+| 50 | 43 | 28 | 67 | 37 µs |
+| 200 | 57 | 48 | 0 | 36 µs |
+| 500 | 98 | 44 | 0 | 42 µs |
+| 1.000 | 178 | 43 | 0 | 52 µs |
+
+Der **Gegnerdeckel** ist der einzige, der wirklich greift — auf Welle 1.000 stauen sich 178
+Gegner an der Station. Genau dafür ist er da; er bleibt bei 200. Der **Geschossdeckel** ist mit
+600 gegen gemessene 48 reichlich bemessen und bleibt trotzdem stehen: Er kostet nichts und fängt
+eine spätere Station mit mehr Turmplätzen ab. Bei Tempo ×4 kostet die Simulation 9 bis 13 ms je
+Sekunde — sie ist also auch im schlimmsten gemessenen Fall nicht der Flaschenhals.
+
+**Abweichungen vom Plan, mit Begründung**
+
+| Punkt | Entscheidung |
+|---|---|
+| Klänge sind **gerechnet**, nicht geladen — bis auf zwei | Ein Klangapparat aus Oszillatoren braucht keine Dateien und keine Ladezeit und lässt sich in Tonhöhe und Länge genau an das Ereignis anpassen. Die Ausnahme sind die beiden Aufhebe-Klänge aus dem mitgelieferten Münzpaket: Es ist der Ton, den der Spieler hundertmal je Welle hört, und ein gerechneter Piepton wird dort schnell lästig. |
+| Keine Sprachwahl | Es gibt genau eine Sprache. Ein Schalter mit einer Stellung wäre schlimmer als keiner. Sie kommt, wenn eine zweite Tabelle in `data/strings.ts` steht. |
+| Einstellungen liegen **nicht** im Spielstand | Lautstärke, Effektstufe und Bewegungsdämpfung sagen etwas über das Gerät aus, nicht über den Fortschritt. Ein Spielstand, der später auf ein anderes Gerät wandert, soll dessen Regler nicht überschreiben. Eigene Ablage in `app/settings.ts`. |
+| „Effekte aus" schaltet nur Zierde ab, nicht Auskunft | Trefferblitze, Gegner, Geschosse, Münzen und Kapseln bleiben in jedem Fall. Ein Schalter, der die Spielsicht beschneidet statt sie zu beruhigen, wäre ein Nachteil und keine Einstellung. |
+| Die Prestige-Animation liegt auf **zwei** Ebenen | Ein Prestige setzt nicht die Station zurück, sondern den Run — und der Run ist alles, was man sieht. Deshalb laufen Ringe über das Feld *und* ein Blitz über die Oberfläche. Nur eines von beidem wäre die halbe Aussage. |
+| Sie wird **nach** dem Zurücksetzen ausgelöst | `doPrestige` ersetzt die Laufzeitdaten vollständig. Ein Ring, den man vorher hineinlegte, wäre mit ihnen verworfen — und der Fehler fiele am Bild nicht auf, weil das Bild dann eben leer ist. Eine eigene Zusicherung hält das fest. |
+| Das Modul rastet **von groß** ein, nicht von klein | Von klein aufzuwachsen sieht aus, als entstünde das Modul; von groß einzurasten sieht aus, als **käme** es an — und genau das ist passiert. Der Ring läuft dabei linear aus, während das Modul quadratisch einrastet: So verlässt er es sichtbar, statt mit ihm zusammen stehen zu bleiben. |
+| Der Andockring liegt **nicht** im Vorrat der Druckwellen | Er passte dort hinein, aber Druckwellen werden nur gezeichnet, wo der Kampf zu sehen ist — und gebaut wird in der Basis. Ein Ring, den man beim Bauen nicht sieht, ist kein Bauring. |
+
+**Nebenbefund 1:** Der Prestige-Baum zeigte die Bereiche **Spezialtürme** (aus E14) gar nicht an —
+die Bereichsliste in `ui/prestige.ts` war seit E13 unverändert. Fünf gekaufte Knoten waren damit
+unerreichbar. Die Liste ist jetzt vollständig und im Selbsttest gegen den Datensatz abgesichert.
+
+**Nebenbefund 2 — der teuerste Fehler dieser Etappe:** Der Prestige-Blitz liegt als Schleier über
+der ganzen Fläche und hatte `pointer-events: none` sauber im Stilblatt stehen. Wirkungslos: Die
+Regel `#overlay > *` zählt als Kennung (1-0-0) und schlägt jede Klassenregel (0-1-0). Ab da
+schluckte ein unsichtbarer Schleier jede Zeigerbewegung, und **das Einsammeln von Gold war tot** —
+die zentrale aktive Handlung des Spiels (GDD 08 §2).
+
+Am Bild ist so etwas nicht zu finden: Alles sieht richtig aus, und im Stilblatt steht die richtige
+Zeile. Der Sammelwähler heißt jetzt `:where(#overlay) > *` und zählt damit null — er wirkt
+weiterhin auf jedes Kind, lässt sich aber von einer gewöhnlichen Klassenregel überschreiben, also
+genau so, wie es jeder erwartet, der eine neue Anzeige dazulegt. Eine **Querschnittsregel** in
+`selftest/guards.ts` hält das fest; sie hätte den Fehler gefunden, bevor er das Spiel erreicht.
 
 ---
 
@@ -731,6 +826,7 @@ Diese gelten in **jeder** Etappe und sind Teil der Abnahme:
 | Belohnungen entstehen nur in `grantReward` | Suche nach `state.gold +=` außerhalb von `app/rewards.ts` |
 | Zahlen im Code stehen in `data/`, nicht in `sim/` | Sichtprüfung beim Durchgang |
 | Jeder Spielertext kommt aus `data/strings.ts` | Suche nach Zeichenketten in `ui/` |
+| Die Overlay-Ebene reißt den Zeiger nicht an sich | `:where(#overlay) > *` statt `#overlay > *` — sonst schlägt der Sammelwähler jede Klassenregel, und eine ganzflächige Anzeige schluckt das Einsammeln von Gold |
 | Neue Regeln bekommen eine Zusicherung im Selbsttest | Test läuft mit |
 | Nach jeder Etappe: `typecheck` sauber, Selbsttests grün, Spielstand lädt noch | vor dem nächsten Schritt |
 
@@ -745,8 +841,8 @@ nach jeder Etappe wertlos, und man testet nur noch mit frischen Spielständen.
 | Nicht früh | Warum |
 |---|---|
 | Eigener Zahlentyp (Mantisse/Exponent) | löst ein Problem, das erst um Welle 7.400 einträte (Abschnitt 3) |
-| Offline-Simulation | braucht die fertige Kampflogik, sonst entsteht eine zweite abweichende Simulation (E17) |
-| Audio | nur Anschlusspunkte ab E0, Klänge zuletzt (GDD 13 §11) |
+| Offline-Simulation | braucht die fertige Kampflogik, sonst entsteht eine zweite abweichende Simulation (E17) — **hat sich bestätigt:** `sim/offline.ts` ruft `stepBattle` und ist 130 Zeilen lang, weil die Logik schon dastand |
+| Audio | nur Anschlusspunkte ab E0, Klänge zuletzt (GDD 13 §11) — **hat sich bestätigt:** `app/audio.ts` hängt sich an 18 vorhandene Ereignisse und ändert an der Spiellogik keine Zeile |
 | Viele Turm- und Gegnerarten | erst wenn ein Datensatz genügt; vorher wird jede Variante dreimal umgebaut |
 | Sparsame Neuberechnung von Buffs | vollständige Neuberechnung kostet unter 1 ms und ist fehlerfrei (GDD 03 §10) |
 | Weltkarte, Menüstruktur über das Nötige hinaus | GDD 13 §3 sieht feste Bereiche vor, mehr braucht es nicht |
@@ -765,75 +861,11 @@ nach jeder Etappe wertlos, und man testet nur noch mit frischen Spielständen.
 | Kernwahl und weitere Haupttürme (GDD 04, GDD 10 Bereich 5) | offen geblieben — E14 hat nur Türme gebracht, keine Kerne. Es gibt weiterhin genau einen |
 | Eigenschaften, die eine **Mechanik** anhängen (GDD 06 §10: Durchschuss, explodierende Projektile) | jetzt möglich, da die Mechaniken stehen. Braucht einen zweiten `TraitEffect`-Typ |
 | Werte der neuen Türme und Gegner gegeneinander | mit dem Balancing nach E9 — bisher sind es begründete Annahmen, kein gemessenes Kräfteverhältnis |
-| Zeichenbudget: maximale Gegner und Geschosse | Messung in E18, Obergrenze steht ab E4 als Konstante |
+| ~~Zeichenbudget: maximale Gegner und Geschosse~~ | **erledigt in E18** — gemessen, Tabelle steht in `data/balance.ts`. Der Gegnerdeckel greift ab Welle 1.000, der Geschossdeckel ist reichlich |
+| ~~Händler-Drohne (GDD 11 §7)~~ | **erledigt** — die Frage war, worin sich ihr Sortiment vom Turmkauf unterscheidet. Antwort: Sie verkauft nicht nur Türme, sondern fertige Ware aus vier vorhandenen Systemen, und ihr Preis hängt an der Welle statt an der Zahl gekaufter Türme |
+| Weitere Helfer (GDD 12 §12: Reparatur, Wartung, Forschung) | offen geblieben — das GDD führt nur den Goldsammler aus, die anderen sind Ideen ohne Zahlen |
+| ~~Prestige-Animation (GDD 13 §10)~~ | **erledigt** — `surgeStation` im Feld plus `ui/surge.ts` über dem Fenster |
+| ~~Platzierungsanimation (GDD 13 §10)~~ | **erledigt** — das Modul rastet von groß ein, ein Ring läuft über die Nachbarn hinweg. Damit ist die Effektliste aus GDD 13 §10 vollständig |
+| Balancing der Ereignis-, Kapsel- und Handelswerte | mit dem Balancing nach E9. Heute hängt alles drei an `EVENT_REWARD_BASE` und wächst mit derselben Kurve wie die Gegnerbelohnung — begründet, aber nicht gemessen. Besonders offen: ob die Drohne mit dem Turmkauf um dasselbe Gold konkurrieren darf |
+| Zweite Sprache | die Sprachwahl in den Einstellungen fehlt bewusst, solange es nur eine Tabelle in `data/strings.ts` gibt |
 | Baugefühl, Formunterscheidbarkeit, Buff-Linien, Wirkung der Keile | Urteil am Bild — offen aus [Prototyp 01](../prototypes/01-tower-building/README.md#ergebnis) |
-
-/* ### FEHLENDE ZEILE 771 ### */
-/* ### FEHLENDE ZEILE 772 ### */
-/* ### FEHLENDE ZEILE 773 ### */
-/* ### FEHLENDE ZEILE 774 ### */
-/* ### FEHLENDE ZEILE 775 ### */
-/* ### FEHLENDE ZEILE 776 ### */
-/* ### FEHLENDE ZEILE 777 ### */
-/* ### FEHLENDE ZEILE 778 ### */
-/* ### FEHLENDE ZEILE 779 ### */
-/* ### FEHLENDE ZEILE 780 ### */
-/* ### FEHLENDE ZEILE 781 ### */
-/* ### FEHLENDE ZEILE 782 ### */
-/* ### FEHLENDE ZEILE 783 ### */
-/* ### FEHLENDE ZEILE 784 ### */
-/* ### FEHLENDE ZEILE 785 ### */
-/* ### FEHLENDE ZEILE 786 ### */
-/* ### FEHLENDE ZEILE 787 ### */
-/* ### FEHLENDE ZEILE 788 ### */
-/* ### FEHLENDE ZEILE 789 ### */
-/* ### FEHLENDE ZEILE 790 ### */
-/* ### FEHLENDE ZEILE 791 ### */
-/* ### FEHLENDE ZEILE 792 ### */
-/* ### FEHLENDE ZEILE 793 ### */
-/* ### FEHLENDE ZEILE 794 ### */
-/* ### FEHLENDE ZEILE 795 ### */
-/* ### FEHLENDE ZEILE 796 ### */
-/* ### FEHLENDE ZEILE 797 ### */
-/* ### FEHLENDE ZEILE 798 ### */
-/* ### FEHLENDE ZEILE 799 ### */
-/* ### FEHLENDE ZEILE 800 ### */
-/* ### FEHLENDE ZEILE 801 ### */
-/* ### FEHLENDE ZEILE 802 ### */
-/* ### FEHLENDE ZEILE 803 ### */
-/* ### FEHLENDE ZEILE 804 ### */
-/* ### FEHLENDE ZEILE 805 ### */
-/* ### FEHLENDE ZEILE 806 ### */
-/* ### FEHLENDE ZEILE 807 ### */
-nach jeder Etappe wertlos, und man testet nur noch mit frischen Spielständen.
-
----
-
-## 10. Was bewusst *nicht* früh gebaut wird
-
-| Nicht früh | Warum |
-|---|---|
-| Eigener Zahlentyp (Mantisse/Exponent) | löst ein Problem, das erst um Welle 7.400 einträte (Abschnitt 3) |
-| Offline-Simulation | braucht die fertige Kampflogik, sonst entsteht eine zweite abweichende Simulation (E17) |
-| Audio | nur Anschlusspunkte ab E0, Klänge zuletzt (GDD 13 §11) |
-| Viele Turm- und Gegnerarten | erst wenn ein Datensatz genügt; vorher wird jede Variante dreimal umgebaut |
-| Sparsame Neuberechnung von Buffs | vollständige Neuberechnung kostet unter 1 ms und ist fehlerfrei (GDD 03 §10) |
-| Weltkarte, Menüstruktur über das Nötige hinaus | GDD 13 §3 sieht feste Bereiche vor, mehr braucht es nicht |
-| Monetarisierung | nur die Vorkehrungen aus GDD 16 §2, nichts Sichtbares |
-
----
-
-## Offene Punkte, die dieser Plan nicht entscheidet
-
-| Punkt | Wann zu klären |
-|---|---|
-| Wellenfaktor, Turm-Basiswerte, XP-Kurve, Prestige-Formel, Drop-Chancen | nach E9 am laufenden Spiel (GDD 15 §16) |
-| Fähigkeits-Stufen (GDD 09 §9): eigene Kostenkurve oder Pfade im Upgrade-Menü? | offen geblieben — der Turmkauf hat die Frage nicht mit beantwortet, weil er keine Stufen kennt |
-| Wie oft ein Levelaufstieg fallen darf, ohne zu stören | beim Justieren der XP-Kurve — das Auswahlfenster hält die Bedienung des Feldes an |
-| Prestige-Punkteformel gegen die Wellenkurve | mit dem Balancing nach E9. Heute: Welle 500 ergibt 123 Punkte, das GDD nennt 50–100 |
-| Kernwahl und weitere Haupttürme (GDD 04, GDD 10 Bereich 5) | offen geblieben — E14 hat nur Türme gebracht, keine Kerne. Es gibt weiterhin genau einen |
-| Eigenschaften, die eine **Mechanik** anhängen (GDD 06 §10: Durchschuss, explodierende Projektile) | jetzt möglich, da die Mechaniken stehen. Braucht einen zweiten `TraitEffect`-Typ |
-| Werte der neuen Türme und Gegner gegeneinander | mit dem Balancing nach E9 — bisher sind es begründete Annahmen, kein gemessenes Kräfteverhältnis |
-| Zeichenbudget: maximale Gegner und Geschosse | Messung in E18, Obergrenze steht ab E4 als Konstante |
-| Baugefühl, Formunterscheidbarkeit, Buff-Linien, Wirkung der Keile | Urteil am Bild — offen aus [Prototyp 01](../prototypes/01-tower-building/README.md#ergebnis) |
-

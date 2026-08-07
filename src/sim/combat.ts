@@ -19,10 +19,13 @@ import { eliteById, enemyById } from '../data/enemies.ts'
 import type { StatKey } from '../data/types.ts'
 import { dropGold, goldValueFor } from './economy.ts'
 import { releaseEnemy, type Enemy } from './enemies.ts'
+import { maybeDropPod } from './events.ts'
 import type { Drone } from './drones.ts'
 import type { Projectile } from './projectiles.ts'
 import type { PlacedModule } from './station.ts'
 import { globalMultiplier } from './stats.ts'
+// Nur der Typ - `towers` bindet `combat` ein, ein Wert von dort waere ein Kreis.
+import type { RangeCircle } from './towers.ts'
 import type { WavePlan } from './waves.ts'
 
 /**
@@ -68,6 +71,18 @@ export type Muzzle = {
  * an, und ohne diese Sperre blitzte es viermal so schnell statt gleich schnell.
  */
 export type Recoil = { angle: number; age: number; life: number; sinceFlash: number }
+
+/**
+ * Ein eben gesetztes Modul (GDD 13 Abschnitt 10: "Platzieren von Modulen").
+ *
+ * Es traegt nur sein Alter - was daraus wird, entscheidet die Zeichenebene. Ein Eintrag je
+ * Modul, der verfaellt, sobald er ausgelaufen ist: Anders als beim Rueckstoss gibt es hier
+ * nie viele gleichzeitig, weil man Module einzeln setzt.
+ */
+export type Placing = { age: number; life: number }
+
+/** Wie lange ein Modul beim Andocken einrastet, bei Tempo x1. */
+export const PLACING_LIFE = 0.42
 
 /**
  * Woraus ein Splitter besteht. `muenze` traegt keine eigene Farbe - die holt sich die
@@ -197,60 +212,6 @@ export type CombatState = {
   enemyPool: Enemy[]
   projectiles: Projectile[]
   projectilePool: Projectile[]
- * sieht sonst ein Dutzend Zahlen uebereinander statt einer, die hochlaeuft.
- */
-const GAIN_MERGE_WINDOW = 0.25
-export const SHARD_LIFE = 0.42
-export const BURST_LIFE = 0.26
-/** Goldfunken laufen laenger aus als Splitter - sie sollen ausrollen, nicht zerstieben. */
-export const SPILL_LIFE = 0.55
-/**
- * Wie lange eine eingesammelte Muenze hoechstens fliegt, bei Tempo x1.
- *
- * Ein Deckel, kein Fahrplan: In aller Regel ist sie vorher am Zeiger. Er greift nur, wenn
- * der Zeiger davonlaeuft - dann soll die Muenze nicht ewig hinterherjagen.
- */
-export const PICKUP_LIFE = 0.7
-
-/**
- * Wie stark der Zeiger zieht, als Anteil des Rests je echter Sekunde.
- *
- * Der Zug **waechst mit dem Alter**. Am Anfang ist er schwach, und die Muenze bleibt
- * sichtbar hinter dem wandernden Zeiger zurueck - das ist der Teil, den man als Aufheben
- * liest. Zum Ende hin wird er so stark, dass sie den Zeiger auch dann einholt, wenn er
- * weiterzieht; ohne diesen Anstieg haengt sie bei schneller Maus dauerhaft hinterher und
- * verschwindet irgendwo im Feld, statt auf dem Zeiger anzukommen.
- */
-const PICKUP_PULL = 6
-const PICKUP_PULL_RAMP = 34
-
-/** Ab diesem Abstand zum Zeiger ist die Muenze angekommen, in Welteinheiten. */
-const PICKUP_REACH = 4
-/** Wie schnell Splitter auslaufen. Groesser = kuerzerer Flug. */
-const SHARD_DRAG = 3.4
-/** Kuerzester Abstand zwischen zwei Blitzen desselben Moduls, in Sekunden. */
-const MUZZLE_INTERVAL = 0.05
-export const MUZZLE_LIFE = 0.09
-export const RECOIL_LIFE = 0.14
-
-/** Laserstrahlen: gleich viele Plaetze wie Muendungsfeuer, und ebenso kurzlebig. */
-const BEAM_SLOTS = 32
-export const BEAM_LIFE = 0.1
-
-export type CombatPhase = 'pause' | 'running'
-
-export type CombatState = {
-  phase: CombatPhase
-  /** In der Pause die Restzeit, in der Welle die verstrichene Zeit - beides in Sekunden. */
-  timer: number
-  plan: WavePlan | null
-  /** Wie viele Eintraege des Plans bereits erschienen sind. */
-  spawnIndex: number
-
-  enemies: Enemy[]
-  enemyPool: Enemy[]
-  projectiles: Projectile[]
-  projectilePool: Projectile[]
   /** Restliche Nachladezeit je Modul, in Sekunden. */
   cooldowns: Map<string, number>
 
@@ -263,6 +224,19 @@ export type CombatState = {
    */
   modules: PlacedModule[]
   buffs: Map<string, BuffResult>
+  /**
+   * Die Wirkungskreise dieses Ticks - einer je Modul, das wirklich schiesst.
+   *
+   * Sie stehen als **fertige Liste** hier, weil `sim/enemies.ts` sie fuer das Anmarschtempo
+   * braucht (GDD 07 Abschnitt 2) und die Tuerme nicht kennen darf: `sim/towers.ts` bindet
+   * `enemies` ein, umgekehrt entstuende ein Kreis. `sim/battle.ts` fuellt sie je Tick, alle
+   * anderen lesen nur - dieselbe Bauart wie `enemySpeedFactor`.
+   *
+   * Leer heisst "kein Turm deckt irgendetwas ab", nicht "noch nicht berechnet". Wer
+   * `stepEnemies` ausserhalb von `stepBattle` aufruft, bekommt deshalb ungedeckte Gegner -
+   * und damit genau das, was die leere Liste behauptet.
+   */
+  coverage: RangeCircle[]
   hits: Hit[]
   /** Fester Vorrat an Muendungsfeuern; `active` sagt, welche gerade brennen. */
   muzzles: Muzzle[]
@@ -374,6 +348,7 @@ export function createCombatState(): CombatState {
     maxStationHp: BASE_STATION_HP,
     modules: [],
     buffs: new Map(),
+    coverage: [],
     hits: [],
     muzzles: Array.from({ length: MUZZLE_SLOTS }, () => ({
       pos: { x: 0, y: 0 },
@@ -408,10 +383,7 @@ export function createCombatState(): CombatState {
     burstCursor: 0,
     pickups: Array.from({ length: PICKUP_SLOTS }, () => ({
       from: { x: 0, y: 0 },
-      pos: { x: 0, y: 0 },
       to: { x: 0, y: 0 },
-      value: 0,
-      mean: 0,
       age: 0,
       life: PICKUP_LIFE,
       active: false,
@@ -468,7 +440,6 @@ export function fireFlash(
   color: string,
 ): void {
   const combat = state.runtime.combat
-  if (!combat.observed) return
   const interval = effectLife(state, MUZZLE_INTERVAL)
 
   let recoil = combat.recoils.get(uid)
@@ -477,6 +448,170 @@ export function fireFlash(
     combat.recoils.set(uid, recoil)
   }
   recoil.angle = angle
+  recoil.age = 0
+  recoil.life = effectLife(state, RECOIL_LIFE)
+
+  if (recoil.sinceFlash < interval) return
+  recoil.sinceFlash = 0
+
+  const slot = combat.muzzles[combat.muzzleCursor] as Muzzle
+  combat.muzzleCursor = (combat.muzzleCursor + 1) % combat.muzzles.length
+  slot.pos.x = from.x
+  slot.pos.y = from.y
+  slot.angle = angle
+  slot.color = color
+  slot.age = 0
+  slot.life = effectLife(state, MUZZLE_LIFE)
+  slot.active = true
+}
+
+/**
+ * Ein Modul ist angedockt (GDD 13 Abschnitt 10).
+ *
+ * Vermerkt wird nur der **Augenblick** - was daraus wird, entscheidet die Zeichenebene
+ * (`render/station.ts`): Das Modul rastet ein, und ein Ring geht darum auf.
+ *
+ * Der Ring liegt bewusst **nicht** im Vorrat der Druckwellen, obwohl er dort hineinpasste:
+ * Druckwellen werden nur gezeichnet, wo der Kampf zu sehen ist - und gebaut wird in der
+ * Basis. Er haengt deshalb an derselben Kennung wie das Einrasten und wird mit dem Modul
+ * zusammen gezeichnet, also ueberall dort, wo das Modul selbst zu sehen ist.
+ *
+ * Gilt auch fuers Umsetzen: Ein Modul, das an einer neuen Kante ankommt, ist fuer das Auge
+ * dasselbe Ereignis wie ein neu gesetztes.
+ */
+export function placeFlash(state: GameState, uid: string): void {
+  const combat = state.runtime.combat
+  if (!combat.observed) return
+  combat.placings.set(uid, { age: 0, life: effectLife(state, PLACING_LIFE) })
+}
+
+/**
+ * Ein Gegner zerfaellt: Splitter in seiner Farbe, dazu eine kurze Druckwelle.
+ *
+ * Die Zahl der Splitter sinkt mit dem Tempo - bei x4 sterben viermal so viele Gegner je
+ * echter Sekunde, und aus dem Zerfall wuerde sonst ein Teppich, der die Station zudeckt
+ * (GDD 13 Abschnitt 10).
+ *
+ * Der Zufall kommt aus dem **Optikstrom**: Weil hier je nach Tempo unterschiedlich viele
+ * Zahlen gezogen werden, duerfte er den Spielzufall nicht verschieben.
+ */
+export function burstEnemy(state: GameState, enemy: Enemy, color: string): void {
+  const combat = state.runtime.combat
+  const rng = state.runtime.fxRng
+  const speed = Math.max(1, state.runtime.speedFactor)
+  const count = Math.max(2, Math.round(6 / Math.sqrt(speed)))
+
+  for (let i = 0; i < count; i++) {
+    const shard = combat.shards[combat.shardCursor] as Shard
+    combat.shardCursor = (combat.shardCursor + 1) % combat.shards.length
+
+    const angle = rng.range(0, Math.PI * 2)
+    const push = rng.range(26, 72)
+    shard.pos.x = enemy.pos.x
+    shard.pos.y = enemy.pos.y
+    shard.vel.x = Math.cos(angle) * push
+    shard.vel.y = Math.sin(angle) * push
+    shard.age = 0
+    shard.life = effectLife(state, SHARD_LIFE * rng.range(0.7, 1.15))
+    shard.radius = enemy.radius * rng.range(0.14, 0.26)
+    shard.color = color
+    shard.kind = 'truemmer'
+    shard.active = true
+  }
+
+  const burst = combat.bursts[combat.burstCursor] as Burst
+  combat.burstCursor = (combat.burstCursor + 1) % combat.bursts.length
+  burst.pos.x = enemy.pos.x
+  burst.pos.y = enemy.pos.y
+  burst.age = 0
+  burst.life = effectLife(state, BURST_LIFE)
+  burst.radius = enemy.radius
+  burst.color = color
+  burst.active = true
+}
+
+/**
+ * Die Station ist gefallen.
+ *
+ * Derselbe Zucker wie bei einem Treffer, nur dreimal so lang: Der Kern schlaegt auf und
+ * beruhigt sich sichtbar langsamer. Mehr braucht es nicht - der verlorene Anlauf kostet
+ * nichts ausser Zeit (GDD 02), und ein Trauermarsch waere fuer einen Neuversuch zu viel.
+ */
+export function collapseStation(state: GameState): void {
+  const flash = state.runtime.combat.stationFlash
+  flash.age = 0
+  flash.life = effectLife(state, STATION_FLASH_LIFE * 3)
+  flash.active = true
+}
+
+/**
+ * Die Energiewelle eines Prestiges (GDD 13 Abschnitt 10: "Prestige eine grosse
+ * Energieanimation").
+ *
+ * Dieselbe Bauart wie der Nachhall eines Bosses, nur in einer anderen Groessenordnung:
+ * sechs Ringe statt drei, bis zur zehnfachen Weite, und deutlich laenger. Das ist Absicht -
+ * ein Prestige ist die groesste Zaesur des Spiels, und eine Zaesur muss man an ihrer
+ * **Dauer** erkennen, nicht nur an ihrer Helligkeit.
+ *
+ * Sie wird **nach** dem Zuruecksetzen ausgeloest, also in den frischen Laufzeitdaten: Der
+ * alte Kampfzustand ist zu diesem Zeitpunkt schon verworfen, und ein Ring, den man vorher
+ * hineinlegte, waere mit ihm verschwunden.
+ *
+ * Der Ring ist der eine Effekt, dem es nichts ausmacht, dass die Station gerade neu ist -
+ * er geht von der Mitte aus, und die Mitte steht immer.
+ */
+export function surgeStation(state: GameState): void {
+  const combat = state.runtime.combat
+
+  for (let i = 0; i < 6; i++) {
+    const burst = combat.bursts[combat.burstCursor] as Burst
+    combat.burstCursor = (combat.burstCursor + 1) % combat.bursts.length
+    burst.pos.x = 0
+    burst.pos.y = 0
+    burst.age = 0
+    // Jeder Ring laeuft laenger und weiter als der vorige - so entsteht ein Nachschwingen
+    // statt sechs gleichzeitiger Kreise.
+    burst.life = effectLife(state, BURST_LIFE * (5 + i * 3))
+    burst.radius = 60 + i * 150
+    // Abwechselnd die beiden Leitfarben: Der Kern gibt ab, der Baum nimmt auf.
+    burst.color = i % 2 === 0 ? PALETTE_BLAST : PALETTE_CHAIN
+    burst.active = true
+  }
+
+  // Der Kern zittert dabei so lange nach wie bei einem Fall - er wird ja auch ersetzt.
+  const flash = combat.stationFlash
+  flash.age = 0
+  flash.life = effectLife(state, STATION_FLASH_LIFE * 6)
+  flash.active = true
+}
+
+/**
+ * Nachhall eines gefallenen Bosses: mehrere Ringe, die verschieden schnell aufgehen.
+ *
+ * Ein einzelner Ring waere nur ein groesserer Gegnertod. Gestaffelte Laufzeiten machen
+ * daraus ein Nachschwingen - die Zaesur, die ein Boss laut GDD 07 Abschnitt 7 setzt.
+ */
+export function echoBoss(state: GameState, boss: Enemy, color: string): void {
+  const combat = state.runtime.combat
+
+  for (let i = 0; i < 3; i++) {
+    const burst = combat.bursts[combat.burstCursor] as Burst
+    combat.burstCursor = (combat.burstCursor + 1) % combat.bursts.length
+    burst.pos.x = boss.pos.x
+    burst.pos.y = boss.pos.y
+    burst.age = 0
+    // Jeder Ring laeuft laenger und weiter als der vorige.
+    burst.life = effectLife(state, BURST_LIFE * (1.6 + i * 0.9))
+    burst.radius = boss.radius * (1 + i * 0.55)
+    burst.color = color
+    burst.active = true
+  }
+}
+
+/**
+ * Gold springt aus dem zerstoerten Gegner heraus und rollt aus.
+ *
+ * Die Muenze selbst liegt schon an ihrem Platz - diese Funken sind das, was man **sieht**:
  * Sie fliegen langsamer und laenger als die Splitter, damit der Wurf ausrollt, statt zu
  * zerstieben. Zwei Funken je Tod reichen; bei hohem Tempo nur einer.
  */
@@ -522,6 +657,7 @@ export function spawnGain(state: GameState, at: Vec2, amount: number): void {
   if (!Number.isFinite(amount) || amount <= 0) return
 
   const combat = state.runtime.combat
+  if (!combat.observed) return
   const previous = combat.gains[(combat.gainCursor + combat.gains.length - 1) % combat.gains.length]
 
   if (previous && previous.active && previous.age < effectLife(state, GAIN_MERGE_WINDOW)) {
@@ -822,18 +958,20 @@ export function damageStation(state: GameState, amount: number, atPos: Vec2): vo
 
   combat.stationHp = Math.max(0, combat.stationHp - taken)
 
-  // Der Kern zuckt. Ein neuer Treffer setzt das Zittern zurueck, statt es zu stapeln.
-  combat.stationFlash.age = 0
-  combat.stationFlash.life = effectLife(state, STATION_FLASH_LIFE)
-  combat.stationFlash.active = true
+  if (combat.observed) {
+    // Der Kern zuckt. Ein neuer Treffer setzt das Zittern zurueck, statt es zu stapeln.
+    combat.stationFlash.age = 0
+    combat.stationFlash.life = effectLife(state, STATION_FLASH_LIFE)
+    combat.stationFlash.active = true
 
-  combat.hits.push({
-    pos: { ...atPos },
-    age: 0,
-    life: effectLife(state, HIT_LIFE),
-    kind: 'station',
-    crit: false,
-  })
+    combat.hits.push({
+      pos: { ...atPos },
+      age: 0,
+      life: effectLife(state, HIT_LIFE),
+      kind: 'station',
+      crit: false,
+    })
+  }
   // Gemeldet wird, was **angekommen** ist, nicht was geworfen wurde: Die Anzeige und
   // spaeter der Klang sollen die Wirkung des Schildes zeigen, nicht sie verschweigen.
   emit('station.damaged', { amount: taken, remaining: combat.stationHp })
@@ -925,13 +1063,15 @@ export function applyDamage(
   }
   // Der kritische Treffer traegt sein Kennzeichen mit: Er blitzt groesser auf, damit man
   // den Unterschied sieht, statt ihn nur in der Lebensleiste abzulesen.
-  state.runtime.combat.hits.push({
-    pos: { ...enemy.pos },
-    age: 0,
-    life: effectLife(state, HIT_LIFE),
-    kind: 'enemy',
-    crit: flags.crit === true,
-  })
+  if (state.runtime.combat.observed) {
+    state.runtime.combat.hits.push({
+      pos: { ...enemy.pos },
+      age: 0,
+      life: effectLife(state, HIT_LIFE),
+      kind: 'enemy',
+      crit: flags.crit === true,
+    })
+  }
 
   if (enemy.hp <= 0) killEnemy(state, enemy)
 }
@@ -951,9 +1091,10 @@ export function killEnemy(state: GameState, enemy: Enemy): void {
   // Zerfallen, bevor er in den Pool zurueckgeht - danach steht seine Position nicht mehr.
   burstEnemy(state, enemy, color)
 
+  const isBoss = combat.bossId === enemy.id
   // Der Boss bekommt zusaetzlich seinen Nachhall und eine eigene Meldung: Sein Tod ist
   // eine Zaesur, kein Gegner weniger (GDD 07 Abschnitt 7).
-  if (combat.bossId === enemy.id) {
+  if (isBoss) {
     echoBoss(state, enemy, color)
     emit('boss.killed', { wave: state.run.wave })
   }
@@ -979,6 +1120,11 @@ export function killEnemy(state: GameState, enemy: Enemy): void {
 
   dropGold(state, enemy.pos, goldValueFor(state, enemy))
   spillGold(state, enemy.pos)
+
+  // Die Versorgungskapsel haengt an der **Drop-Chance des Gegners** und nicht an der Welle
+  // (GDD 11 Abschnitt 2) - deshalb steht sie hier, an der einen Stelle, an der ein Gegner
+  // stirbt, und nicht in der Wellensteuerung.
+  maybeDropPod(state, enemy, isBoss)
 
   // Der Erfahrungsbonus aus Perks wirkt hier und nicht in `grantReward`: Dort landen auch
   // Belohnungen, die keinen Bonus bekommen sollen (spaetere Ereignisse, Kapseln). Der
@@ -1030,6 +1176,13 @@ export function stepEffects(state: GameState, dt: number): void {
     if (recoil.age > recoil.life) combat.recoils.delete(uid)
   }
 
+  // Genauso das Einrasten: Der Eintrag verfaellt, statt liegen zu bleiben - sonst behielte
+  // die Karte jedes Modul, das jemals gesetzt wurde.
+  for (const [uid, placing] of combat.placings) {
+    placing.age += dt
+    if (placing.age > placing.life) combat.placings.delete(uid)
+  }
+
   // Der Bremsfaktor haengt nur an der Schrittweite - einmal je Takt statt je Splitter.
   const drag = Math.exp(-dt * SHARD_DRAG)
   for (const shard of combat.shards) {
@@ -1076,4 +1229,3 @@ export function stepEffects(state: GameState, dt: number): void {
     if (enemy.bite > enemy.biteLife) enemy.biteLife = 0
   }
 }
-

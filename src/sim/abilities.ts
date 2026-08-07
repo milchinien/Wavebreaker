@@ -247,4 +247,3 @@ export function resetAbilities(state: GameState): void {
   state.runtime.abilities.active.clear()
   refreshDerived(state)
 }
-

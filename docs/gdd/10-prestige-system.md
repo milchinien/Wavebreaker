@@ -267,4 +267,3 @@ Nach vielen Prestiges sollen zwei Spieler völlig unterschiedliche Kampfstatione
 | C | Prism Core, Laser und Spezialtürme |
 
 Alle spielen dasselbe Spiel — mit völlig anderer Strategie.
-

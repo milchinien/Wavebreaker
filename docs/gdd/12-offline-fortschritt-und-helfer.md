@@ -177,4 +177,3 @@ Kleine schwebende Drohnen mit Neonbeleuchtung, klaren Formen und dezenten Animat
 ## 15. Ziel
 
 Der Spieler beginnt aktiv — Gold sammeln, alles verwalten. Mit dem Fortschritt kommen mehr Automatisierung, effizientere Abläufe und eine größere Basisverwaltung.
-

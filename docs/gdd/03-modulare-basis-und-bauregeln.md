@@ -413,4 +413,3 @@ Diese Punkte waren in den Quelldokumenten offen und sind inzwischen entschieden:
 | Buff-Stapelung | additiv, danach Deckel je Wert (Abschnitt 9) |
 | Hauptturm und Buffs | der Hauptturm wird mitgebufft (Abschnitt 9) |
 | Mindeststärke eines Buffs | `b > 1/k` bei `k` verstärkten Modulen, sonst wertlos (Abschnitt 9) |
-

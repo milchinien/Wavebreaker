@@ -88,4 +88,3 @@ export function countInRange(enemies: readonly Enemy[], from: Vec2, range: numbe
   }
   return count
 }
-

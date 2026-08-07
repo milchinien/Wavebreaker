@@ -22,12 +22,17 @@
  *
  * Drei Entscheidungen praegen die Datei:
  *
- * **Es wird `translate` und `scale` gesetzt, nicht `transform`.** Mehrere Panels tragen
- * schon eine eigene Verschiebung (`translateX(-50%)` bei allem Mittigen). Die
- * Einzeleigenschaften legen sich davor, statt sie zu ueberschreiben.
+ * **Es wird `translate` gesetzt, nicht `transform`.** Mehrere Panels tragen schon eine
+ * eigene Verschiebung (`translateX(-50%)` bei allem Mittigen), und die Auftritte im
+ * Stilblatt arbeiten ebenfalls mit `transform`. Die Einzeleigenschaft `translate` legt sich
+ * davor, statt sie zu ueberschreiben - Wanderung und Auftritt kommen sich nicht ins Gehege.
  *
- * **Groesse wird nur skaliert, wo der Knoten nichts eigenes vorhat.** Ein mittig gesetztes
- * Panel wuerde seine eigene Zentrierung mitskalieren und dabei aus der Mitte laufen.
+ * **Nur der Ort wandert, die Groesse springt.** Ein Panel, das seine Groesse aendert, liesse
+ * sich per `scale` auf seine alte Flaeche zurueckholen - dann verzerrte aber seinen ganzen
+ * Inhalt eine knappe halbe Sekunde lang. Im Spiel aendert genau **ein** Panel seine Groesse
+ * (die Upgrade-Kacheln zwischen Kampf und Upgrades), und dessen Inhalt faehrt ohnehin
+ * gestaffelt neu auf. Es wandert deshalb nur mit seiner oberen Kante nach oben in die schon
+ * fertige Leiste hinein - wie eine Schublade, die aufgeht.
  *
  * **Der Abgang wird festgenagelt, nicht verzoegert.** Ein Panel, das der neue Bereich nicht
  * mehr zeigt, ist im Augenblick des Umschaltens auf `display: none` - es ist weg, bevor man
@@ -35,6 +40,11 @@
  * seine letzte Groesse fest eingetragen und wird aus dem Fluss genommen. Wie es geht, steht
  * weiterhin im Stilblatt (`[data-leaving]`) - die Richtung eines Abgangs ist Gestaltung,
  * keine Mechanik.
+ *
+ * Aus demselben Grund laesst sich die Wanderung im Stilblatt auch **abbestellen**
+ * (`--flip: 0`). Nicht jeder gemessene Unterschied ist ein Weg: Eine mittig gesetzte
+ * Ueberschrift ruecht schon dann zur Seite, wenn das naechste Wort ein paar Zeichen laenger
+ * ist. Sie hat ihren Platz nicht gewechselt, nur ihre Breite.
  */
 
 /** Was von einem Knoten gemessen wird. */
@@ -45,6 +55,8 @@ type Box = {
   height: number
   /** Der Anzeigemodus zur Messzeit - der festgenagelte Abgang muss ihn zurueckholen. */
   display: string
+  /** Darf dieser Knoten wandern? Abbestellt wird im Stilblatt ueber `--flip: 0`. */
+  travels: boolean
 }
 
 export type FlipOptions = {
@@ -75,20 +87,28 @@ const PIN_MS = 600
 /** Ab wann ein Unterschied eine Bewegung wert ist, in Bildschirmpixeln. */
 const EPSILON = 0.5
 
-export function createFlip(options: FlipOptions): Flip {
-  /**
-   * Wer gerade festgenagelt abtritt - und was vorher in seinem `style`-Attribut stand.
-   * `null` heisst: gar nichts, das Attribut kommt beim Aufraeumen wieder weg.
-   */
-  const pinned = new Map<HTMLElement, string | null>()
+/** Was ein festgenagelter Abgang zurueckzugeben hat, wenn er zu Ende ist. */
+type Pin = {
+  /** Was vor dem Nageln im `style`-Attribut stand. `null`: gar nichts, es kommt wieder weg. */
+  style: string | null
+  /** Der Zuhoerer, der auf das Ende der Abgangsbewegung wartet. */
+  done: (event: AnimationEvent) => void
+}
 
+export function createFlip(options: FlipOptions): Flip {
+  /** Wer gerade festgenagelt abtritt. Leer, sobald alle Abgaenge durch sind. */
+  const pinned = new Map<HTMLElement, Pin>()
+
+  /** Die einzige Stelle, an der ein Abgang aufgeraeumt wird - egal, was ihn beendet hat. */
   function release(node: HTMLElement): void {
-    if (!pinned.has(node)) return
-    const style = pinned.get(node) ?? null
+    const pin = pinned.get(node)
+    if (!pin) return
     pinned.delete(node)
+
+    node.removeEventListener('animationend', pin.done)
     delete node.dataset['leaving']
-    if (style === null) node.removeAttribute('style')
-    else node.setAttribute('style', style)
+    if (pin.style === null) node.removeAttribute('style')
+    else node.setAttribute('style', pin.style)
   }
 
   /**
@@ -99,7 +119,17 @@ export function createFlip(options: FlipOptions): Flip {
    * Der Zeiger geht durch ihn hindurch: Ein abtretendes Panel darf keinen Klick mehr fangen.
    */
   function depart(node: HTMLElement, from: Box): void {
-    if (!pinned.has(node)) pinned.set(node, node.getAttribute('style'))
+    if (!pinned.has(node)) {
+      // Aufgeraeumt wird, sobald die Bewegung im Stilblatt zu Ende ist - und andernfalls
+      // spaetestens nach `PIN_MS`. Die Pruefung auf das Ziel ist noetig, weil auch die
+      // Kacheln **innerhalb** des Panels ihre eigenen Bewegungen hier heraufmelden.
+      const done = (event: AnimationEvent): void => {
+        if (event.target === node) release(node)
+      }
+      pinned.set(node, { style: node.getAttribute('style'), done })
+      node.addEventListener('animationend', done)
+      window.setTimeout(() => release(node), PIN_MS)
+    }
 
     const style = node.style
     style.setProperty('position', 'fixed')
@@ -111,16 +141,6 @@ export function createFlip(options: FlipOptions): Flip {
     style.setProperty('margin', '0')
     style.setProperty('pointer-events', 'none')
     node.dataset['leaving'] = ''
-
-    // Aufgeraeumt wird, sobald die Bewegung im Stilblatt zu Ende ist - und andernfalls
-    // spaetestens nach `PIN_MS`. Die Pruefung auf das Ziel ist noetig, weil auch die
-    // Kacheln **innerhalb** des Panels ihre eigenen Bewegungen haben und melden.
-    node.addEventListener('animationend', function done(event) {
-      if (event.target !== node) return
-      node.removeEventListener('animationend', done)
-      release(node)
-    })
-    window.setTimeout(() => release(node), PIN_MS)
   }
 
   /**
@@ -131,33 +151,20 @@ export function createFlip(options: FlipOptions): Flip {
    * ueberlagert - gemessen wurde eben ihr **aktueller** Ort, die neue setzt genau dort an.
    */
   function travel(node: HTMLElement, from: Box, to: Box, ease: string): void {
+    if (!from.travels) return
+
     const dx = from.left - to.left
     const dy = from.top - to.top
-    const moved = Math.abs(dx) > EPSILON || Math.abs(dy) > EPSILON
-    const resized =
-      Math.abs(from.width - to.width) > EPSILON || Math.abs(from.height - to.height) > EPSILON
-
-    // Ein Knoten, der schon eine eigene Transformation traegt (alles mittig Gesetzte), wird
-    // nicht skaliert: Seine Zentrierung skalierte mit und liefe aus der Mitte.
-    const scalable = resized && to.width > 0 && to.height > 0 && !hasOwnTransform(node)
-    if (!moved && !scalable) return
+    if (Math.abs(dx) <= EPSILON && Math.abs(dy) <= EPSILON) return
 
     for (const running of node.getAnimations()) {
       if (running.id === 'flip') running.cancel()
     }
 
-    const start: Keyframe = { translate: `${dx}px ${dy}px` }
-    const end: Keyframe = { translate: '0px 0px' }
-    if (scalable) {
-      start['scale'] = `${from.width / to.width} ${from.height / to.height}`
-      end['scale'] = '1 1'
-      // Ohne die Ecke oben links als Bezug waechst der Knoten in alle Richtungen zugleich
-      // und deckt sich dabei nicht mehr mit seiner alten Flaeche.
-      start['transformOrigin'] = '0 0'
-      end['transformOrigin'] = '0 0'
-    }
-
-    const animation = node.animate([start, end], { duration: MOVE_MS, easing: ease })
+    const animation = node.animate(
+      [{ translate: `${dx}px ${dy}px` }, { translate: '0px 0px' }],
+      { duration: MOVE_MS, easing: ease },
+    )
     animation.id = 'flip'
   }
 
@@ -218,19 +225,18 @@ function measure(nodes: Iterable<HTMLElement>): Map<HTMLElement, Box> {
   for (const node of nodes) {
     const box = node.getBoundingClientRect()
     if (box.width <= 0 || box.height <= 0) continue
+
+    const style = getComputedStyle(node)
     shot.set(node, {
       left: box.left,
       top: box.top,
       width: box.width,
       height: box.height,
-      display: getComputedStyle(node).display,
+      display: style.display,
+      travels: style.getPropertyValue('--flip').trim() !== '0',
     })
   }
 
   return shot
-}
-
-function hasOwnTransform(node: HTMLElement): boolean {
-  return getComputedStyle(node).transform !== 'none'
 }
 

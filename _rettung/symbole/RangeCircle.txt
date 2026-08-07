@@ -1,0 +1,143 @@
+﻿Gesucht: RangeCircle
+Erwaehnungen: 15, davon Definitionen: 4
+
+======== 01E1azVsAu #41 Bash/Ergebnis  ========
+} from '../../sim/station.ts'
+import { findTarget } from '../../sim/targeting.ts'
+import {
+  rangeCircles,
+  stationRange,
+  stepTowers,
+  type RangeCircle,
+} from '../../sim/towers.ts'
+import { rangeOutline } from '../../render/combat.ts'
+import { clearField, healStationFull, startWave } from '../../sim/waves.ts'
+
+const STEP = 1 / TICK_RATE
+
+/**
+ * Ein Spielstand ohne Zufall: Kritische Treffer sind ausgeschaltet, damit Schaden und
+ * Zeit exakt vorhersagbar sind.
+ */
+function rig(): GameState {
+  resetStationViewCache()
+  const state = createInitialState(2024)
+  state.runtime.combat = createCombatState()
+  state.runtime.rng = { ...state.runtime.rng, chance: () => false }
+  // Neutral: ohne Plan schreitet die Welle nicht voran. Sonst wuerde die anfaengliche
+  // Pause beim ersten Tick die naechste Welle starten und das Feld leerraeumen.
+  state.runtime.combat.phase = 'running'
+  refresh(state)
+  healStationFull(state)
+  return state
+}
+
+function refresh(state: GameState): void {
+  invalidateStationView(state)
+  const view = stationView(state)
+  // syncStation vergleicht ueber die Objektgleichheit; nach invalidate ist das Feld neu.
+  syncStation(state, view.modules, view.buffs)
+}
+
+function placeFirst(state: GameState, defId: string, edgeIndex = 0): string {
+  const station = state.run.station
+  const module = station.inventory.find((m) => m.defId === defId)
+  if (!module) throw new Error(`${defId} liegt nicht im Inventar`)
+  const edge = freeEdges(station).find(
+    (candidate) => candidate.ownerUid === CORE_UID && candidate.edgeIndex === edgeIndex,
+  ) as FreeEdge
+  place(station, module.uid, edge)
+  refresh(state)
+  return module.uid
+}
+
+/** Einen unbeweglichen Gegner an eine feste Stelle setzen. */
+function planted(state: GameState, at: Vec2, hp: number): Enemy {
+  const enemy = spawnEnemy(state, 'drone', 0)
+  if (!enemy) throw new Error('Gegner konnte nicht erzeugt werden')
+  enemy.pos = { ...at }
+  enemy.maxHp = hp
+  enemy.hp = hp
+  enemy.speed = 0
+  return enemy
+   ...
+
+======== 01AdKuuazG #4 Read/Ergebnis E:/spiele/Desktop/The Tower/src/sim/towers.ts ========
+/** Werte, mit denen wirklich geschossen wird. Ohne Schaden oder Tempo faellt kein Schuss. */
+function shoots(stats: CombatStats): boolean {
+  return stats.damage > 0 && stats.attackSpeed > 0
+}
+
+/** Ein Wirkungskreis: um welchen Punkt, wie weit. */
+export type RangeCircle = { center: Vec2; range: number }
+
+/**
+ * Die Wirkungskreise der Station - einer je Modul, das wirklich schiesst.
+ *
+ * **Jeder Turm hat seinen eigenen Kreis um seinen eigenen Standort.** Genau so rechnet der
+ * Kampf: `findTarget` misst ab `module.center`, nicht ab dem Kern. Ein Turm, der zwei Ringe
+ * weit oben angebaut ist, reicht deshalb um diesen Abstand weiter nach oben als der Kern -
+ * und im Rueckn nicht weiter.
+ *
+ * Was der Spieler sieht, ist die **Vereinigung** dieser Kreise (`render/combat.ts`), nicht
+ * ihre Aussengrenze als Scheibe. Der Unterschied ist keine Feinheit: Eine Scheibe um die
+ * groesste Reichweite verspraeche Deckung auf der Gegenseite, wo kein Turm steht.
+ *
+ * Der Kern ist dabei kein Sonderfall - er ist ein Modul mit eigenen Werten und liefert
+ * seinen Kreis wie jeder Turm.
+ */
+export function rangeCircles(state: GameState): RangeCircle[] {
+  const combat = state.runtime.combat
+  const circles: RangeCircle[] = []
+
+  for (const module of combat.modules) {
+    if (!canFire(module)) continue
+
+    const stats = moduleStats(module, combat.buffs.get(module.uid), state).final
+    if (!shoots(stats)) continue
+
+    circles.push({ center: module.center, range: stats.range })
+  }
+
+  // Vor dem ersten Takt kennt die Simulation noch keine Module. Dann gilt der Grundwert des
+  // Kerns, damit der Kreis schon im allerersten Bild steht statt aufzuspringen.
+  if (circles.length === 0) circles.push({ center: CORE_CENTER, range: coreRange(state) })
+
+  return circles
+}
+
+/**
+ * Die Aussengrenze einer fertigen Kreisliste: weiter als so weit trifft nichts mehr.
+ *
+ * Nimmt die Kreise entgegen, statt sie selbst zu holen. Der Zeichenpfad braucht **beides**
+ * je Bild - die Liste fuer den Wirkungsbereich, die Zahl fuer den Bildausschnitt - und
+ * `rangeCircles` ist nicht billig: Es rechnet fuer jedes Modul die volle Werte-Kette durch
+ * und legt dabei je Modul sechs Zwischenobjekte an. Zweimal je Bild war das doppelte Arbeit
+ * und doppelter Muell fuer den Speicherbereiniger, dessen Aufraeumen man als Ruckler sieht.
+ */
+export function outerReach(circles: readonly RangeCircle[]): number {
+  let reach = 0
+  for (const circle of circles) {
+    reach = Math.max(reach, dist(CORE_CENTER, circle.center) + circle.range)
+  }
+  return reach
+}
+
+/**
+ * Die Aussengrenze der Station - dieselbe Zahl, aber selbst geholt.
+ *
+ * Eine einzelne Zahl, und deshalb bewusst **nicht** das, was gezeichnet wird - sie sagt
+ * nichts darueber, in welche Richtung diese Reichweite gilt. Fuer Aufrufer, die nur die Zahl
+ * brauchen und keine Kreise in der Hand halten.
+ */
+   ...
+
+======== 01AdKuuazG #43 Edit/Edit-neu E:/spiele/Desktop/The Tower/src/selftest/suites/combat.ts ========
+import {
+  rangeCircles,
+  stationRange,
+  stepTowers,
+  type RangeCircle,
+} from '../../sim/towers.ts'
+   ...
+

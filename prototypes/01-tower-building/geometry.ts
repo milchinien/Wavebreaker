@@ -166,4 +166,3 @@ export function signedArea(poly: Vec2[]): number {
   }
   return sum / 2
 }
-

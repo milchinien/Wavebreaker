@@ -5,43 +5,65 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Prototyp 01 — Turmbau</title>
     <link rel="stylesheet" href="./style.css" />
-      body {
-        margin: 0;
-        min-height: 100vh;
+  </head>
+  <body>
+    <div id="layout">
       <aside id="inventory">
-        place-items: center;
+        <h2>Inventar</h2>
         <p class="hint">Modul waehlen, dann auf eine leuchtende Kante klicken.</p>
         <div id="invList"></div>
-        font: 15px/1.7 "Segoe UI", system-ui, sans-serif;
-        text-align: center;
+      </aside>
+
       <div id="stageWrap">
-      main { max-width: 460px; padding: 24px; }
-      h1 { font-size: 20px; letter-spacing: 0.14em; text-transform: uppercase; }
-      h1 span { color: #35e0ff; }
-      p { color: #6b7ba6; }
-      a { color: #35e0ff; }
+        <canvas id="stage"></canvas>
+        <div id="toast"></div>
+      </div>
+
+      <aside id="side">
         <h2>Modul</h2>
         <div id="detail"></div>
-  <body>
+
         <h2>Werkzeuge</h2>
-      <h1>01 — <span>Turmbau</span></h1>
+        <label class="ctrl">
           Turmplaetze <span id="slotsValue">4</span>
-      <p>Der Umsetzungsplan liegt in <code>PLAN.md</code> — Etappe M0 ersetzt diese Seite.</p>
-      <p><a href="/">← Übersicht</a></p>
+          <input id="slots" type="range" min="1" max="20" step="1" value="4" />
+        </label>
+        <label class="ctrl">
+          Entfernen zerteilt die Station
+          <select id="removeRule">
+            <option value="block">A — Entfernen blockieren</option>
+            <option value="return">B — Inseln ins Inventar</option>
+          </select>
+        </label>
+        <label class="ctrl">
+          Zufallsstation <span id="growValue">15</span> Module
+          <input id="grow" type="range" min="4" max="40" step="1" value="15" />
+        </label>
         <div class="btnRow">
-          <button id="reset" type="button">Station zuruecksetzen</button>
+          <button id="growBtn" type="button">Aufbauen</button>
+          <button id="reset" type="button">Zuruecksetzen</button>
+        </div>
+        <div class="btnRow">
+          <button id="clearSave" type="button" title="Station auf den Startzustand setzen und den gespeicherten Stand entfernen">Spielstand loeschen</button>
           <button id="selftest" type="button">Selbsttests</button>
         </div>
+        <p class="hint" id="saveState">Wird fortlaufend gespeichert.</p>
         <div id="testOut"></div>
 
         <h2>Tasten</h2>
         <dl class="keys">
-          <dt>Rechtsklick / Esc</dt><dd>Bau-Modus verlassen</dd>
+          <dt>Ziehen</dt><dd>Modul umsetzen</dd>
+          <dt>Rechtsklick</dt><dd>Modul entfernen</dd>
+          <dt>Entf</dt><dd>Ausgewaehltes entfernen</dd>
+          <dt>Esc</dt><dd>Abbrechen</dd>
+          <dt>B</dt><dd>Buff-Linien dauerhaft</dd>
+          <dt>R</dt><dd>Reichweitenkreise</dd>
+          <dt>P</dt><dd>Grundplatte (Keile)</dd>
           <dt>E</dt><dd>Kantennummern</dd>
           <dt>Mausrad</dt><dd>Zoom</dd>
           <dt>F</dt><dd>Auto-Zoom zurueck</dd>
         </dl>
-        <p class="hint">M0–M3. Entfernen und Verschieben folgen in M4, Buffs in M5.</p>
+        <p class="hint">M0–M7 vollstaendig. Ergebnis siehe README.md.</p>
       </aside>
 
       <div id="hud"></div>
@@ -49,4 +71,3 @@
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
-

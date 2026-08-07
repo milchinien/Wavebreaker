@@ -337,4 +337,3 @@ export function isKnownPrestigeNode(id: string): boolean {
 export function nodesOfArea(area: PrestigeArea): PrestigeNode[] {
   return PRESTIGE_NODES.filter((node) => node.area === area)
 }
-

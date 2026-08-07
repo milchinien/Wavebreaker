@@ -152,4 +152,3 @@ export function resetEvents(): void {
 export function setEventErrorReporter(reporter: (name: EventName, error: unknown) => void): void {
   reportError = reporter
 }
-

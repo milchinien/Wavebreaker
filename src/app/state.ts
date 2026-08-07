@@ -458,4 +458,3 @@ export function syncRngState(state: GameState): void {
 export function markDirty(state: GameState): void {
   state.runtime.dirty = true
 }
-

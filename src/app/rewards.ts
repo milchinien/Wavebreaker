@@ -40,10 +40,10 @@ export function spendGold(state: GameState, amount: number): boolean {
   return true
 }
 
-export function grantReward(state: GameState, reward: Reward, source = 'unknown'): void {
+/**
  * Prestige-Punkte ausgeben. Aus demselben Grund hier wie `spendGold`: Es gibt genau eine
  * Datei, in der sich die Ressourcen des Spielers aendern.
-  const prestigePoints = usable(reward.prestigePoints)
+ *
  * Prestige-Punkte sind **permanent** (GDD 10 Abschnitt 2) - sie liegen deshalb in
  * `permanent`, nicht im Run, und ueberleben jedes Zuruecksetzen.
  */
@@ -52,7 +52,7 @@ export function spendPrestigePoints(state: GameState, amount: number): boolean {
   if (state.permanent.prestigePoints < amount) return false
 
   state.permanent.prestigePoints -= amount
-  emit('reward.granted', { reward: { gold, xp, prestigePoints }, source })
+  markDirty(state)
   emit('prestige.spent', { amount })
   return true
 }
@@ -75,4 +75,3 @@ export function grantReward(state: GameState, reward: Reward, source = 'unknown'
   markDirty(state)
   emit('reward.granted', { reward: { gold, xp, prestigePoints }, source })
 }
-

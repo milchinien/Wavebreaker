@@ -175,6 +175,9 @@ export function startingInventory(): TowerInstance[] {
     ['autocannon', 'rare'],
     ['autocannon', 'epic'],
     ['siege_cannon', 'rare'],
+    ['siege_cannon', 'legendary'],
+    ['marksman', 'epic'],
+    ['marksman', 'common'],
     ['flamespire', 'rare'],
     ['rate_amplifier', 'rare'],
     ['rate_amplifier', 'epic'],
@@ -184,4 +187,3 @@ export function startingInventory(): TowerInstance[] {
   ]
   return spec.map(([id, rarity]) => makeInstance(id, rarity))
 }
-

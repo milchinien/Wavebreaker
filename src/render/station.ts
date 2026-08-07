@@ -362,4 +362,3 @@ function drawSymbol(
   }
   ctx.restore()
 }
-

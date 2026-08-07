@@ -220,4 +220,3 @@ function mix(a: [number, number, number], b: [number, number, number], t: number
   const blue = Math.round(a[2] + (b[2] - a[2]) * t)
   return `${r}, ${g}, ${blue}`
 }
-

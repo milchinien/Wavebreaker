@@ -82,4 +82,3 @@ export const screenToWorld = (cam: Camera, p: Vec2, viewW: number, viewH: number
   x: (p.x - viewW / 2) / cam.zoom + cam.center.x,
   y: (p.y - viewH / 2) / cam.zoom + cam.center.y,
 })
-

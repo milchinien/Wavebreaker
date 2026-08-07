@@ -422,4 +422,3 @@ export function eventsSuite(): void {
     assertEqual(isValidPod(null), false)
   })
 }
-

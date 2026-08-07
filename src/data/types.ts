@@ -53,4 +53,3 @@ export function makeStats(
 }
 
 export const NO_STATS: CombatStats = makeStats(0, 0, 0, 0, 0)
-

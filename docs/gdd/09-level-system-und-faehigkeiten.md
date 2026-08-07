@@ -254,4 +254,3 @@ Ein Run kann werden: schnelle Projektile mit vielen Durchschüssen — oder defe
 Das Spielgefühl bleibt: **80 % automatischer Fortschritt, 20 % aktive Entscheidungen.**
 
 Der Spieler entscheidet: Wann benutze ich Fähigkeiten? Welche Perks nehme ich? Welche Türme kaufe ich? Wann gehe ich in die Basis? Wann sammle ich Gold?
-

@@ -309,4 +309,3 @@ Das Ziel ist nicht *"den stärksten Turm besitzen"*, sondern:
 > "Die perfekte Kombination aus Türmen, Eigenschaften und Buffs erschaffen."
 
 Eine Basis kann bestehen aus vielen schnellen Türmen, wenigen extrem starken Spezialtürmen oder einer perfekten Buff-Struktur — alle Wege sollen funktionieren.
-

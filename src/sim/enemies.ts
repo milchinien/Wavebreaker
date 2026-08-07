@@ -15,6 +15,7 @@
 import { boundsOf, edgesOf, pointInPolygon, pointSegmentDistance } from '../core/geometry.ts'
 import { dist, type Vec2 } from '../core/vec.ts'
 import {
+  ENEMY_APPROACH_SPEED_FACTOR,
   ENEMY_BASE_DAMAGE,
   ENEMY_BASE_HP,
   ENEMY_BASE_SPEED,
@@ -37,9 +38,39 @@ import {
 } from '../data/balance.ts'
 import type { GameState } from '../app/state.ts'
 import type { PlacedModule } from './station.ts'
+// Nur der Typ: `towers` bindet diese Datei ein, ein Wert von dort waere ein Kreis. Die
+// Kreise selbst liegen als fertige Liste im Kampfzustand (`combat.coverage`).
+import type { RangeCircle } from './towers.ts'
+
+/**
+ * Die Zahlen der leichten Physik (siehe `stepCrowd`).
+ *
+ * Sie stehen hier und nicht in `data/balance.ts`, weil sie nichts entscheiden: Kein Gegner
+ * wird davon schneller, zaeher oder gefaehrlicher. Sie sind Anmutung, und Anmutung gehoert
+ * dorthin, wo sie wirkt.
+ *
+ * `CROWD_PUSH` ist der Stoss je Welteinheit Ueberlappung, in Welteinheiten je Sekunde -
+ * dreifach heisst: Wer halb im anderen steckt, weicht mit rund einem Drittel seines
+ * Lauftempos aus. Der Deckel haelt den Ausnahmefall im Zaum, wenn zwanzig Gegner auf
+ * einem Fleck stehen; ohne ihn schoesse einer aus dem Pulk heraus wie aus einer Feder.
+ */
+const CROWD_PUSH = 3
+const CROWD_PUSH_MAX = 45
+/** Wie schnell ein Stoss ausklingt: je groesser, desto kuerzer der Nachlauf. */
+const PUSH_DAMPING = 5
+
+/**
+ * Wie viel Drehung ein Streifen bringt, wie schnell sie ausklingt, wie stark die Ruhelage
+ * zurueckholt und wie weit der Ausschlag hoechstens geht (0,35 rad sind rund 20 Grad).
+ */
+const SPIN_GAIN = 0.5
+const SPIN_DAMPING = 3
+const SPIN_RETURN = 6
+/** Offen, weil der Selbsttest darauf besteht: Ueber diesem Ausschlag wird die Form falsch. */
+export const SPIN_MAX = 0.35
 
 export type Enemy = {
- * Die Zahlen der leichten Physik (siehe `stepCrowd`).
+  id: number
   defId: string
   pos: Vec2
   hp: number
@@ -52,6 +83,25 @@ export type Enemy = {
   /** Belohnung, die sein Tod ausschuettet - nicht das Gold des Spielers. */
   goldReward: number
   xpReward: number
+
+  /*
+   * Die leichte Physik eines Gegners (GDD 07 Abschnitt 3: Gegner sollen sich als Pulk
+   * lesen, nicht als Reihe von Punkten auf derselben Linie).
+   *
+   * Drei Felder, kein Koerpermodell: Ein Gegner hat **kein** Gewicht, keinen Drehimpuls und
+   * keine Beschleunigung. Er bekommt einen Stoss, der von selbst ausklingt, und eine
+   * Drehung, die aus dem Streifen an einem Nachbarn entsteht. Mehr braucht es nicht, damit
+   * ein Haufen wie ein Haufen wirkt - und alles darueber hinaus waere ein zweiter
+   * Bewegungsapparat neben `stepEnemies`, der dessen Wegfindung staendig ueberstimmt.
+   */
+
+  /** Fahrtrichtung mal Tempo aus dem letzten Takt. Nur der Stoss braucht sie. */
+  vel: Vec2
+  /** Stoss aus Beruehrungen, in Welteinheiten je Sekunde. Klingt von selbst ab. */
+  push: Vec2
+  /** Eigendrehung als Winkel und Winkeltempo. Reine Anzeige, aber aus Beruehrungen gerechnet. */
+  spin: number
+  spinRate: number
   /** Kennung des Moduls, an dem er andockt. Angedockte Gegner stehen still. */
   dockedTo: string | null
   attackTimer: number
@@ -125,6 +175,10 @@ function blankEnemy(id: number): Enemy {
     radius: 0,
     goldReward: 0,
     xpReward: 0,
+    vel: { x: 0, y: 0 },
+    push: { x: 0, y: 0 },
+    spin: 0,
+    spinRate: 0,
     dockedTo: null,
     attackTimer: 0,
     bite: 0,
@@ -200,6 +254,15 @@ export function spawnEnemy(state: GameState, defId: string, angle: number): Enem
   // Aus dem Pool geholt: Der Biss des Vorgaengers darf nicht mitkommen.
   enemy.bite = 0
   enemy.biteLife = 0
+
+  // Ebenso wenig sein Schwung und seine Drehung. Ein Gegner, der mit dem Stoss seines
+  // Vorgaengers erscheint, driftet im ersten Takt sichtbar zur Seite.
+  enemy.vel.x = 0
+  enemy.vel.y = 0
+  enemy.push.x = 0
+  enemy.push.y = 0
+  enemy.spin = 0
+  enemy.spinRate = 0
 
   // Ebenso wenig seine Zustaende und Faehigkeiten. Zuruecksetzen **vor** dem Anwenden der
   // eigenen Datenwerte, sonst erbte ein Schwarmkruemel den Schild eines Bosses.
@@ -373,6 +436,22 @@ export function touchesModule(module: PlacedModule, point: Vec2, radius: number)
 }
 
 /**
+ * Steht dieser Gegner in irgendeinem Wirkungskreis - kann ihn also ueberhaupt jemand
+ * treffen?
+ *
+ * Die Bedingung ist wortgleich mit der in `sim/targeting.ts`: `range + enemy.radius`. Das
+ * ist kein Zufall und darf keiner bleiben - laege die Tempogrenze auch nur ein paar
+ * Einheiten daneben, gaebe es einen Streifen, in dem ein Gegner schon langsam laeuft, aber
+ * noch kein Turm schiesst (oder schlimmer: umgekehrt).
+ */
+export function inCoverage(circles: readonly RangeCircle[], enemy: Enemy): boolean {
+  for (const circle of circles) {
+    if (dist(circle.center, enemy.pos) <= circle.range + enemy.radius) return true
+  }
+  return false
+}
+
+/**
  * Was Gegner **koennen** (GDD 07 Abschnitt 5).
  *
  * Eine Schleife fuer alle Faehigkeiten, gesteuert allein durch den Datensatz. Ein neuer
@@ -488,80 +567,6 @@ export function stepEnemies(state: GameState, dt: number): void {
   if (modules.length === 0) return
 
   for (const enemy of combat.enemies) {
-    if (enemy.dockedTo !== null) continue
-
-    const target = nearestModule(modules, enemy.pos)
-    if (!target) continue
-
-    // Andocken, sobald die Aussenkante beruehrt wird. Der Test auf "im Modul" ist kein
-    // Sonderfall fuer die Optik: Ein sehr schneller Gegner kann in einem einzigen Schritt
-    // ueber die Kante hinweg im Modul landen - ohne ihn wuerde er dort ewig kreisen.
-    if (touchesModule(target, enemy.pos, enemy.radius)) {
-      enemy.dockedTo = target.uid
-      enemy.attackTimer = 0
-      continue
-    }
-
-    const dx = target.center.x - enemy.pos.x
-    const dy = target.center.y - enemy.pos.y
-    const length = Math.hypot(dx, dy)
-    if (length < 1e-6) continue
-
-    // In den vorhandenen Vektor schreiben statt einen neuen zu legen - bei 200 Gegnern
-    // und 60 Takten waeren das sonst zwoelftausend Objekte je Sekunde gegen den Pool.
-    //
-    // Der Faktor kommt aus einer laufenden Verlangsamung (GDD 09 Abschnitt 10) und steht
-    // als fertige Zahl im Kampfzustand - `sim/abilities.ts` setzt ihn je Takt.
-    // Drei Faktoren auf dasselbe Tempo: sein eigenes, die Verlangsamung durch eine
-    // Faehigkeit (E11) und die durch einen Turm (E14). Alle drei multiplizieren, keiner
-    // kennt die anderen.
-    const stride = enemy.speed * combat.enemySpeedFactor * enemy.chillFactor * dt
-    enemy.pos.x += (dx / length) * stride
-    enemy.pos.y += (dy / length) * stride
-  }
-}
-
-/**
- * Module, an denen niemand mehr andocken kann, weil sie nicht mehr existieren - etwa
- * nachdem der Spieler mitten im Kampf umgebaut hat. Die Gegner suchen sich neu ein Ziel.
- */
-export function releaseStaleDocks(state: GameState): void {
-  const combat = state.runtime.combat
-  const alive = new Set(combat.modules.map((module) => module.uid))
-
-  for (const enemy of combat.enemies) {
-    if (enemy.dockedTo !== null && !alive.has(enemy.dockedTo)) enemy.dockedTo = null
-  }
-}
-
-/* ### FEHLENDE ZEILE 537 ### */
-/* ### FEHLENDE ZEILE 538 ### */
-/* ### FEHLENDE ZEILE 539 ### */
-/* ### FEHLENDE ZEILE 540 ### */
-/* ### FEHLENDE ZEILE 541 ### */
-/* ### FEHLENDE ZEILE 542 ### */
-/* ### FEHLENDE ZEILE 543 ### */
-/* ### FEHLENDE ZEILE 544 ### */
-/* ### FEHLENDE ZEILE 545 ### */
-/* ### FEHLENDE ZEILE 546 ### */
-/* ### FEHLENDE ZEILE 547 ### */
-/* ### FEHLENDE ZEILE 548 ### */
-/* ### FEHLENDE ZEILE 549 ### */
-/* ### FEHLENDE ZEILE 550 ### */
-/* ### FEHLENDE ZEILE 551 ### */
-  for (const ability of def.abilities ?? []) {
-    if (!('interval' in ability)) continue
-    if (shortest === 0 || ability.interval < shortest) shortest = ability.interval
-  }
-  return shortest
-}
-
-export function stepEnemies(state: GameState, dt: number): void {
-  const combat = state.runtime.combat
-  const modules = combat.modules
-  if (modules.length === 0) return
-
-  for (const enemy of combat.enemies) {
     if (enemy.dockedTo !== null) {
       // Wer steht, hat keinen Schwung mehr. Ohne das behielte ein angedockter Gegner die
       // Fahrtrichtung von eben und schoebe seine Nachbarn ewig in die Station.
@@ -594,10 +599,18 @@ export function stepEnemies(state: GameState, dt: number): void {
     //
     // Der Faktor kommt aus einer laufenden Verlangsamung (GDD 09 Abschnitt 10) und steht
     // als fertige Zahl im Kampfzustand - `sim/abilities.ts` setzt ihn je Takt.
-    // Drei Faktoren auf dasselbe Tempo: sein eigenes, die Verlangsamung durch eine
-    // Faehigkeit (E11) und die durch einen Turm (E14). Alle drei multiplizieren, keiner
-    // kennt die anderen.
-    const stride = enemy.speed * combat.enemySpeedFactor * enemy.chillFactor * dt
+    // Vier Faktoren auf dasselbe Tempo: sein eigenes, die Verlangsamung durch eine
+    // Faehigkeit (E11), die durch einen Turm (E14) und der Anmarsch. Alle vier
+    // multiplizieren, keiner kennt die anderen.
+    //
+    // Der Anmarsch gilt, solange ihn **kein** Turm erreicht (GDD 07 Abschnitt 2): Wer
+    // ausserhalb aller Wirkungskreise laeuft, legt eine Strecke zurueck, auf der ohnehin
+    // nichts geschieht. Beruehrt er einen Kreis auch nur, faellt er im selben Takt auf sein
+    // normales Tempo - und zwar an genau der Linie, an der die ersten Schuesse fallen.
+    // Eine Verlangsamung bleibt dabei wirksam: Sie multipliziert mit, statt ersetzt zu
+    // werden, sonst waere ein Frosttreffer knapp ausserhalb der Reichweite wirkungslos.
+    const approach = inCoverage(combat.coverage, enemy) ? 1 : ENEMY_APPROACH_SPEED_FACTOR
+    const stride = enemy.speed * combat.enemySpeedFactor * enemy.chillFactor * approach * dt
     enemy.pos.x += (dx / length) * stride
     enemy.pos.y += (dy / length) * stride
 
@@ -609,94 +622,82 @@ export function stepEnemies(state: GameState, dt: number): void {
   }
 
   stepCrowd(combat.enemies, dt)
-/* ### FEHLENDE ZEILE 612 ### */
-/* ### FEHLENDE ZEILE 613 ### */
-/* ### FEHLENDE ZEILE 614 ### */
-/* ### FEHLENDE ZEILE 615 ### */
-/* ### FEHLENDE ZEILE 616 ### */
-/* ### FEHLENDE ZEILE 617 ### */
-/* ### FEHLENDE ZEILE 618 ### */
-/* ### FEHLENDE ZEILE 619 ### */
-/* ### FEHLENDE ZEILE 620 ### */
-/* ### FEHLENDE ZEILE 621 ### */
-/* ### FEHLENDE ZEILE 622 ### */
-/* ### FEHLENDE ZEILE 623 ### */
-/* ### FEHLENDE ZEILE 624 ### */
-/* ### FEHLENDE ZEILE 625 ### */
-/* ### FEHLENDE ZEILE 626 ### */
-/* ### FEHLENDE ZEILE 627 ### */
-/* ### FEHLENDE ZEILE 628 ### */
-/* ### FEHLENDE ZEILE 629 ### */
-/* ### FEHLENDE ZEILE 630 ### */
-/* ### FEHLENDE ZEILE 631 ### */
-/* ### FEHLENDE ZEILE 632 ### */
-/* ### FEHLENDE ZEILE 633 ### */
-/* ### FEHLENDE ZEILE 634 ### */
-/* ### FEHLENDE ZEILE 635 ### */
-/* ### FEHLENDE ZEILE 636 ### */
-/* ### FEHLENDE ZEILE 637 ### */
-/* ### FEHLENDE ZEILE 638 ### */
-/* ### FEHLENDE ZEILE 639 ### */
-/* ### FEHLENDE ZEILE 640 ### */
-/* ### FEHLENDE ZEILE 641 ### */
-/* ### FEHLENDE ZEILE 642 ### */
-/* ### FEHLENDE ZEILE 643 ### */
-/* ### FEHLENDE ZEILE 644 ### */
-/* ### FEHLENDE ZEILE 645 ### */
-/* ### FEHLENDE ZEILE 646 ### */
-/* ### FEHLENDE ZEILE 647 ### */
-/* ### FEHLENDE ZEILE 648 ### */
-/* ### FEHLENDE ZEILE 649 ### */
-/* ### FEHLENDE ZEILE 650 ### */
-/* ### FEHLENDE ZEILE 651 ### */
-/* ### FEHLENDE ZEILE 652 ### */
-/* ### FEHLENDE ZEILE 653 ### */
-/* ### FEHLENDE ZEILE 654 ### */
-/* ### FEHLENDE ZEILE 655 ### */
-/* ### FEHLENDE ZEILE 656 ### */
-/* ### FEHLENDE ZEILE 657 ### */
-/* ### FEHLENDE ZEILE 658 ### */
-/* ### FEHLENDE ZEILE 659 ### */
-/* ### FEHLENDE ZEILE 660 ### */
-/* ### FEHLENDE ZEILE 661 ### */
-/* ### FEHLENDE ZEILE 662 ### */
-/* ### FEHLENDE ZEILE 663 ### */
-/* ### FEHLENDE ZEILE 664 ### */
-/* ### FEHLENDE ZEILE 665 ### */
-/* ### FEHLENDE ZEILE 666 ### */
-/* ### FEHLENDE ZEILE 667 ### */
-/* ### FEHLENDE ZEILE 668 ### */
-/* ### FEHLENDE ZEILE 669 ### */
-/* ### FEHLENDE ZEILE 670 ### */
-/* ### FEHLENDE ZEILE 671 ### */
-/* ### FEHLENDE ZEILE 672 ### */
-/* ### FEHLENDE ZEILE 673 ### */
-/* ### FEHLENDE ZEILE 674 ### */
-/* ### FEHLENDE ZEILE 675 ### */
-/* ### FEHLENDE ZEILE 676 ### */
-/* ### FEHLENDE ZEILE 677 ### */
-/* ### FEHLENDE ZEILE 678 ### */
-/* ### FEHLENDE ZEILE 679 ### */
-/* ### FEHLENDE ZEILE 680 ### */
-/* ### FEHLENDE ZEILE 681 ### */
-/* ### FEHLENDE ZEILE 682 ### */
-/* ### FEHLENDE ZEILE 683 ### */
-/* ### FEHLENDE ZEILE 684 ### */
-/* ### FEHLENDE ZEILE 685 ### */
-/* ### FEHLENDE ZEILE 686 ### */
-/* ### FEHLENDE ZEILE 687 ### */
-/* ### FEHLENDE ZEILE 688 ### */
-/* ### FEHLENDE ZEILE 689 ### */
-/* ### FEHLENDE ZEILE 690 ### */
-/* ### FEHLENDE ZEILE 691 ### */
-/* ### FEHLENDE ZEILE 692 ### */
-/* ### FEHLENDE ZEILE 693 ### */
-/* ### FEHLENDE ZEILE 694 ### */
-/* ### FEHLENDE ZEILE 695 ### */
-/* ### FEHLENDE ZEILE 696 ### */
-/* ### FEHLENDE ZEILE 697 ### */
-/* ### FEHLENDE ZEILE 698 ### */
-/* ### FEHLENDE ZEILE 699 ### */
+}
+
+/**
+ * Gegner stossen sich an, statt sich zu durchdringen (Politur).
+ *
+ * Vorher liefen Gegner voreinander her wie Zeichen auf einer Linie: Zwei auf demselben Kurs
+ * lagen deckungsgleich uebereinander, ein dritter fuhr mitten durch sie hindurch. Ein Pulk
+ * sah deshalb nach Liste aus und nicht nach Menge.
+ *
+ * Es ist bewusst **keine** Kollisionsaufloesung. Ein Gegner wird nicht aus dem anderen
+ * herausgeschoben, er bekommt nur einen Stoss in seine Richtung, und der Stoss klingt von
+ * selbst ab. Der Unterschied ist der ganze Punkt:
+ *
+ *   - Harte Aufloesung wuerde die Wegfindung ueberstimmen. Ein Ring angedockter Gegner
+ *     waere eine Mauer, hinter der die halbe Welle haengen bliebe - das Spiel ist auf
+ *     durchkommende Gegner ausgelegt (GDD 07 Abschnitt 2), nicht auf einen Stau.
+ *   - Ein weicher Stoss bleibt eine Aussage ueber Enge: Es wird gedraengelt, aber niemand
+ *     wird aufgehalten.
+ *
+ * Die Drehung kommt **nicht** aus dem Stoss. Der laeuft immer durch beide Mittelpunkte und
+ * kann deshalb per Definition nichts drehen. Sie kommt aus dem *Streifen*: Wer einen
+ * Nachbarn schraeg erwischt, schert an ihm ab, und beide drehen sich gegeneinander weg -
+ * wie zwei Zahnraeder. Genau das heisst "an bestimmten Stellen": mittig treffen heisst
+ * schieben, seitlich treffen heisst drehen.
+ *
+ * Alle Paare gegeneinander. Bei `MAX_ENEMIES` sind das nicht ganz 20 000 Abstaende je Takt,
+ * und ein Abstand ist hier eine Multiplikation und ein Vergleich - ohne Wurzel, solange sich
+ * nichts beruehrt. Ein Raster daneben waere schneller und ein zweiter Ort, an dem Gegner
+ * verwaltet werden; es lohnt erst, wenn die Obergrenze steigt.
+ */
+function stepCrowd(enemies: readonly Enemy[], dt: number): void {
+  const count = enemies.length
+
+  for (let i = 0; i < count; i++) {
+    const a = enemies[i] as Enemy
+
+    for (let j = i + 1; j < count; j++) {
+      const b = enemies[j] as Enemy
+
+      const reach = a.radius + b.radius
+      let dx = b.pos.x - a.pos.x
+      let dy = b.pos.y - a.pos.y
+      const square = dx * dx + dy * dy
+      if (square >= reach * reach) continue
+
+      let length = Math.sqrt(square)
+      if (length < 1e-4) {
+        // Zwei Gegner genau aufeinander - das passiert, wenn eine Brut auf ihrem Erzeuger
+        // erscheint. Die Richtung kommt aus ihren Kennungen und nicht aus dem Zufall:
+        // Derselbe Fall muss immer gleich ausgehen, sonst laeuft der Selbsttest zweimal
+        // verschieden.
+        dx = (a.id + b.id) % 2 === 0 ? 1 : 0
+        dy = 1 - dx
+        length = 1
+      }
+
+      const nx = dx / length
+      const ny = dy / length
+
+      /*
+       * Wer weicht wie weit? Nach Flaeche, nicht nach Anzahl: Ein Boss schiebt einen
+       * Schwarmkruemel beiseite, umgekehrt kommt er kaum vom Kurs ab. Ein angedockter
+       * Gegner steht fest - er hat sein Ziel erreicht und darf nicht wieder losgerissen
+       * werden, sonst dockte er im naechsten Takt erneut an und die Station naehme Schaden
+       * im Takt des Gedraengels statt im Takt der Schlaege.
+       */
+      const fixedA = a.dockedTo !== null
+      const fixedB = b.dockedTo !== null
+      const massA = a.radius * a.radius
+      const massB = b.radius * b.radius
+      const shareA = fixedA ? 0 : fixedB ? 1 : massB / (massA + massB)
+      const shareB = fixedB ? 0 : fixedA ? 1 : 1 - shareA
+
+      const force = Math.min(CROWD_PUSH_MAX, (reach - length) * CROWD_PUSH)
+      a.push.x -= nx * force * shareA * dt
+      a.push.y -= ny * force * shareA * dt
       b.push.x += nx * force * shareB * dt
       b.push.y += ny * force * shareB * dt
 
@@ -751,4 +752,3 @@ export function releaseStaleDocks(state: GameState): void {
     if (enemy.dockedTo !== null && !alive.has(enemy.dockedTo)) enemy.dockedTo = null
   }
 }
-

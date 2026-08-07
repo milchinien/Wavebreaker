@@ -7,4 +7,3 @@ dist/
 # Entpackte Anlagenpakete. Rein abgeleitet - die Archive daneben sind die Quelle, und was
 # das Spiel wirklich laedt, liegt zugeschnitten in public/ (siehe docs/anlagen.md).
 assets/raw/_extracted/
-

@@ -505,4 +505,3 @@ export const HELPER_MAX_DISTANCE = 900
 export function upgradeCost(base: number, nextLevel: number): number {
   return Math.round(base * Math.pow(Math.max(1, nextLevel), UPGRADE_COST_EXPONENT))
 }
-

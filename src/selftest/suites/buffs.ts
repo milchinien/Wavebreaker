@@ -300,6 +300,9 @@ function dummyModule() {
     kind: 'tower' as const,
     defId: 'autocannon',
     rarity: 'common' as Rarity,
+    // Ohne Eigenschaften: Diese Tests messen die Wirkung der **Raritaet**, und ein
+    // zufaelliger Zuschlag darauf machte die Zahl unbrauchbar.
+    traits: [] as string[],
     sides: 4 as const,
     center: { x: 0, y: 0 },
     rotation: 0,
@@ -315,4 +318,3 @@ function dps(st: Station): number {
     (module) => categoryOf(module) === 'buff' || categoryOf(module) === 'support',
   )
 }
-

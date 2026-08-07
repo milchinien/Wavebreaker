@@ -155,4 +155,3 @@ export function upgradesForTower(defId: string): UpgradeDef[] {
 export function globalUpgrades(): UpgradeDef[] {
   return UPGRADES.filter((upgrade) => upgrade.scope === 'global')
 }
-

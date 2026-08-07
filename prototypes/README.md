@@ -1,8 +1,8 @@
-﻿node_modules/
-dist/
+﻿# Prototypen
+
 Dieser Ordner enthält **isolierte Experimente** für WAVEBREAKER. Prototypen dienen dazu,
 ein einzelnes Feature auszuprobieren, bevor es im eigentlichen Spiel gebaut wird.
-</invoke>
+
 > **Grundregel:** Nichts in diesem Ordner darf das Spiel beeinflussen — und das Spiel darf
 > nichts aus diesem Ordner brauchen. Löscht man `prototypes/` komplett, muss das Spiel
 > unverändert weiterlaufen.
@@ -92,6 +92,5 @@ Ein Prototyp wird **nie** ins Spiel gemerged. Stattdessen:
 
 | Nr. | Prototyp | Leitfrage | Status |
 |---|---|---|---|
-| 01 | [tower-building](01-tower-building/) | Funktioniert das modulare Anstecken von Turmarten auf dem Hex-Raster so, dass es sich gut anfühlt und lesbar bleibt? | geplant → [PLAN.md](01-tower-building/PLAN.md) |
-</content>
-
+| 01 | [tower-building](01-tower-building/) | Fühlt sich das Anstecken verschiedener Turmformen an den Hauptturm und aneinander gut an — und bleibt eine gewachsene Station lesbar und baubar? | **abgeschlossen** → [Ergebnis](01-tower-building/README.md#ergebnis) |
+| 02 | [tab-transition](02-tab-transition/) | Kann ein Panel, das es in zwei Bereichen gibt, beim Wechsel an seinen neuen Platz *fahren*, statt abzutreten und neu aufzufahren? | **abgeschlossen** → [Übernahme](02-tab-transition/README.md#übernahme-ins-spiel) (ohne die Bibliothek) |

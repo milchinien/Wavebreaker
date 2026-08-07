@@ -176,4 +176,3 @@ export function loopSuite(): void {
     loop.stop()
   })
 }
-

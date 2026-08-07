@@ -18,14 +18,16 @@
  * Bedingung hier - sie ist eine Abfrage auf den Spielzustand und gehoert damit in `sim/`.
  */
 
+import { emit } from '../core/events.ts'
 import type { StringKey } from '../data/strings.ts'
-import { MELT_COST } from '../data/balance.ts'
+import { MELT_COST, upgradeCost } from '../data/balance.ts'
 import { towerById } from '../data/towers.ts'
-import type { GameState } from '../app/state.ts'
+import { upgradeById } from '../data/upgrades.ts'
+import { markDirty, type GameState } from '../app/state.ts'
 import { canPrestige } from './prestige.ts'
 import { currentLevel } from './progression.ts'
 import { towerCost } from './shop.ts'
-import { nextUpgradeCost } from './stats.ts'
+import { upgradeLevel } from './stats.ts'
 
 export type HintDef = {
   id: string
@@ -52,8 +54,11 @@ export const HINTS: readonly HintDef[] = [
     id: 'hint.upgrade',
     key: 'hint.upgrade',
     when: (state) => {
-      const cost = nextUpgradeCost(state, 'core.damage')
-      return cost !== null && state.run.gold >= cost
+      // Der Schadenspfad des Kerns ist der erste Kauf, den jeder Spieler taetigt - er
+      // steht stellvertretend fuer "genug Gold fuer das erste Upgrade".
+      const def = upgradeById('core.damage')
+      const next = upgradeLevel(state.run.upgrades, def.id) + 1
+      return state.run.gold >= upgradeCost(def.baseCost, next)
     },
   },
   {
@@ -109,12 +114,15 @@ export function pendingHint(state: GameState): HintDef | null {
 export function markHintSeen(state: GameState, id: string): boolean {
   if (!HINTS.some((hint) => hint.id === id)) return false
   if (state.permanent.seenHints.includes(id)) return false
+
   state.permanent.seenHints.push(id)
+  markDirty(state)
+  emit('hint.seen', { id })
   return true
 }
 
 /** Alle Hinweise wieder zeigen (GDD 14 Abschnitt 4a: "in den Einstellungen zuruecksetzbar"). */
 export function resetHints(state: GameState): void {
   state.permanent.seenHints.length = 0
+  markDirty(state)
 }
-

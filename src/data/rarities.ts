@@ -56,6 +56,17 @@ export const RARITY_RANGE: Record<string, { min: Rarity; max: Rarity }> = {
   autocannon: { min: 'common', max: 'mythic' },
   cannon: { min: 'common', max: 'legendary' },
   amplifier: { min: 'common', max: 'mythic' },
+  // Spezialtuerme bleiben selten (GDD 06 Abschnitt 9): Ein Laser als Common gaebe es nicht.
+  sniper: { min: 'common', max: 'legendary' },
+  rocket: { min: 'rare', max: 'mythic' },
+  flamer: { min: 'rare', max: 'mythic' },
+  cryo: { min: 'rare', max: 'mythic' },
+  laser: { min: 'epic', max: 'mythic' },
+  tesla: { min: 'epic', max: 'mythic' },
+  bulwark: { min: 'epic', max: 'mythic' },
+  dronebay: { min: 'legendary', max: 'mythic' },
+  plasma: { min: 'legendary', max: 'mythic' },
+  void: { min: 'mythic', max: 'mythic' },
 }
 
 /** Reihenfolge der Stufen - Grundlage jedes Vergleichs "mindestens" und "hoechstens". */
@@ -97,4 +108,3 @@ export function rarityWeights(
   }
   return result
 }
-

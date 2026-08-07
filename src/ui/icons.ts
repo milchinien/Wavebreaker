@@ -286,4 +286,3 @@ const AREA_ICON: Record<string, IconName> = {
 export function areaIcon(area: string): IconName {
   return AREA_ICON[area] ?? 'upgrade'
 }
-

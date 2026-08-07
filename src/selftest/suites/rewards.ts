@@ -87,4 +87,3 @@ export function rewardsSuite(): void {
     assertEqual(state.runtime.dirty, true)
   })
 }
-

@@ -183,4 +183,3 @@ export function geometrySuite(): void {
     assertClose(signedArea(smaller), signedArea(poly) * 0.25, 1e-6, 'Flaeche skaliert quadratisch')
   })
 }
-

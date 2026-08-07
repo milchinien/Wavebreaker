@@ -56,6 +56,10 @@ Diese 16 Dokumente beschreiben das gesamte Spiel. Sie sind aufeinander abgestimm
 |-----|----------|--------|
 | 16 | [Technische Umsetzung](16-technische-umsetzung.md) | Systemarchitektur, Datenstrukturen, Entwicklungsphasen, MVP, Performance |
 
+Der konkrete Bauplan liegt daneben, nicht im GDD:
+**[Implementierungsplan](../implementierungsplan.md)** — 19 Etappen von E0 bis E18, Datei für Datei
+und Funktion für Funktion. Das GDD sagt *was*, der Implementierungsplan *in welcher Reihenfolge*.
+
 ---
 
 ## Wichtigste Zahlen auf einen Blick
@@ -79,14 +83,18 @@ Diese 16 Dokumente beschreiben das gesamte Spiel. Sie sind aufeinander abgestimm
 |---|---|---|
 | Plattform | Web (Browser) | [16, Abschnitt 1](16-technische-umsetzung.md) |
 | Technik | TypeScript + HTML5-Canvas, keine Engine | [16, Abschnitt 1](16-technische-umsetzung.md) |
-| Bausystem-Raster | Hex-Gitter, 6 Nachbarn pro Zelle | [03, Abschnitt 3](03-modulare-basis-und-bauregeln.md) |
+| Bausystem-Geometrie | Kantensystem, Module docken an freie Kanten an | [03, Abschnitt 3](03-modulare-basis-und-bauregeln.md) |
+| Modulform | echte Grundfläche, Kantenzahl 3–6 bestimmt die Nachbarzahl | [03, Abschnitt 7](03-modulare-basis-und-bauregeln.md) |
+| Buff-Nachbarschaft | nur ganze gemeinsame Kanten, additiv gestapelt, dann gedeckelt | [03, Abschnitt 9](03-modulare-basis-und-bauregeln.md) |
+| Buff-Mindeststärke | `b > 1/k` bei `k` verstärkten Türmen | [15, Abschnitt 8](15-balancing-und-skalierung.md) |
+| Entfernen | immer erlaubt; abgetrennte Module wandern zurück, Vorschau ist Pflicht | [03, Abschnitt 4](03-modulare-basis-und-bauregeln.md) |
 | Lebenspunkte | **eine** gemeinsame Stations-HP, Module unzerstörbar | [03, Abschnitt 5](03-modulare-basis-und-bauregeln.md) |
 | Turm-Upgrades | pro Turmtyp, nicht pro einzelnem Turm | [08, Abschnitt 5.2](08-ressourcen-oekonomie-und-upgrades.md) |
 | Gold-Drops | bleiben unbegrenzt liegen, verschmelzen zu Stapeln | [08, Abschnitt 2](08-ressourcen-oekonomie-und-upgrades.md) |
-| Kamera | zoomt automatisch heraus, Station immer komplett sichtbar | [13](13-ui-und-visuelles-design.md) |
+| Kamera | zoomt automatisch heraus, Station immer komplett sichtbar; Reichweiten gehen **nicht** voll in den Ausschnitt ein | [13, Abschnitt 4](13-ui-und-visuelles-design.md) |
 | Gegner-Spawn | rundum aus allen Richtungen | [07, Abschnitt 2](07-gegner-bosse-und-wellen.md) |
 | Gegner-Angriff | docken an und schlagen weiter, bis sie sterben | [07, Abschnitt 2](07-gegner-bosse-und-wellen.md) |
-| Turmreichweite | Kreis um die eigene Hex-Zelle, kein Schussfeld | [05, Abschnitt 4](05-turm-system-und-turmtypen.md) |
+| Turmreichweite | Kreis um das eigene Modul, kein Schussfeld | [05, Abschnitt 4](05-turm-system-und-turmtypen.md) |
 | Heilung | volle Stations-HP zu Beginn **jeder** Welle | [07, Abschnitt 12](07-gegner-bosse-und-wellen.md) |
 | Wellensteuerung | `[(<) LEVEL 15 (+)(>)]` — vor/zurück skippen, Auto-Modus | [07, Abschnitt 9](07-gegner-bosse-und-wellen.md) |
 | Fähigkeiten | nur Cooldown, kein Verbrauch pro Einsatz | [09, Abschnitt 7](09-level-system-und-faehigkeiten.md) |
@@ -110,22 +118,19 @@ Diese 16 Dokumente beschreiben das gesamte Spiel. Sie sind aufeinander abgestimm
 
 ---
 
-| Pacing | erstes Prestige nach 30–60 Minuten | [15, Abschnitt 3](15-balancing-und-skalierung.md) |
+## Offene Punkte
 
 **Alle Spielregeln sind festgelegt.** Offen sind nur noch Werte, die man am laufenden Spiel misst statt vorher zu bestimmen, sowie zwei technische Details:
 
 | Offen | Art | Dokument |
 |---|---|---|
-**Alle Spielregeln sind festgelegt.** Offen sind nur noch Werte, die man am laufenden Spiel misst statt vorher zu bestimmen, sowie zwei technische Details:
-| Zahlentyp für Endgame-Werte, Rendering-Budget | technische Messung | [16, Abschnitt 15](16-technische-umsetzung.md) |
-| Offen | Art | Dokument |
-> Hinweis zur Quellenlage: Der ursprüngliche GDD-Teil zum modularen Basissystem wurde nie vollständig übermittelt. Dokument 03 fasst alles zusammen, was in den übrigen Teilen dazu steht, ergänzt um die Hex-Raster-Entscheidung und die inzwischen geklärten Detailfragen.
 | Wellenfaktor, Turm-Basiswerte, XP-Kurve, Prestige-Formel, Drop-Chancen | Tuning am Prototyp | [15, Abschnitt 16](15-balancing-und-skalierung.md) |
 | Zahlentyp für Endgame-Werte, Rendering-Budget | technische Messung | [16, Abschnitt 15](16-technische-umsetzung.md) |
+| Baugefühl, Unterscheidbarkeit der Formen, Buff-Linien, Wirkung der Keile | Urteil am Bild | [Prototyp 01](../../prototypes/01-tower-building/README.md#ergebnis) |
 
 > Hinweis zur Quellenlage: Der ursprüngliche GDD-Teil zum modularen Basissystem wurde nie vollständig übermittelt. Dokument 03 fasst alles zusammen, was in den übrigen Teilen dazu steht, ergänzt um die Geometrieentscheidung und die inzwischen geklärten Detailfragen.
 
-Diese Serie ist aus zwei vorherigen Dokumentreihen zusammengeführt worden (21 nummerierte Teile sowie 15 Abschlussdokumente plus Entwicklungs-Ergänzung). Sie ersetzt beide vollständig.
+---
 
 ## Erprobt am Prototyp
 
@@ -146,4 +151,3 @@ zwischen den Modulen schön wirken.
 ## Hinweis zur Historie
 
 Diese Serie ist aus zwei vorherigen Dokumentreihen zusammengeführt worden (21 nummerierte Teile sowie 15 Abschlussdokumente plus Entwicklungs-Ergänzung). Sie ersetzt beide vollständig.
-

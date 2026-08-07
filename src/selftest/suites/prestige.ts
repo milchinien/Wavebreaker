@@ -107,6 +107,9 @@ export function prestigeSuite(): void {
   check('Voraussetzungen sperren, bis sie erfuellt sind', () => {
     const state = rig()
     assertEqual(isAvailable(state, 'rarity.rare'), true, 'der erste Knoten steht frei')
+    assertEqual(isAvailable(state, 'rarity.epic'), false, 'der zweite noch nicht')
+
+    state.permanent.prestigePoints = 100000
     assertEqual(buyNode(state, 'rarity.epic'), false, 'auch mit Punkten nicht')
 
     buyNode(state, 'rarity.rare')
@@ -306,5 +309,45 @@ export function prestigeSuite(): void {
     assertEqual(canPrestige(state), false, 'der neue Run faengt bei null an')
     assertEqual(state.run.towersBought, 0, 'und der erste Turm kostet wieder den Grundpreis')
   })
-}
 
+  check('die Energiewelle liegt in den neuen Laufzeitdaten, nicht in den alten', () => {
+    /*
+     * GDD 13 Abschnitt 10 verlangt fuer das Prestige "eine grosse Energieanimation". Sie
+     * ist hier eine echte Zusicherung und nicht nur Zierde, weil sie an der einen Stelle
+     * haengt, an der man sie am leichtesten falsch anbringt: **vor** dem Zuruecksetzen.
+     * Dort gelegt waere sie mit dem alten Kampfzustand verworfen worden, und niemand haette
+     * je etwas gesehen - der Fehler faellt am Bild nicht auf, weil das Bild eben leer ist.
+     */
+    const state = playedRun()
+    doPrestige(state)
+
+    const rings = state.runtime.combat.bursts.filter((burst) => burst.active)
+    assert(rings.length >= 4, `nur ${rings.length} Ringe - die Welle muss gross sein`)
+    assert(
+      state.runtime.combat.stationFlash.active,
+      'der Kern muss nachzittern - er wird schliesslich ersetzt',
+    )
+    // Die Ringe gehen von der Mitte aus, nicht von einem Modul des alten Runs.
+    for (const ring of rings) {
+      assertEqual(ring.pos.x, 0)
+      assertEqual(ring.pos.y, 0)
+    }
+  })
+
+  check('jeder Bereich des Datensatzes wird im Baum auch gezeigt', () => {
+    /*
+     * Diese Zusicherung ist aus einem echten Fehler entstanden.
+     *
+     * E14 hat den Bereich `tech` mit fuenf Knoten gefuellt, aber die Bereichsliste der
+     * Oberflaeche stand seit E13 unveraendert - die Spezialtuerme waren im Baum schlicht
+     * nicht zu sehen und damit unerreichbar. Ein Knoten, den es gibt und den niemand
+     * kaufen kann, ist schlimmer als einer, den es nicht gibt.
+     *
+     * Der Test laeuft ueber den **Datensatz**, nicht ueber eine zweite Liste: Ein neuer
+     * Bereich schlaegt hier an, sobald sein erster Knoten steht.
+     */
+    const inData = new Set(PRESTIGE_NODES.map((node) => node.area))
+    const missing = [...inData].filter((area) => !SHOWN_AREAS.includes(area))
+    assertEqual(missing.join(', '), '', 'diese Bereiche fehlen in ui/prestige.ts')
+  })
+}

@@ -318,4 +318,3 @@ export function abilitiesSuite(): void {
     assertEqual(isUnlocked(state, 'timewarp'), true)
   })
 }
-
