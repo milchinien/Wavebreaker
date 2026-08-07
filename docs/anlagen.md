@@ -38,6 +38,33 @@ Farbe die Vorlage gezeichnet ist.
 | `corner.png` | Game UI collection · Bars/Blue · Asset 5 | Eckwinkel am Spielfeldrand |
 | `plate.png` | Game UI collection · Button with border/Blue · Asset 8 | Schild unter Beschriftungen |
 
+### Nachtrag 07.08.2026 — was fehlt
+
+Der gelieferte Anlagensatz enthält **weder die Game-UI-Sammlung noch die Skillicons**.
+Aus `Lucid V1.2` ließen sich acht Symbole übernehmen, bei denen die Form die Bedeutung
+wirklich trifft (`_rettung/symbole-bauen.ps1`):
+
+| Ziel | Quelle | Warum |
+|---|---|---|
+| `prev` / `next` | Previous / Next | Wellensteuerung |
+| `gear` / `settings` | Gear | Einstellungen |
+| `base` | Home | Navileiste Basis |
+| `modules` | Grid | Module sind ein Raster |
+| `upgrade` | Up-Arrow | allgemeines Verbesserungszeichen |
+| `rate` | Clock | Feuerrate ist Zeit |
+
+**Noch offen — 14 Symbole:** `turret`, `damage`, `range`, `hull`, `gold`, `radius`,
+`autocannon`, `cannon`, `amplifier`, `boss`, `coin`, `combat`, `crosshair`, `bullet`.
+Dazu die **fünf Seltenheitsrahmen** unter `public/frames/` (`common`, `rare`, `epic`,
+`legendary`, `mythic`).
+
+Für diese gibt es in `Lucid` nichts, das die Bedeutung trägt — eine Lupe als Fadenkreuz
+oder ein Schloss als Rumpf wäre geraten und nicht belegt. Sie brauchen die in dieser
+Datei genannten Pakete (Game UI collection, Craftpix Skillicons, Rahmensatz) oder eigene
+Zeichnungen. Bis dahin bleiben die betroffenen Kacheln leer; das Spiel läuft davon
+unbeeindruckt weiter (`icons.ts`: „Ein fehlendes Bild darf nie eine leere Kachel
+ergeben" — es fällt auf `turret` bzw. `upgrade` zurück, die ihrerseits noch fehlen).
+
 Die früheren `arrow-left.png` / `arrow-right.png` aus dem Craftpix-Rahmensatz sind entfallen:
 Sie trugen ihren Rahmen selbst, fielen dadurch aus der Formensprache heraus und ließen sich
 nicht mitfärben. Die Wellenpfeile sind jetzt `prev`/`next` als Maske in einem normalen Knopf.
@@ -47,6 +74,13 @@ nicht mitfärben. Die Wellenpfeile sind jetzt `prev`/`next` als Maske in einem n
 | Datei | Quelle | Aufbau |
 |---|---|---|
 | `coins.png` | `coins-chests-etc-2-0.png`, Block COINS | 112 × 48 — drei Wertstufen (bronze, silber, gold) zu je sieben Bildern à 16 px |
+
+Gemessenes Raster der Vorlage (`_rettung/muenzraster.ps1`): Der Glanzlauf steht in der
+rechten Gruppe des COINS-Blocks, Spalten ab x = 176 im Abstand von 16 px, Farbreihen bei
+y = 17 (gold), 33 (hellsilber), 49 (stahlblau), 65 (kupfer). Übernommen werden Kupfer,
+Hellsilber und Gold — in dieser Reihenfolge, weil `coinLook` die Stufen 0, 1, 2 als
+bronze, silber, gold liest. Die stahlblaue Reihe bleibt liegen: Sie wäre vom Hellsilber
+kaum zu unterscheiden. Geschnitten von `_rettung/muenzen-bauen.ps1`.
 
 Die sieben Bilder sind ein **Glanzlauf**: Bild 0 ist die ruhende Münze, 1 bis 6 ziehen ein
 Licht darüber. Jede Münze bekommt ihren Versatz aus ihrem Ort, damit nicht das ganze Feld im
@@ -58,13 +92,36 @@ Alle drei sind waagerechte Streifen mit gleich breiten Einzelbildern.
 
 | Datei | Quelle | Aufbau | Ereignis |
 |---|---|---|---|
-| `impact.png` | Super Pixel Effects Gigapack · Impacts · symmetrical_impact_002 (small, blue) | 10 × 48 px | Einschlag am Gegner |
-| `death.png` | Super Pixel Effects Gigapack · Explosions · stylized_explosion_002 (small, violet) | 10 × 48 px | Gegner zerstört |
-| `spark.png` | Super Pixel Effects Gigapack · Sci-fi · scifi_spark_burst_001 (small, yellow) | 12 × 64 px | Gold fällt |
+| `impact.png` | `PNG/Explosion_blue_circle` (10 × 256 px) | 10 × 48 px | Einschlag am Gegner |
+| `death.png` | `PNG/Explosion_blue_oval` (10 × 256 px), Farbton +64° | 10 × 48 px | Gegner zerstört |
+| `spark.png` | `PNG/Circle_explosion` (10 × 256 px) | 10 × 64 px | Gold fällt |
 
 Die Farben sind **absichtlich** so gewählt: Blau für eigenen Schaden, Violett für den
 zerfallenden Gegner, Gold für die Belohnung — dieselbe Aufteilung wie in der Palette
 (`src/render/theme.ts`).
+
+### Nachtrag 07.08.2026 — neuer Anlagensatz
+
+Die ursprünglich genannten Quellen (Super Pixel Effects Gigapack, Einzelnamen wie
+`symmetrical_impact_002`) sind im gelieferten Paket nicht enthalten. Ersetzt durch die
+Folgen aus `assets/raw/PNG`, gebaut von `_rettung/fx-bauen.ps1`.
+
+Die Zuordnung beruht auf **Messung**, nicht auf Dateinamen: Von jeder Folge wurde der
+mittlere Farbton bestimmt (`_rettung/farben-messen.ps1`).
+
+| Folge | gemessener Farbton | Verwendung |
+|---|---:|---|
+| `Explosion_blue_circle` | 208° | blau → `impact` |
+| `Explosion_blue_oval` | 204° | Grundlage für `death` |
+| `Circle_explosion` | 48° | gold → `spark` (Palette `GOLD` liegt bei 45°) |
+
+**Violett fehlt im Paket.** `death.png` entsteht deshalb aus der ovalen blauen Folge,
+gedreht um +64° auf 268° — der Palettenwert `VIOLET` (`#b45cff`) liegt bei 272°. Die
+ovale statt der runden Folge, damit sich Einschlag und Tod auch in der **Form**
+unterscheiden und nicht nur in der Farbe. Graue Pixel (Rauch) bleiben ungefärbt.
+
+`spark.png` hat **zehn** statt zwölf Bildern — die Quelle gibt nicht mehr her.
+`src/render/sprites.ts` ist entsprechend nachgezogen.
 
 ## Schrift (`public/fonts/`)
 

@@ -7,3 +7,17 @@ dist/
 # Entpackte Anlagenpakete. Rein abgeleitet - die Archive daneben sind die Quelle, und was
 # das Spiel wirklich laedt, liegt zugeschnitten in public/ (siehe docs/anlagen.md).
 assets/raw/_extracted/
+
+# Die Rohpakete selbst - Grafik-, Klang- und Symbolsaetze, 3,9 GB.
+#
+# Sie bleiben aus zwei Gruenden draussen:
+#   1. Lizenz. docs/anlagen.md haelt fest, dass die Rohpakete nicht weitergegeben
+#      werden duerfen. In public/ liegt immer nur der zugeschnittene Ausschnitt,
+#      der im Spiel auch erscheint - der darf mit.
+#   2. Groesse. Ein Repository mit mehreren Gigabyte Rohmaterial ist weder
+#      klonbar noch von GitHub angenommen.
+#
+# Wer das Projekt neu aufsetzt, legt die Pakete selbst unter Assets/raw ab und
+# baut die Ausschnitte mit den Skripten in _rettung/ nach.
+Assets/
+assets/

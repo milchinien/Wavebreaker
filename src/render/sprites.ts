@@ -122,6 +122,6 @@ export const SPRITES = {
   impact: loadStrip('/fx/impact.png', 10),
   /** Zerfall eines Gegners - zehn Bilder, violett. */
   death: loadStrip('/fx/death.png', 10),
-  /** Funkenwurf bei einem kritischen Treffer - zwoelf Bilder, gold. */
-  spark: loadStrip('/fx/spark.png', 12),
+  /** Funkenwurf bei einem kritischen Treffer - zehn Bilder, gold. */
+  spark: loadStrip('/fx/spark.png', 10),
 } as const
