@@ -1,0 +1,98 @@
+﻿<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prototyp 02 — Bereichswechsel</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="app" data-view="combat" data-mode="layout">
+      <header class="topbar">
+        <span class="brand">Wave<b>breaker</b> <em>· Bereichswechsel</em></span>
+
+        <div class="switch" id="mode">
+          <button type="button" data-mode="layout" class="active">anime.js Layout</button>
+          <button type="button" data-mode="classic">Jetziges Verfahren</button>
+        </div>
+
+        <label class="slow"><input type="checkbox" id="slow" /> Zeitlupe</label>
+        <span class="readout" id="readout">—</span>
+      </header>
+
+      <!--
+        Das Wurzelelement der Layout-Animation. Alles darin ist ein Rasterplatz, den das
+        Stilblatt je Bereich anders vergibt - genau das ist der Sprung, den `createLayout`
+        ueberbruecken soll.
+      -->
+      <main id="field">
+        <section class="panel p-gold">
+          <span class="cap">Gold</span>
+          <b class="num">12.480</b>
+        </section>
+
+        <section class="panel p-wave">
+          <span class="cap">Welle</span>
+          <b class="num">37</b>
+          <div class="meter"><i style="width: 62%"></i></div>
+        </section>
+
+        <section class="panel p-stage">
+          <span class="cap">Spielfeld</span>
+          <div class="core"></div>
+        </section>
+
+        <section class="panel p-hull">
+          <span class="cap">Rumpf</span>
+          <div class="meter"><i style="width: 78%"></i></div>
+        </section>
+
+        <section class="panel p-upgrades">
+          <span class="cap">Upgrades</span>
+          <div class="tiles">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </section>
+
+        <section class="panel p-inventory">
+          <span class="cap">Lager</span>
+          <div class="tiles col">
+            <i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </section>
+
+        <section class="panel p-detail">
+          <span class="cap">Detail &amp; Kaufen</span>
+          <div class="tiles col">
+            <i></i><i></i><i></i>
+          </div>
+        </section>
+
+        <section class="panel p-prestige">
+          <span class="cap">Prestige</span>
+          <div class="tiles wide">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </section>
+
+        <section class="panel p-settings">
+          <span class="cap">Einstellungen</span>
+          <div class="tiles col">
+            <i></i><i></i><i></i><i></i>
+          </div>
+        </section>
+      </main>
+
+      <nav id="nav">
+        <button type="button" data-view="combat" class="active">Kampf</button>
+        <button type="button" data-view="base">Basis</button>
+        <button type="button" data-view="upgrades">Upgrades</button>
+        <button type="button" data-view="prestige">Prestige</button>
+        <button type="button" data-view="settings">Einstellungen</button>
+      </nav>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
+

@@ -1,0 +1,69 @@
+﻿<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WAVEBREAKER — Prototypen</title>
+    <style>
+      :root {
+        --bg: #070b18;
+        --panel: #0e1630;
+        --line: #1e2a51;
+        --text: #c8d4f5;
+        --dim: #6b7ba6;
+        --neon: #35e0ff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at 50% 0%, #10193a 0%, var(--bg) 60%);
+        color: var(--text);
+        font: 15px/1.6 "Segoe UI", system-ui, sans-serif;
+        padding: 48px 24px;
+      }
+      main { max-width: 760px; margin: 0 auto; }
+      h1 { font-size: 26px; letter-spacing: 0.18em; text-transform: uppercase; margin: 0 0 4px; }
+      h1 span { color: var(--neon); }
+      p.sub { color: var(--dim); margin: 0 0 36px; }
+      a.card {
+        display: block;
+        padding: 18px 20px;
+        margin-bottom: 14px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        text-decoration: none;
+        color: inherit;
+        transition: border-color 0.15s, transform 0.15s;
+      }
+      a.card:hover { border-color: var(--neon); transform: translateY(-2px); }
+      .num { color: var(--neon); font-variant-numeric: tabular-nums; margin-right: 10px; }
+      .title { font-weight: 600; }
+      .desc { color: var(--dim); font-size: 13.5px; margin-top: 4px; }
+      .status { float: right; font-size: 12px; color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+      footer { margin-top: 40px; color: var(--dim); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Wave<span>breaker</span> — Prototypen</h1>
+      <p class="sub">Isolierte Experimente. Kein Bestandteil des Spiels.</p>
+
+      <a class="card" href="/01-tower-building/">
+        <span class="status">geplant</span>
+        <div><span class="num">01</span><span class="title">Turmbau — modulares Hex-Bausystem</span></div>
+        <div class="desc">
+          Mehrere Turmarten an den Hauptturm und aneinander anstecken, Buff-Nachbarschaften sichtbar machen,
+          Platzierung/Verschieben/Entfernen testen.
+        </div>
+      </a>
+
+      <footer>
+        Neuen Prototypen anlegen: <code>_template/</code> kopieren, hier verlinken.
+        Regeln siehe <code>prototypes/README.md</code>.
+      </footer>
+    </main>
+  </body>
+</html>
+

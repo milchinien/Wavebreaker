@@ -1,0 +1,58 @@
+﻿{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "wavebreaker",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173,
+      "autoPort": true
+    },
+    {
+      "name": "prototypes",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "prototypes", "run", "dev"],
+      "port": 5174
+    }
+  ]
+}
+# Politur — Spielgefühl und Optik (E18)
+
+> Arbeitsliste für die Politur nach GDD 13 §10. **Ein Durchlauf = ein Punkt.**
+> Sortiert nach Wirkung pro Aufwand, nicht nach Thema.
+
+## Regeln für jeden Punkt
+
+- Farben nur aus `PALETTE` (`src/render/theme.ts`) bzw. den CSS-Variablen in `src/style.css`.
+- Spielertexte nur über `t()` aus `src/data/strings.ts`.
+- Zufall nur aus `core/rng.ts`, Zeit nur aus `core/loop.ts`. `sim/` und `core/` fassen kein
+  DOM und kein Canvas an — Effekte leben in `render/` und `ui/`.
+- Partikel gedeckelt und wiederverwendet. Bei Tempo ×2/×4 werden Effekte **ausgedünnt**,
+  nicht beschleunigt.
+- Dezent statt überladen: Verdeckt ein Effekt die Station oder lenkt von ihr ab, ist er falsch.
+- Jeder Effekt hängt an einem Ereignis aus `core/events.ts`, damit Audio später ohne Umbau
+  andocken kann (GDD 13 §11).
+- Vorhandene Anlagen aus `assets/raw` nutzen, wo sie passen.
+
+## Offen
+
+0. **Die Randmarke unterscheidet Boss und Drohne nicht** — `drawApproach` zeichnet für jeden
+   Gegner dasselbe Winkelzeichen in derselben Größe. Ein anrollender Boss ist damit optisch
+   so laut wie ein Schwarmkrümel, obwohl sein Radius das Vierfache ist.
+   (War Punkt 4; die Punkte 2 und 3 sind mit dem Münzbild hinfällig geworden — Münzen auf
+   dem Feld tragen keine Zahl mehr, also gibt es weder zwei Schriftgrade noch eine
+   springende Beschriftungsschwelle.)
+
+1. ~~**Gegner erscheinen aus dem Nichts**~~ — **hinfällig, nicht umgesetzt (2026-08-03).**
+   Nachgemessen: Der Erscheinungsring liegt bei `SPAWN_RING_MARGIN` = 420 Einheiten, das Bild
+   reicht nur `FIT_MARGIN` = 90 über die Station hinaus. Sichtbar sind je nach Fenster ±138
+   bis ±436 Einheiten, der Ring liegt bei 476 bis 555 — in **jeder** gemessenen Konfiguration
+   außerhalb. Ein Aufziehen am Erscheinungsort sähe niemand. Was hier fehlt, ist etwas
+   anderes: ein Hinweis am Bildrand, aus welcher Richtung etwas kommt.
+2. ~~**Zahlen auf dem Feld haben zwei Größen**~~ — hinfällig: Münzen tragen keine Zahl mehr,
+   damit steht auf dem Feld nur noch ein Schriftgrad.
+3. ~~**Beim Einsammeln springen die Beschriftungen an**~~ — hinfällig aus demselben Grund.
+
+## Erledigt
+
+- **Die Ereigniskarte sagt, was sie kostet** (2026-08-04) — Damit tragen alle vier

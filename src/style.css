@@ -1,0 +1,3667 @@
+﻿/*
+ * Gestalt der Oberflaeche (GDD 13).
+ *
+ * Aufbau in zwei Zonen, wie in den Entwurfsbildern:
+ *
+ *   #field   Spielfeld. Das Canvas fuellt es ganz, Panels schweben darueber.
+ *   #dock    Untere Leiste. Nur noch Navileiste und Upgrade-Kacheln - alles, was eine Zahl
+ *            zeigt statt sich anfassen zu lassen, liegt als Schild ueber dem Feld.
+ *
+ * Was sichtbar ist, entscheidet **allein** `#app[data-view]`. Kein Skript blendet Panels
+ * ein oder aus - es setzt nur den Bereich, der Rest steht hier. Damit gibt es genau eine
+ * Stelle, an der man nachliest, was ein Bereich zeigt.
+ *
+ * Der Look ist Neon auf fast schwarzem Marineblau: dunkle Flaechen, helle Kanten, und um
+ * jede helle Kante ein Schein. Das Leuchten steckt deshalb nicht in einzelnen Regeln,
+ * sondern in drei Werten (`--glow-*`), die ueberall dasselbe bedeuten.
+ */
+
+:root {
+  /*
+   * Palette aus dem Referenzbild - dieselben Werte stehen als PALETTE in
+   * src/render/theme.ts. Canvas und DOM liegen uebereinander; wer hier etwas aendert,
+   * aendert es dort mit, sonst laufen Spielfeld und Oberflaeche farblich auseinander.
+   */
+  --ink: #070a18;
+  --ink-deep: #03050d;
+  --panel: #10204e;
+  --panel-deep: #0a1436;
+  --edge: #7fd8ff;
+  --cyan: #46c8ff;
+  --teal: #2ee0c0;
+  --lime: #7fe83f;
+  --magenta: #ff2d78;
+  --gold: #ffcc33;
+  --violet: #b45cff;
+  --section: #29a3f5;
+
+  /* Rollen. Im Spiel wird auf diese Namen verwiesen, nicht auf die Farben darueber. */
+  --bg: var(--ink);
+  --line: rgba(127, 216, 255, 0.62);
+  --line-soft: rgba(127, 216, 255, 0.26);
+  --text: #ffffff;
+  --text-dim: #8fa8d4;
+  --accent: var(--cyan);
+  --ok: var(--teal);
+  --fail: var(--magenta);
+  --warn: var(--gold);
+
+  /*
+   * Die drei Leuchtstufen. Jede besteht aus demselben Dreiklang: eine harte Linie direkt
+   * an der Kante, ein weicher Schein nach aussen, ein Schein nach innen. Erst der innere
+   * macht aus einem Rahmen eine Roehre - ohne ihn sieht Neon aus wie ein blauer Strich.
+   */
+  --glow-soft: 0 0 0 1px rgba(70, 200, 255, 0.08), 0 0 12px rgba(70, 200, 255, 0.16),
+    inset 0 0 14px rgba(70, 200, 255, 0.07);
+  --glow: 0 0 0 1px rgba(70, 200, 255, 0.12), 0 0 20px rgba(70, 200, 255, 0.26),
+    inset 0 0 22px rgba(70, 200, 255, 0.1);
+  --glow-strong: 0 0 0 1px rgba(70, 200, 255, 0.2), 0 0 30px rgba(70, 200, 255, 0.42),
+    inset 0 0 26px rgba(70, 200, 255, 0.16);
+
+  /*
+   * Das Wanderlicht am Bildschirmrand (siehe `#app::after`).
+   *
+   * Die drei `--glow-*` sagen, wie stark eine Kante leuchtet - dieser Wert sagt, dass das
+   * Leuchten **lebt**. Es ist ein Ring aus Licht, dreimal so gross wie der Bildschirm:
+   * Deshalb liegt immer nur ein Stueck seines Bogens auf dem Rahmen, und dieses Stueck
+   * wandert schraeg von einer Ecke zur gegenueberliegenden.
+   *
+   * Innen ist der Ring durchsichtig, aussen auch. Nur das mittlere Drittel traegt Farbe, und
+   * zwar denselben Dreiklang wie das Spielfeld: Hellcyan, ein weisser Kern, ein violetter
+   * Nachlauf. Ein einfarbiger Streifen sieht aus wie ein Reflex, dieser hier wie Energie,
+   * die durch den Rahmen laeuft.
+   *
+   * Die Dauer ist absichtlich lang. Das Licht soll man bemerken, wenn man hinsieht, und
+   * nicht, waehrend man eine Zahl liest.
+   */
+  --shine: radial-gradient(
+    transparent,
+    transparent,
+    rgba(127, 216, 255, 0.85),
+    #ffffff,
+    rgba(180, 92, 255, 0.8),
+    transparent,
+    transparent
+  );
+  --shine-dur: 14s;
+  --shine-width: 2px;
+
+  /*
+   * Tiefe. Panels liegen ueber dem Feld, Karten liegen im Panel. Ohne den Unterschied
+   * wirkt die Oberflaeche flach aufgemalt statt gebaut.
+   */
+  --shadow-panel: 0 14px 34px rgba(3, 5, 13, 0.66);
+  --shadow-card: 0 3px 10px rgba(3, 5, 13, 0.55);
+  --shadow-lift: 0 10px 22px rgba(3, 5, 13, 0.7);
+
+  /* Panelflaeche: oben etwas heller, damit die Flaeche eine Richtung hat. */
+  --fill-panel: linear-gradient(170deg, rgba(24, 48, 108, 0.9), rgba(9, 17, 44, 0.94));
+  --fill-card: linear-gradient(170deg, rgba(17, 34, 80, 0.9), rgba(7, 13, 36, 0.94));
+
+  --font: 'Segoe UI', system-ui, sans-serif;
+  --mono: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+  /* Zahlenschrift aus dem Anlagensatz. Nur ab 14 px verwenden - darunter zerfaellt sie. */
+  --font-pixel: 'monogram', var(--mono);
+
+  /*
+   * Bewegung (GDD 13 Abschnitt 10).
+   *
+   * Zwei Kurven und vier Dauern, mehr braucht es nicht. `--ease-out` landet weich und
+   * schiesst nie ueber - sie traegt jede Bewegung, die etwas transportiert. `--ease-spring`
+   * schiesst leicht ueber und ist deshalb nur fuer Quittungen da: ein Knopf, der antwortet.
+   *
+   * Die Dauern sind gestaffelt, damit nicht alles gleich schnell laeuft. Genau daraus
+   * entsteht Tiefe: Der Hintergrund braucht laenger als die Karte darauf, die Karte laenger
+   * als ihr Zeichen.
+   */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /*
+   * Laeuft Bewegung? 1 ja, 0 nein - und zwar fuer **beide** Ebenen.
+   *
+   * Was der Browser aus diesen Regeln macht, betrifft nur CSS-Bewegungen. Die Wanderung
+   * beim Bereichswechsel laeuft ueber WAAPI und kaeme davon nichts mit; sie liest deshalb
+   * genau diesen Wert (`ui/flip.ts`). Ohne ihn gaebe es zwei Stellen, die "Bewegung aus"
+   * beantworten, und eine davon wuerde irgendwann vergessen.
+   */
+  --motion: 1;
+  --dur-tap: 140ms;
+  --dur-icon: 260ms;
+  /* Eine Beschriftung, die durchrollt, legt eine ganze Zeile zurueck - das braucht Weg. */
+  --dur-slide: 300ms;
+  --dur-card: 380ms;
+  --dur-view: 520ms;
+  /* Abstand zwischen zwei benachbarten Elementen derselben Staffel. */
+  --stagger: 42ms;
+}
+
+@font-face {
+  font-family: 'monogram';
+  src: url('/fonts/monogram.ttf') format('truetype');
+  font-display: swap;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* --- Zonen --------------------------------------------------------------- */
+
+#app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * Der Aussenrand des Bildschirms.
+ *
+ * Ein schmaler Ring auf der Fensterkante, um den herum langsam ein Licht wandert - die
+ * Fassung der Maschine, in der das Spiel laeuft. Er liegt ueber allem, faengt aber nichts
+ * ab (`pointer-events: none`): Ein Rahmen, der Klicks schluckt, waere eine unsichtbare
+ * Wand rund um das Spielfeld.
+ *
+ * Zwei Lagen uebereinander, dieselbe Aufteilung wie bei den Panels: unten eine ruhige
+ * Linie, die immer da ist, darueber das Wanderlicht. Ohne die ruhige Linie waere der
+ * Rahmen die meiste Zeit gar nicht da und das Licht liefe im Nichts.
+ *
+ * Der Ring entsteht durch **Ausschneiden**, nicht durch einen Rahmen: Die Flaeche deckt das
+ * ganze Fenster, und die Maske nimmt alles innerhalb der Polsterung wieder weg. Ein echter
+ * `border` ginge nicht - der Verlauf muesste dann durch eine 2 px schmale Kante gerechnet
+ * werden und traefe auf jeder Seite dieselbe Farbe, statt einmal rund herum zu wandern.
+ */
+#app::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  padding: var(--shine-width);
+  background: var(--shine), linear-gradient(var(--line-soft), var(--line-soft));
+  background-size: 300% 300%, auto;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: shine-drift var(--shine-dur) linear infinite;
+  pointer-events: none;
+}
+
+/*
+ * Hin und zurueck statt einmal rundherum: Bei einem Sprung von 100 % zurueck auf 0 % saesse
+ * genau an der Nahtstelle ein Ruck. Der Rueckweg dauert deshalb genauso lang wie der Hinweg.
+ *
+ * Die zweite Zahl je Zeile gehoert der ruhigen Linie darunter - sie bleibt stehen. Stuende
+ * dort nur ein Wertepaar, wanderten beide Lagen, und die Grundlinie liefe mit.
+ */
+@keyframes shine-drift {
+  0%,
+  100% {
+    background-position: 0% 0%, 0 0;
+  }
+  50% {
+    background-position: 100% 100%, 0 0;
+  }
+}
+
+#field {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#stage {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/*
+ * Alles, was in der Overlay-Ebene liegt, ist standardmaessig bedienbar - die Ebene selbst
+ * ist es nicht, damit das Spielfeld darunter erreichbar bleibt.
+ *
+ * **`:where()` ist hier der ganze Trick**, und er ist aus einem echten Fehler entstanden:
+ * Ohne ihn hat diese Regel die Staerke einer Kennung (1-0-0) und schlaegt damit **jede**
+ * Klassenregel. Eine neue Anzeige, die sich mit `.meine-anzeige { pointer-events: none }`
+ * aus dem Weg nehmen wollte, blieb wirkungslos - und wenn sie wie der Prestige-Blitz die
+ * ganze Flaeche einnimmt, schluckt sie ab da jede Zeigerbewegung. Genau das ist passiert:
+ * Das Einsammeln von Gold war tot, und im Stilblatt stand die richtige Zeile.
+ *
+ * `:where(#overlay)` zaehlt null. Die Regel wirkt weiterhin auf jedes Kind, laesst sich
+ * aber von einer gewoehnlichen Klassenregel ueberschreiben - also genau so, wie es jeder
+ * erwartet, der eine neue Anzeige dazulegt.
+ */
+:where(#overlay) > * {
+  pointer-events: auto;
+}
+
+/*
+ * Die untere Leiste.
+ *
+ * Sie ist bewusst flach: Sie traegt nur noch Navileiste und Upgrade-Kacheln. Vorher standen
+ * hier zusaetzlich zwei Statuskarten, und das Upgrade-Panel durfte 32 vh hoch werden -
+ * zusammen verdeckte die Leiste fast die Haelfte des Spielfelds. Der Spieler soll die
+ * Station sehen, nicht die Bedienung.
+ *
+ * Die helle Kante trennt Feld und Bedienung und leuchtet nach oben ins Feld hinein.
+ */
+#dock {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--cyan);
+  background: linear-gradient(180deg, rgba(16, 32, 78, 0.55), var(--ink-deep));
+  box-shadow: 0 -10px 26px rgba(70, 200, 255, 0.1);
+}
+
+/* --- Sichtbarkeit je Bereich --------------------------------------------- */
+
+.resource-bar,
+.speed-control,
+.hull-bar,
+.wave-card,
+.upgrade-panel,
+.wave-banner,
+.meta-card,
+.inventory-panel,
+.rail,
+.settings-panel,
+.prestige-panel,
+.view-title {
+  display: none;
+}
+
+#app[data-view='combat'] .resource-bar,
+#app[data-view='upgrades'] .resource-bar,
+#app[data-view='combat'] .speed-control,
+#app[data-view='upgrades'] .speed-control,
+#app[data-view='combat'] .hull-bar,
+#app[data-view='upgrades'] .hull-bar {
+  display: flex;
+}
+
+#app[data-view='combat'] .wave-card,
+#app[data-view='upgrades'] .wave-card {
+  display: flex;
+}
+
+/* Der Wellenname gehoert dorthin, wo das Feld zu sehen ist - nicht ueber die Baustelle. */
+#app[data-view='combat'] .wave-banner,
+#app[data-view='upgrades'] .wave-banner {
+  display: block;
+}
+
+/*
+ * Der Ausgang haengt zusaetzlich an seiner eigenen Klasse: Er steht nicht dauernd da,
+ * sondern nur die zwei Sekunden nach dem Ende einer Welle. Ohne `.on` gibt es ihn nicht.
+ */
+#app[data-view='combat'] .outcome.on,
+#app[data-view='upgrades'] .outcome.on {
+  display: flex;
+}
+
+#app[data-view='combat'] .upgrade-panel,
+#app[data-view='upgrades'] .upgrade-panel {
+  display: flex;
+}
+
+#app[data-view='base'] .meta-card,
+#app[data-view='base'] .inventory-panel,
+#app[data-view='base'] .rail {
+  display: flex;
+}
+
+#app[data-view='settings'] .settings-panel {
+  display: block;
+}
+
+#app[data-view='prestige'] .prestige-panel {
+  display: grid;
+}
+
+#app[data-view='base'] .view-title,
+#app[data-view='prestige'] .view-title,
+#app[data-view='settings'] .view-title {
+  display: block;
+}
+
+/* Die Boss-Leiste haengt an ihrem eigenen Schalter - sie gehoert nur in den Kampf. */
+#app:not([data-view='combat']) .boss-bar {
+  display: none;
+}
+
+/* --- Bewegung: auftreten und abtreten ------------------------------------ */
+
+/*
+ * Ein Bereichswechsel ist eine Bewegung, kein Schnitt (GDD 13 Abschnitt 10).
+ *
+ * Jedes Panel faehrt aus der Richtung auf, in der es sitzt, und zieht in dieselbe Richtung
+ * wieder ab. Zwei Groessen laufen dabei zugleich: Ort und Deckkraft. Nur zu blenden liest
+ * sich als Bildwechsel; erst die Verschiebung um wenige Pixel und die Skalierung von 0,985
+ * auf 1 machen daraus eine Bewegung im Raum.
+ *
+ * **Ohne Weichzeichnung, und das ist der Grund.** Vorher trug jede dieser Bewegungen ein
+ * `filter: blur(...)` als Ersatz fuer die Bewegungsunschaerfe, die es auf einem Bildschirm
+ * nicht gibt. Gemessen kostet genau das den Bereichswechsel seine Bilder: `opacity` und
+ * `transform` kann der Setzer auf einer fertigen Ebene verschieben, `filter` nicht - dort
+ * muss er die Ebene in **jedem** Bild neu rastern, mitsamt Schlagschatten und allem, was
+ * durch sie hindurchscheint. Beim Wechsel in die Basis liefen 31 solcher Bewegungen
+ * gleichzeitig, davon 17 Inventarkarten; jede einzelne zwang ein Neurastern.
+ *
+ * Der Weg ist dafuer etwas laenger geworden - wo die Unschaerfe die Bewegung verkauft hat,
+ * macht es jetzt die Strecke. Sichtbar bleibt dieselbe Geste, nur zahlt sie der Setzer nicht
+ * mehr mit einem Neurastern je Bild.
+ */
+
+@keyframes enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.985);
+  }
+}
+
+@keyframes enter-left {
+  from {
+    opacity: 0;
+    transform: translateX(-22px) scale(0.985);
+  }
+}
+
+@keyframes enter-right {
+  from {
+    opacity: 0;
+    transform: translateX(22px) scale(0.985);
+  }
+}
+
+@keyframes enter-down {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.985);
+  }
+}
+
+/* Mittig gesetzte Elemente behalten ihre Verschiebung, sonst springen sie aus der Mitte. */
+@keyframes enter-center {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 18px)) scale(0.97);
+  }
+}
+
+@keyframes enter-title {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-13px);
+  }
+}
+
+@keyframes leave-up {
+  to {
+    opacity: 0;
+    transform: translateY(13px) scale(0.99);
+  }
+}
+
+@keyframes leave-left {
+  to {
+    opacity: 0;
+    transform: translateX(-17px) scale(0.99);
+  }
+}
+
+@keyframes leave-right {
+  to {
+    opacity: 0;
+    transform: translateX(17px) scale(0.99);
+  }
+}
+
+@keyframes leave-down {
+  to {
+    opacity: 0;
+    transform: translateY(-13px) scale(0.99);
+  }
+}
+
+@keyframes leave-center {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+}
+
+@keyframes leave-title {
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+}
+
+/* Karten und Listeneintraege innerhalb eines Panels - gestaffelt, siehe unten. */
+@keyframes card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(13px) scale(0.98);
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.8);
+  }
+  60% {
+    transform: scale(1.14);
+  }
+}
+
+/* Auftritt: aus der Richtung, in der das Panel sitzt. */
+.upgrade-panel,
+.hull-bar {
+  animation: enter-up var(--dur-view) var(--ease-out);
+}
+
+.nav {
+  animation: enter-up var(--dur-view) var(--ease-out) 60ms backwards;
+}
+
+.inventory-panel {
+  animation: enter-left var(--dur-view) var(--ease-out);
+}
+
+.rail,
+.meta-card,
+.wave-card {
+  animation: enter-right var(--dur-view) var(--ease-out);
+}
+
+.resource-bar {
+  animation: enter-down var(--dur-view) var(--ease-out);
+}
+
+.speed-control {
+  animation: enter-up var(--dur-card) var(--ease-out) 80ms backwards;
+}
+
+.settings-panel {
+  animation: enter-center var(--dur-view) var(--ease-out);
+}
+
+.prestige-panel {
+  animation: enter-up var(--dur-view) var(--ease-out);
+}
+
+.view-title {
+  animation: enter-title var(--dur-view) var(--ease-out);
+}
+
+/*
+ * Abtritt.
+ *
+ * `data-leaving` steht am **Panel selbst**, nicht mehr am `#app`. Der Grund ist der
+ * Wechsel des Verfahrens (`ui/flip.ts`): Der Bereich schaltet jetzt in einem einzigen Bild
+ * um, es gibt keine Zeitspanne mehr, in der "der alte Bereich noch zu sehen" waere. Was der
+ * neue Bereich nicht mehr zeigt, wird stattdessen einzeln an seinen letzten Ort genagelt und
+ * geht von dort - deshalb haengt die Regel am Knoten.
+ *
+ * Was dabei bleibt: Jedes Panel geht in die Richtung, in der es sitzt. Die Dauer ist kuerzer
+ * als der Auftritt - wegtreten darf schnell gehen, Ankommen soll man sehen. `forwards` haelt
+ * den Endzustand, damit im letzten Bild nichts mehr aufblitzt.
+ *
+ * Panels, die *bleiben*, tauchen hier nicht mehr auf. Sie wandern (siehe `ui/flip.ts`)
+ * statt abzutreten und wieder aufzufahren - vorher taten sie beides, obwohl sie die ganze
+ * Zeit da waren.
+ */
+.upgrade-panel[data-leaving],
+.hull-bar[data-leaving] {
+  animation: leave-up 150ms var(--ease-out) forwards;
+}
+
+.inventory-panel[data-leaving] {
+  animation: leave-left 150ms var(--ease-out) forwards;
+}
+
+.rail[data-leaving],
+.meta-card[data-leaving],
+.wave-card[data-leaving] {
+  animation: leave-right 150ms var(--ease-out) forwards;
+}
+
+.resource-bar[data-leaving],
+.speed-control[data-leaving] {
+  animation: leave-down 150ms var(--ease-out) forwards;
+}
+
+.settings-panel[data-leaving] {
+  animation: leave-center 150ms var(--ease-out) forwards;
+}
+
+.prestige-panel[data-leaving] {
+  animation: leave-up 150ms var(--ease-out) forwards;
+}
+
+.view-title[data-leaving] {
+  animation: leave-title 150ms var(--ease-out) forwards;
+}
+
+/*
+ * Der Text der Ueberschrift wechselt, ohne dass sie selbst geht: Zwischen Basis, Prestige
+ * und Einstellungen sitzt sie an derselben Stelle. Ihren Auftritt bekommt sie deshalb auf
+ * Anforderung - `swap` wird in `ui/shell.ts` neu gesetzt, sobald der Text ein anderer ist.
+ *
+ * Und sie wandert nicht: Mittig gesetzt rueckt ihre linke Kante schon dann zur Seite, wenn
+ * das naechste Wort laenger ist. Das ist keine neue Stelle im Bild, nur eine neue Breite -
+ * eine Wanderung darueber waere eine Bewegung ohne Aussage (`--flip`, siehe `ui/flip.ts`).
+ */
+.view-title {
+  --flip: 0;
+}
+
+.view-title.swap {
+  animation: enter-title var(--dur-view) var(--ease-out);
+}
+
+/*
+ * Staffelung.
+ *
+ * Alle Kacheln zugleich auffahren zu lassen sieht aus wie ein Block, der eingeblendet wird.
+ * Ein Versatz von rund 40 ms je Nachbar macht daraus eine Welle, die durch das Raster
+ * laeuft - man liest die Reihenfolge, ohne sie zu bemerken. Ueber die achte Kachel hinaus
+ * wird nicht weiter gestaffelt: Sonst warteten die letzten Eintraege einer langen Liste
+ * spuerbar lange.
+ *
+ * Im Upgrade-Panel faehrt die **Gruppe** auf, nicht die einzelne Kachel: Drei Kacheln einer
+ * Turmart gehoeren zusammen, und eine Welle, die durch vierzig einzelne Kacheln laeuft,
+ * waere kein Auftritt mehr, sondern Gezappel.
+ */
+.upgrade-grid > *,
+ul.inventory > * {
+  animation: card-rise var(--dur-card) var(--ease-out) backwards;
+}
+
+.upgrade-grid > *:nth-child(1),
+ul.inventory > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.upgrade-grid > *:nth-child(2),
+  color: var(--text-dim);
+}
+
+.panel p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.panel .slots {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.muted {
+  color: var(--text-dim);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+/*
+ * Symbol aus dem Anlagensatz. Die Datei liefert nur die Form - die Farbe kommt aus
+ * `currentColor`, damit dasselbe Zeichen je nach Bedeutung anders leuchtet.
+ */
+.pix {
+  display: inline-block;
+  flex: none;
+/* Der gewaehlte Reiter quittiert den Wechsel mit einem kurzen Stupser. */
+.nav-button.active .pix {
+  animation: pop var(--dur-icon) var(--ease-spring);
+}
+
+/*
+ * Bewegung aus - auf zwei Wegen zum selben Ziel.
+ *
+ * Der erste ist die Einstellung des Betriebssystems, der zweite der Schalter im Spiel
+ * (E18, GDD 13 Abschnitt 3). Beide fuehren auf **dieselben** Regeln: Wer die Bewegung
+ * abschaltet, soll dieselbe ruhige Oberflaeche bekommen, egal wo er es getan hat.
+ *
+ * Das Merkmal sitzt am Wurzelknoten wie `data-view`. Die Alternative waere, in jeder Regel
+ * eine Bedingung zu fuehren - und dann bliebe irgendwo eine Bewegung stehen.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion: 0;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+  /*
+   * Endlos laufende Bewegungen brauchen die harte Abschaltung. Nur die Dauer zu kuerzen
+   * Endlos laufende Bewegungen brauchen die harte Abschaltung. Nur die Dauer zu kuerzen
+   * macht aus einer ruhig fliessenden Schraffur ein Flackern mit tausend Bildern je
+   * Sekunde - also genau das Gegenteil dessen, was hier gewuenscht ist.
+  #app::after,
+  .bar i::after,
+  .outcome .caret {
+    animation: none !important;
+    animation: none !important;
+  }
+  /*
+   * Die Funken hinter dem Aufstiegsfenster sind **nur** Bewegung - ein stehender Funke ist
+   * Das Wanderlicht ist reine Bewegung. Es stehenzulassen ergaebe keinen ruhigen Rahmen,
+   * sondern einen hellen Fleck, der in einer Ecke klebt - also nimmt der Ring seine Farbe
+   * zurueck. Uebrig bleibt die ruhige Grundlinie darunter: Der Rahmen bleibt, nur das
+   * Licht darin geht aus.
+    display: none;
+  :root {
+    --shine: linear-gradient(transparent, transparent);
+  /*
+   * Der Streifen an der Kartenunterkante ist die Ausnahme: Er ist keine Zierde, sondern
+   * die Ankuendigung, dass in drei Sekunden eine Auskunft kommt (`ui/dialogs.ts`). Auf 1 ms
+   * gekuerzt behauptete er, sie sei schon da. Er behaelt deshalb seine Dauer - sie ist
+   * dieselbe Zahl wie die Wartezeit und kommt von dort.
+   */
+  .perk-card.probing::after {
+    animation-duration: var(--probe, 3000ms) !important;
+#app[data-motion='off'] *,
+#app[data-motion='off'] *::before,
+#app[data-motion='off'] *::after {
+   * Das Wanderlicht ist reine Bewegung. Es stehenzulassen ergaebe keinen ruhigen Rahmen,
+   * sondern einen hellen Fleck, der in einer Ecke klebt - also nimmt der Ring seine Farbe
+   * zurueck. Uebrig bleibt die ruhige Grundlinie darunter: Der Rahmen bleibt, nur das
+   * Licht darin geht aus.
+   */
+#app[data-motion='off'] {
+    --shine: linear-gradient(transparent, transparent);
+  }
+}
+#app[data-motion='off']::after,
+#app[data-motion='off'] .bar i::after,
+#app[data-motion='off'] .outcome .caret {
+  animation: none !important;
+}
+#app[data-motion='off'],
+/* --- Gemeinsame Bausteine ------------------------------------------------ */
+#app[data-motion='off'] *::before,
+#app[data-motion='off'] *::after {
+ * Panel und Schild sind dasselbe in zwei Groessen: Ein Panel traegt Inhalt, ein Schild
+ * traegt eine Zahl. Beide sind dunkle Flaechen mit leuchtender Kante.
+  transition-duration: 1ms !important;
+.panel,
+.plate {
+  border: 1px solid var(--line);
+  --shine: linear-gradient(transparent, transparent);
+  background: var(--fill-panel);
+  box-shadow: var(--glow), var(--shadow-panel);
+#app[data-motion='off']::after,
+#app[data-motion='off'] .bar i::after,
+#app[data-motion='off'] .outcome .caret,
+#app[data-motion='off'] .mote-field i {
+  animation: none !important;
+}
+
+/* Dieselben zwei Ausnahmen wie oben - der Schalter im Spiel fuehrt auf dasselbe Bild. */
+#app[data-motion='off'] .mote-field {
+  display: none;
+}
+
+#app[data-motion='off'] .perk-card.probing::after {
+  animation-duration: var(--probe, 3000ms) !important;
+}
+
+/* --- Gemeinsame Bausteine ------------------------------------------------ */
+
+/*
+ * Panel und Schild sind dasselbe in zwei Groessen: Ein Panel traegt Inhalt, ein Schild
+ * traegt eine Zahl. Beide sind dunkle Flaechen mit leuchtender Kante.
+.slide > span {
+  display: block;
+  transition: opacity var(--dur-slide) var(--ease-out);
+}
+
+/* Die Zweitfassung: eine Zeile tiefer und unsichtbar, bis der Zeiger kommt. */
+.slide::after {
+  content: attr(data-slide);
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  transition: opacity var(--dur-slide) var(--ease-out);
+  46%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/*
+ * Panel und Schild sind dasselbe in zwei Groessen: Ein Panel traegt Inhalt, ein Schild
+ * traegt eine Zahl. Beide sind dunkle Flaechen mit leuchtender Kante.
+ */
+.panel,
+.plate {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--fill-panel);
+  box-shadow: var(--glow), var(--shadow-panel);
+  backdrop-filter: blur(7px);
+}
+
+.panel {
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+.plate {
+  padding: 7px 12px;
+}
+
+.panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.panel h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--edge);
+  text-shadow: 0 0 10px rgba(127, 216, 255, 0.5);
+}
+
+.panel h3 {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.panel p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.panel .slots {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.muted {
+  color: var(--text-dim);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+/*
+ * Symbol aus dem Anlagensatz. Die Datei liefert nur die Form - die Farbe kommt aus
+ * `currentColor`, damit dasselbe Zeichen je nach Bedeutung anders leuchtet.
+ */
+.pix {
+  display: inline-block;
+  flex: none;
+  width: var(--pix-size, 16px);
+  height: var(--pix-size, 16px);
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+/* Raritaetsrahmen mit Symbol darin. Pixelgenau skaliert, sonst franst der Rahmen aus. */
+.tile {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  background: var(--frame) center / contain no-repeat;
+  image-rendering: pixelated;
+}
+
+/*
+ * Kleine Schaltflaeche - Tempo, Auto-Modus, Einstellungen.
+ *
+ * Der Rahmen leuchtet erst beim Beruehren richtig auf: Ein Knopf, der immer schon leuchtet,
+ * sagt nichts mehr, wenn man ihn erreicht.
+ */
+.chip,
+.wave-controls button,
+.speed-control button {
+  min-height: 30px;
+  padding: 4px 11px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(10, 20, 54, 0.65);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: color var(--dur-tap) var(--ease-out),
+    border-color var(--dur-tap) var(--ease-out), box-shadow var(--dur-tap) var(--ease-out),
+    transform var(--dur-tap) var(--ease-out);
+}
+
+.chip:hover:not(:disabled),
+.wave-controls button:hover:not(:disabled),
+.speed-control button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line);
+/* --- Ueber dem Spielfeld ------------------------------------------------- */
+
+.view-title {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--edge);
+  text-shadow: 0 0 24px rgba(127, 216, 255, 0.6), 0 0 6px rgba(127, 216, 255, 0.9);
+}
+
+/*
+ * Das Goldschild, oben links.
+ *
+ * Gold ist die Waehrung, in der jede Entscheidung dieses Spiels bezahlt wird. Vorher stand
+ * es als nackte Zahl ohne Rahmen da und war als Anzeige kaum zu erkennen; jetzt sitzt es
+ * auf einem eigenen Schild und traegt das Muenzzeichen aus dem Anlagensatz.
+ */
+.resource-bar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 14px 8px 10px;
+}
+
+.resource-bar .res {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--gold);
+  font-family: var(--font-pixel);
+  font-size: 30px;
+  line-height: 1;
+  text-shadow: 0 0 14px rgba(255, 204, 51, 0.55);
+}
+
+.resource-bar .res .pix {
+  filter: drop-shadow(0 0 6px rgba(255, 204, 51, 0.7));
+}
+
+.resource-bar .res.dim {
+  font-size: 18px;
+  opacity: 0.65;
+}
+
+/*
+ * Quittung fuer eingesammeltes Gold. Kurz und klein: Die Zahl laeuft ohnehin sichtbar hoch,
+ * der Puls sagt nur, dass der Zuwachs gerade **jetzt** vom Feld kam.
+ */
+@keyframes gold-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.13);
+    text-shadow: 0 0 26px rgba(255, 204, 51, 0.85);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.resource-bar .res.pulse {
+  animation: gold-pulse var(--dur-icon) var(--ease-out);
+  transform-origin: left center;
+}
+
+/*
+ * Die Wellenkarte, oben rechts.
+ *
+ * Alles zur laufenden Welle in einem schmalen Schild: Nummer, wie hart sie zuschlaegt, wie
+ * weit sie ist, und die drei Knoepfe, mit denen man sie steuert. Vorher lag dieselbe
+ * Auskunft als breite Karte unten in der Leiste - weit weg von allem anderen, was oben
+ * stand, und doppelt so gross wie noetig.
+ */
+.wave-card {
+  position: absolute;
+  top: 10px;
+/*
+ * Leiste mit Fuellung und mittiger Beschriftung.
+ *
+ * Die Fuellung traegt eine laufende Schraffur aus dem Anlagensatz - dadurch sieht man auch
+ * bei stehender Leiste, dass Energie darin ist, und nicht nur einen farbigen Balken.
+ */
+.bar {
+  position: relative;
+  height: 17px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: rgba(3, 5, 13, 0.85);
+  overflow: hidden;
+}
+
+/*
+ * Die Fuellung leuchtet in ihrer eigenen Farbe. `color` traegt dieselbe Farbe wie
+ * `background`, damit der Schein ueber `currentColor` mitwandert - sonst leuchtete eine rote
+ * Lebensleiste weiterhin tuerkis, weil `currentColor` sonst die Textfarbe waere.
+ */
+.bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  color: var(--ok);
+  background: currentColor;
+  box-shadow: 0 0 12px currentColor;
+  transition: width 160ms var(--ease-out);
+}
+
+/* Die Schraffur laeuft langsam durch die Fuellung - Energie in Bewegung. */
+.bar i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/ui/bar-hatch.png') left center / auto 100% repeat-x;
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+  animation: hatch-flow 1.6s linear infinite;
+}
+
+@keyframes hatch-flow {
+  to {
+    background-position-x: 42px;
+  }
+}
+
+.bar i.low {
+  color: var(--fail);
+}
+
+.bar span {
+  position: relative;
+  display: block;
+  width: 100%;
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  line-height: 15px;
+  text-align: center;
+  color: var(--text);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
+}
+
+.bar.progress i {
+  color: var(--cyan);
+}
+
+/*
+ * In der Pause laeuft dieselbe Leiste leer statt voll - und wechselt die Farbe, damit der
+ * Unterschied zwischen "so viel ist geschafft" und "so lange noch" auf einen Blick
+ * erkennbar ist, ohne den Text zu lesen.
+ */
+.bar.progress.pause i {
+  color: var(--lime);
+}
+
+/*
+ * Die Lebensleiste zuckt beim Treffer - derselbe Augenblick, in dem auch das Leuchten des
+ * Kerns aufschlaegt. Ein Ruck von zwei Pixeln reicht: Die Leiste soll erschrecken, nicht
+ * wandern.
+ */
+@keyframes hp-hit {
+  0% {
+    transform: translateX(0);
+    border-color: var(--magenta);
+  }
+  30% {
+    transform: translateX(-2px);
+    border-color: var(--magenta);
+    box-shadow: 0 0 16px rgba(255, 45, 120, 0.6);
+  }
+  65% {
+    transform: translateX(2px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.bar.hp.hit {
+/* Sektionsbalken ueber einer Liste - der breite blaue Streifen aus der Vorlage. */
+.section-bar {
+  padding: 5px 12px;
+  background: linear-gradient(90deg, var(--section), rgba(41, 163, 245, 0.15));
+  border-left: 3px solid var(--edge);
+  padding: 5px 12px;
+  background: linear-gradient(90deg, var(--section), rgba(41, 163, 245, 0.15));
+  border-left: 3px solid var(--edge);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.35);
+}
+
+/* --- Ueber dem Spielfeld ------------------------------------------------- */
+
+.view-title {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--edge);
+  text-shadow: 0 0 24px rgba(127, 216, 255, 0.6), 0 0 6px rgba(127, 216, 255, 0.9);
+}
+
+/*
+ * Das Goldschild, oben links.
+ *
+ * Gold ist die Waehrung, in der jede Entscheidung dieses Spiels bezahlt wird. Vorher stand
+ * es als nackte Zahl ohne Rahmen da und war als Anzeige kaum zu erkennen; jetzt sitzt es
+ * auf einem eigenen Schild und traegt das Muenzzeichen aus dem Anlagensatz.
+ */
+.resource-bar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 14px 8px 10px;
+}
+
+.resource-bar .res {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--gold);
+  font-family: var(--font-pixel);
+  font-size: 30px;
+  line-height: 1;
+  text-shadow: 0 0 14px rgba(255, 204, 51, 0.55);
+}
+
+.resource-bar .res .pix {
+  filter: drop-shadow(0 0 6px rgba(255, 204, 51, 0.7));
+}
+
+.resource-bar .res.dim {
+  font-size: 18px;
+  opacity: 0.65;
+}
+
+/*
+ * Quittung fuer eingesammeltes Gold. Kurz und klein: Die Zahl laeuft ohnehin sichtbar hoch,
+ * der Puls sagt nur, dass der Zuwachs gerade **jetzt** vom Feld kam.
+ */
+@keyframes gold-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.13);
+    text-shadow: 0 0 26px rgba(255, 204, 51, 0.85);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.resource-bar .res.pulse {
+  animation: gold-pulse var(--dur-icon) var(--ease-out);
+  transform-origin: left center;
+}
+
+/*
+ * Die Muenzen auf dem Weg ins Goldschild (`src/ui/coinflight.ts`).
+ *
+ * Hier steht nur, wie eine fliegende Muenze **aussieht** - wohin sie fliegt, rechnet die
+ * Datei aus, und die Bewegung selbst gehoert anime.js. Es gibt deshalb bewusst keine
+ * Bildfolge in diesem Block: Start und Ziel sind bei jedem Flug andere, und ein Stilblatt
+ * kann sie nicht kennen.
+ *
+ * Die Ebene liegt ueber dem Feld und schneidet nichts ab: Eine Muenze, die am Rand
+ * aufgehoben wird, soll ihren Bogen auch dann zu Ende fliegen, wenn er kurz aus dem Feld
+ * herausragt.
+ *
+ * `perspective` ist der ganze Unterschied zwischen einer Muenze, die sich dreht, und einer,
+ * die schmal wird: Die Drehung laeuft um die Hochachse, und ohne Fluchtpunkt ist das nur
+ * eine Stauchung.
+ */
+.coin-flight {
+  position: absolute;
+  inset: 0;
+  perspective: 620px;
+}
+
+.coin-in-flight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Die halbe Kantenlaenge zurueck: Der gerechnete Punkt ist die Mitte der Muenze, nicht
+     ihre obere linke Ecke. Als Rand und nicht als Umformung, weil anime.js die Umformung
+     schreibt und sich beide sonst ueberschreiben. */
+  margin: -11px 0 0 -11px;
+  color: var(--gold);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.coin-in-flight .pix {
+  filter: drop-shadow(0 0 7px rgba(255, 204, 51, 0.75));
+}
+
+/*
+ * Die Wellenkarte, oben rechts.
+ *
+ * Alles zur laufenden Welle in einem schmalen Schild: Nummer, wie hart sie zuschlaegt, wie
+ * weit sie ist, und die drei Knoepfe, mit denen man sie steuert. Vorher lag dieselbe
+ * Auskunft als breite Karte unten in der Leiste - weit weg von allem anderen, was oben
+ * stand, und doppelt so gross wie noetig.
+ */
+.wave-card {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 208px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.wave-card .head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wave-label {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--edge);
+  text-shadow: 0 0 12px rgba(127, 216, 255, 0.5);
+  white-space: nowrap;
+}
+
+.scales {
+  display: flex;
+  gap: 9px;
+}
+
+/* Werte des Gegners - in der Gegnerfarbe, damit sie nicht wie eigene Werte wirken. */
+.scales.enemy .fig {
+  color: var(--magenta);
+}
+
+.scales .fig b {
+  font-size: 14px;
+}
+
+.wave-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Der Auto-Knopf ist der einzige mit Text und nimmt deshalb den freien Platz. */
+.wave-controls .auto-button {
+  flex: 1 1 auto;
+}
+
+.fig {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cyan);
+}
+
+.fig.gold {
+  color: var(--gold);
+}
+
+.fig b {
+  font-family: var(--font-pixel);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--text);
+}
+
+/*
+ * Die Rumpfleiste, unten ueber der Bedienleiste.
+ *
+ * Sie klemmt genau auf der Kante zwischen Spiel und Bedienung: Wer nach unten auf die
+ * Upgrades schaut, sieht sie mit, ohne dass sie ins Feld ragt. Links der Schaden des
+ * Hauptturms, rechts der Goldfaktor - die zwei Zahlen, an denen man ablesen soll, ob ein
+ * Kauf etwas gebracht hat.
+ */
+/*
+ * Kein `display` in diesem Block - das setzt allein die Sichtbarkeitsregel oben. Stuende es
+ * hier, gewaenne es gegen das `display: none` von dort (gleiche Spezifitaet, spaeter im
+ * Blatt), und die Leiste haenge auch in der Basis herum.
+ */
+.hull-bar {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 8px;
+  align-items: center;
+  gap: 10px;
+}
+
+.hull-bar .bar {
+  flex: 1 1 auto;
+  height: 19px;
+}
+
+.hull-bar .fig {
+  flex: none;
+  padding: 3px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(6, 12, 34, 0.7);
+  backdrop-filter: blur(6px);
+}
+
+.hull-bar .fig b {
+  font-size: 16px;
+}
+
+/* Ebenfalls ohne `display` - siehe `.hull-bar`. */
+.speed-control {
+  position: absolute;
+  left: 10px;
+  bottom: 38px;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- Stufe und Erfahrung ------------------------------------------------- */
+
+/*
+ * Sie schliessen das Goldschild nach unten ab (GDD 13 Abschnitt 4). Die Leiste ist bewusst
+ * duenn: Erfahrung laeuft von allein voll, sie ist Auskunft und keine Aufforderung - anders
+ * als das Gold darueber, das man holen muss.
+ */
+.level-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.level-label {
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  line-height: 1;
+  color: var(--edge);
+  text-shadow: 0 0 10px rgba(127, 216, 255, 0.5);
+}
+
+.xp-bar {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 54px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(3, 5, 13, 0.8);
+  overflow: hidden;
+}
+
+.xp-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  background: var(--edge);
+  box-shadow: 0 0 8px var(--edge);
+  transition: width 220ms var(--ease-out);
+}
+
+/* --- Faehigkeitenleiste (GDD 09 Teil B) ---------------------------------- */
+
+/*
+ * Sie sitzt unten rechts, gegenueber dem Tempo und ueber der Rumpfleiste - dort, wo der
+ * Daumen hinkommt und wo sie nichts verdeckt, was man im Kampf lesen muss.
+ */
+.ability-bar {
+  position: absolute;
+  right: 10px;
+  bottom: 38px;
+  display: flex;
+  gap: 8px;
+}
+
+#app:not([data-view='combat']) .ability-bar {
+  display: none;
+}
+
+.ability-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid var(--accent, var(--cyan));
+  border-radius: 12px;
+  background: rgba(8, 14, 38, 0.82);
+  backdrop-filter: blur(6px);
+  color: var(--accent, var(--cyan));
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform var(--dur-tap) var(--ease-out),
+    box-shadow var(--dur-tap) var(--ease-out), opacity var(--dur-tap) var(--ease-out);
+}
+
+/* Bereit heisst: Sie leuchtet. Vorher ist sie da, aber still. */
+.ability-button.ready {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes outcome-out {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scale(1.05);
+    filter: blur(7px);
+  }
+}
+
+.outcome.on {
+  animation: outcome-in 300ms var(--ease-out) both;
+}
+
+/* Dieselbe Auffahrt, aber mit dem Ruck der verlorenen Welle - dieselbe Bewegung wie oben. */
+.outcome.on.lose {
+  animation: outcome-in 300ms var(--ease-out) both, banner-shake 340ms var(--ease-out);
+}
+
+/* Nach `.on.lose`, nicht davor: Bei gleicher Staerke gewinnt die spaetere Regel. */
+.outcome.on.out {
+  animation: outcome-out 520ms var(--ease-out) both;
+}
+
+/*
+ * Anzeigen ohne Bedienung duerfen den Zeiger nicht abfangen - darunter wird Gold
+ * eingesammelt. Der Bezug auf `#overlay` ist noetig, weil `#overlay > *` die Ebene sonst
+ * pauschal wieder anschaltet.
+ */
+#overlay .resource-bar,
+#overlay .wave-banner,
+#overlay .outcome,
+#overlay .boss-bar,
+#overlay .hull-bar {
+  pointer-events: none;
+}
+
+/* Der Boss faehrt auf, statt zu erscheinen: sein Auftritt bekommt einen Anlauf. */
+@keyframes boss-enter {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-16px) scale(0.92);
+    filter: blur(7px);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1.04);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+/*
+ * Die Boss-Leiste faerbt sich nach ihrem Boss: `--boss` setzt das HUD aus den Gegnerdaten.
+ * Solange keiner lebt, gilt Magenta - die Farbe der Bedrohung.
+ */
+.boss-bar {
+  --boss: var(--magenta);
+  position: absolute;
+  top: 12px;
+ * Der Ausgang einer Welle - VICTORY in Gruen, DEFEAT in Magenta (`src/ui/outcome.ts`).
+ *
+ * Er sitzt in der Mitte des Feldes und ist mehr als doppelt so gross wie die Wellenmeldung
+ * oben: Das eine ist eine Beschriftung, das hier ist das Ergebnis. Schreibmaschinenschrift
+ * statt der Blockschrift daneben, weil sich der Schriftzug **schreibt** - eine Proportional-
+ * schrift laesst den Cursor bei jedem Buchstaben unterschiedlich weit springen.
+ *
+ * Die Farbe steht als Ton in zwei Werten: einmal fertig fuer Schrift und Cursor, einmal als
+ * Dreiklang fuer die drei Leuchtstufen. Der Grundton ist die Kantenfarbe - er kommt nie
+ * zum Vorschein, denn ohne `win` oder `lose` ist der Schriftzug nicht sichtbar.
+ */
+.outcome {
+  --tone: var(--edge);
+  --tone-rgb: 127, 216, 255;
+
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 34%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: clamp(34px, 8vw, 64px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--tone);
+  /*
+   * Drei Stufen statt einer: die harte Kante am Buchstaben, der Schein daneben, der weite
+   * Hof darum. Genau der Dreiklang der `--glow-*`-Werte, nur fuer Schrift statt fuer Kanten -
+   * ein einzelner Schatten sieht aus wie ein Weichzeichner, nicht wie eine Roehre.
+   */
+  text-shadow: 0 0 10px rgba(var(--tone-rgb), 0.95), 0 0 30px rgba(var(--tone-rgb), 0.6),
+    0 0 72px rgba(var(--tone-rgb), 0.34);
+}
+
+.outcome.win {
+  --tone: var(--lime);
+  --tone-rgb: 127, 232, 63;
+}
+
+.outcome.lose {
+  --tone: var(--magenta);
+  --tone-rgb: 255, 45, 120;
+}
+
+/*
+ * Der Cursor. Er blinkt weiter, wenn das Wort schon steht - daran erkennt man, dass der
+ * Schriftzug noch "lebt" und gleich von selbst geht, statt liegenzubleiben.
+ */
+.outcome .caret {
+  width: 5px;
+  height: 0.88em;
+  background: var(--tone);
+  box-shadow: 0 0 12px rgba(var(--tone-rgb), 0.9), 0 0 28px rgba(var(--tone-rgb), 0.5);
+  animation: outcome-caret 1s linear infinite;
+}
+
+@keyframes outcome-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  46%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes outcome-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.92);
+    filter: blur(9px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes outcome-out {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scale(1.05);
+    filter: blur(7px);
+  }
+}
+
+.outcome.on {
+  animation: outcome-in 300ms var(--ease-out) both;
+}
+
+/* Dieselbe Auffahrt, aber mit dem Ruck der verlorenen Welle - dieselbe Bewegung wie oben. */
+.outcome.on.lose {
+  animation: outcome-in 300ms var(--ease-out) both, banner-shake 340ms var(--ease-out);
+}
+
+/* Nach `.on.lose`, nicht davor: Bei gleicher Staerke gewinnt die spaetere Regel. */
+.outcome.on.out {
+  animation: outcome-out 520ms var(--ease-out) both;
+}
+
+/*
+ * Anzeigen ohne Bedienung duerfen den Zeiger nicht abfangen - darunter wird Gold
+ * eingesammelt.
+ *
+ * Der Bezug auf die Ebene ist hier nicht mehr noetig (siehe die Erklaerung zu
+ * `:where(#overlay) > *`), aber die Sammelstelle bleibt: An einem Ort zu lesen, welche
+ * Anzeigen durchlaessig sind, ist mehr wert als fuenf verstreute Zeilen.
+ */
+#overlay .resource-bar,
+#overlay .wave-banner,
+#overlay .outcome,
+#overlay .boss-bar,
+#overlay .hull-bar {
+  pointer-events: none;
+}
+
+/* Der Boss faehrt auf, statt zu erscheinen: sein Auftritt bekommt einen Anlauf. */
+@keyframes boss-enter {
+ */
+.upgrade-panel {
+  flex-direction: column;
+  gap: 0;
+  max-height: 164px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.cat-tabs {
+  display: flex;
+  gap: 5px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.cat-tab {
+  padding: 3px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: rgba(10, 20, 54, 0.6);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--dur-tap) var(--ease-out),
+    border-color var(--dur-tap) var(--ease-out), box-shadow var(--dur-tap) var(--ease-out);
+}
+
+.cat-tab:hover {
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.cat-tab.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 14px rgba(70, 200, 255, 0.3), inset 0 0 10px rgba(70, 200, 255, 0.12);
+  text-shadow: 0 0 8px currentColor;
+}
+
+/* In der vollen Ansicht steht jede Kategorie untereinander - die Reiter entfallen. */
+.upgrade-panel.wide {
+  max-height: 42vh;
+}
+
+.upgrade-panel.wide .cat-tabs {
+  display: none;
+}
+
+.cat-body {
+  overflow-y: auto;
+}
+
+.upgrade-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 8px;
+}
+
+.upgrade-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: var(--fill-card);
+  box-shadow: var(--shadow-card);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--dur-tap) var(--ease-out),
+    box-shadow var(--dur-tap) var(--ease-out), border-color var(--dur-tap) var(--ease-out);
+}
+
+.upgrade-card.affordable {
+  border-color: var(--line);
+  box-shadow: var(--glow-soft), var(--shadow-card);
+}
+
+/* Bezahlbar und unter dem Zeiger: die Kachel hebt sich aus dem Panel heraus. */
+.upgrade-card:hover.affordable {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: var(--glow), var(--shadow-lift);
+}
+
+.upgrade-card:active.affordable {
+  transform: translateY(0) scale(0.98);
+  box-shadow: var(--shadow-card);
+}
+
+.upgrade-card:disabled {
+  opacity: 0.42;
+  box-shadow: none;
+  cursor: default;
+}
+
+/*
+ * Quittung fuer einen Kauf. Die Klasse setzt `ui/upgrades.ts`, weg nimmt sie das Ende der
+ * Bewegung selbst - so braucht die Quittung keine Uhr.
+ */
+@keyframes bought {
+  0% {
+    border-color: var(--lime);
+    box-shadow: 0 0 0 rgba(127, 232, 63, 0.6);
+    transform: scale(1);
+  }
+  30% {
+    border-color: var(--lime);
+    box-shadow: 0 0 26px rgba(127, 232, 63, 0.7), inset 0 0 18px rgba(127, 232, 63, 0.25);
+    transform: scale(1.04);
+  }
+  100% {
+    box-shadow: var(--shadow-card);
+    transform: scale(1);
+  }
+}
+
+.upgrade-card.bought {
+  animation: bought 440ms var(--ease-out);
+}
+
+.upgrade-card .label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--accent);
+}
+
+.upgrade-card .label span {
+  color: var(--text);
+}
+
+.upgrade-card .value-box {
+  display: grid;
+  min-width: 72px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  overflow: hidden;
+  text-align: center;
+}
+
+.upgrade-card .value {
+  padding: 1px 6px;
+  font-family: var(--font-pixel);
+  font-size: 17px;
+  color: var(--text);
+}
+
+.upgrade-card .cost {
+  padding: 1px 6px;
+  border-top: 1px solid var(--line-soft);
+  background: rgba(3, 5, 13, 0.5);
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  color: var(--cyan);
+}
+
+/*
+ * Jede Kategorie faerbt Reiter und Kachelsymbole in der Farbe, in der ihr Turm auf dem
+ * Feld leuchtet. Den Wert setzt `ui/upgrades.ts` als `--accent` am Reiter und am Abschnitt;
+ * hier steht nur, was gilt, solange keiner gesetzt ist.
+ */
+.cat-tab,
+.cat-section {
+  --accent: var(--cyan);
+}
+
+/* --- Basis --------------------------------------------------------------- */
+
+.inventory-panel {
+  position: absolute;
+  top: 54px;
+  left: 10px;
+  bottom: 10px;
+  width: 228px;
+  flex-direction: column;
+}
+
+.rail {
+  position: absolute;
+  top: 138px;
+  right: 10px;
+  bottom: 10px;
+  width: 250px;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rail .detail-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Der Kaufbereich sitzt unten rechts - genau dort, wo ihn der Entwurf zeigt. */
+.rail .shop-panel {
+  flex: 0 0 auto;
+}
+
+.meta-card {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 250px;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+}
+
+.meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.meta-row span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.meta-row b {
+  font-family: var(--font-pixel);
+  font-size: 23px;
+  font-weight: 400;
+  color: var(--text);
+  text-shadow: 0 0 12px rgba(70, 200, 255, 0.35);
+}
+
+/* Die Lebensleiste schliesst die Karte ab - etwas Luft trennt sie von den Zahlen. */
+.meta-card .bar {
+  margin-top: 4px;
+}
+
+.wide-button {
+  width: 100%;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--fill-card);
+  box-shadow: var(--glow-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: box-shadow var(--dur-tap) var(--ease-out),
+    transform var(--dur-tap) var(--ease-out);
+}
+
+.wide-button:hover:not(:disabled) {
+  box-shadow: var(--glow);
+  transform: translateY(-1px);
+}
+
+.wide-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.wide-button:disabled {
+  opacity: 0.38;
+  box-shadow: none;
+  cursor: default;
+}
+
+ul.inventory {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+/*
+ * Die Kachelwand.
+ *
+ * Kein Raster, sondern ein Fluss: Die Kacheln einer Gruppe stehen eng zusammen und brechen
+ * **gemeinsam** in die naechste Zeile um. In einem Raster risse der Umbruch mitten durch
+ * eine Turmart, und die Ordnung waere nur noch zu erraten. Die groessere Luft zwischen den
+ * Gruppen ist damit die einzige Ueberschrift, die es hier noch gibt.
+ */
+.upgrade-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 13px;
+  padding: 9px 10px 10px;
+}
+
+.cat-group {
+  /* Solange `ui/upgrades.ts` keine Leitfarbe gesetzt hat, gilt Cyan. */
+  --accent: var(--cyan);
+  display: flex;
+  gap: 4px;
+}
+
+/*
+ * Eine Kachel.
+ *
+ * Sie traegt drei Dinge und keinen Satz: oben rechts die Stufe, in der Mitte das Zeichen
+ * der Wirkung, unten die Marke ihrer Gruppe und den Preis. Was ein Pfad genau tut, steht
+ * im Hinweis unter dem Zeiger - auf 64 Pixeln hat ein Name keinen Platz, und drei Zeilen
+ * Text nebeneinander liest ohnehin niemand waehrend einer Welle.
+ */
+.upgrade-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  place-items: center;
+  width: 64px;
+  height: 66px;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: var(--fill-card);
+  box-shadow: var(--shadow-card);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  transition: transform var(--dur-tap) var(--ease-out),
+    box-shadow var(--dur-tap) var(--ease-out), border-color var(--dur-tap) var(--ease-out),
+    opacity var(--dur-tap) var(--ease-out);
+}
+
+/* Das Zeichen der Wirkung. Es leuchtet in der Leitfarbe seiner Gruppe. */
+.upgrade-card .sym {
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+/*
+ * Die Stufe. Sie steht nur da, wo schon Gold liegt (`ui/upgrades.ts` laesst sie sonst
+ * leer) - eine Null auf jeder ungekauften Kachel waere Rauschen.
+ */
+.upgrade-card .lv {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text);
+  text-shadow: 0 0 6px rgba(3, 5, 13, 0.95);
+}
+
+.upgrade-card .foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  width: 100%;
+  padding: 0 4px 3px;
+}
+
+/* Die Marke der Gruppe - Kern, Turmart oder Station. Sie tritt zurueck, das Zeichen fuehrt. */
+.upgrade-card .mark {
+  display: grid;
+  place-items: center;
+  opacity: 0.5;
+}
+
+.upgrade-card .cost {
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  line-height: 1;
+  color: var(--gold);
+}
+
+/* Bezahlbar: Der Rahmen nimmt die Leitfarbe an - das ist das Signal, auf das man klickt. */
+.upgrade-card.affordable {
+  border-color: var(--accent);
+  box-shadow: 0 0 14px -4px var(--accent), var(--shadow-card);
+}
+
+.upgrade-card.affordable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 22px -3px var(--accent), var(--shadow-lift);
+}
+
+.upgrade-card.affordable:active {
+  transform: translateY(0) scale(0.95);
+  box-shadow: var(--shadow-card);
+}
+
+/*
+ * Zu teuer oder ausgebaut - blass, aber nicht weg: Die Kachel bleibt die Auskunft "darauf
+ * kannst du sparen". Sie ist bewusst **kein** `disabled`; warum, steht in `ui/upgrades.ts`.
+ */
+.upgrade-card.locked {
+  opacity: 0.4;
+  box-shadow: none;
+  cursor: default;
+}
+
+/*
+ * Quittung fuer einen Kauf. Die Klasse setzt `ui/upgrades.ts`, weg nimmt sie das Ende der
+ * Bewegung selbst - so braucht die Quittung keine Uhr.
+ */
+@keyframes bought {
+  0% {
+    border-color: var(--lime);
+    box-shadow: 0 0 0 rgba(127, 232, 63, 0.6);
+    transform: scale(1);
+  }
+  30% {
+    border-color: var(--lime);
+    box-shadow: 0 0 26px rgba(127, 232, 63, 0.7), inset 0 0 18px rgba(127, 232, 63, 0.25);
+    transform: scale(1.04);
+  }
+  100% {
+    box-shadow: var(--shadow-card);
+    transform: scale(1);
+ * Bewegung selbst - so braucht die Quittung keine Uhr.
+ */
+@keyframes bought {
+  0% {
+    border-color: var(--lime);
+    box-shadow: 0 0 0 rgba(127, 232, 63, 0.6);
+    transform: scale(1);
+  }
+  30% {
+    border-color: var(--lime);
+    box-shadow: 0 0 26px rgba(127, 232, 63, 0.7), inset 0 0 18px rgba(127, 232, 63, 0.25);
+    transform: scale(1.04);
+  }
+  100% {
+    box-shadow: var(--shadow-card);
+    transform: scale(1);
+  }
+}
+
+.upgrade-card.bought {
+  animation: bought 440ms var(--ease-out);
+}
+
+/* --- Basis --------------------------------------------------------------- */
+
+.inventory-panel {
+  position: absolute;
+  top: 54px;
+  left: 10px;
+  bottom: 10px;
+  width: 228px;
+  flex-direction: column;
+}
+
+.rail {
+  position: absolute;
+  top: 138px;
+  right: 10px;
+  bottom: 10px;
+  width: 250px;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rail .detail-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Der Kaufbereich sitzt unten rechts - genau dort, wo ihn der Entwurf zeigt. */
+.rail .shop-panel {
+  flex: 0 0 auto;
+}
+
+.meta-card {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 250px;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+}
+
+.meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.meta-row span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.meta-row b {
+  font-family: var(--font-pixel);
+  font-size: 23px;
+  font-weight: 400;
+  color: var(--text);
+  text-shadow: 0 0 12px rgba(70, 200, 255, 0.35);
+}
+
+/* Die Lebensleiste schliesst die Karte ab - etwas Luft trennt sie von den Zahlen. */
+.meta-card .bar {
+  margin-top: 4px;
+}
+
+.wide-button {
+  width: 100%;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--fill-card);
+  box-shadow: var(--glow-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: box-shadow var(--dur-tap) var(--ease-out),
+    transform var(--dur-tap) var(--ease-out);
+}
+
+.wide-button:hover:not(:disabled) {
+  box-shadow: var(--glow);
+  transform: translateY(-1px);
+}
+
+.wide-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.wide-button:disabled {
+  opacity: 0.38;
+  box-shadow: none;
+  cursor: default;
+}
+
+ul.inventory {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+ul.inventory .card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 7px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--fill-card);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: transform var(--dur-tap) var(--ease-out),
+    box-shadow var(--dur-tap) var(--ease-out), border-color var(--dur-tap) var(--ease-out);
+}
+
+ul.inventory .card:hover {
+  transform: translateY(-2px);
+  border-color: var(--line);
+  box-shadow: var(--glow-soft), var(--shadow-lift);
+}
+
+ul.inventory .card:active {
+  transform: translateY(0) scale(0.99);
+  box-shadow: var(--shadow-card);
+}
+
+ul.inventory .card.active {
+  border-color: var(--accent);
+  box-shadow: var(--glow), var(--shadow-card);
+}
+
+ul.inventory .tile {
+  grid-row: 1 / 3;
+}
+
+ul.inventory .name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+ul.inventory .rarity {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--rarity, var(--text-dim));
+  text-shadow: 0 0 10px currentColor;
+}
+
+ul.inventory .shape {
+  grid-column: 2 / -1;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.detail-panel header {
+  align-items: center;
+  gap: 10px;
+}
+
+.detail-panel h2 {
+  flex: 1 1 auto;
+}
+
+.detail-panel .rarity {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--rarity, var(--text-dim));
+}
+
+table.stats {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+table.stats th {
+  padding: 2px 0;
+  font-weight: 400;
+  text-align: left;
+  color: var(--text-dim);
+}
+
+table.stats td {
+  padding: 2px 0 2px 6px;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 8px;
+  border: 1px solid var(--rarity, var(--line));
+  border-radius: 10px;
+  background: var(--fill-card);
+  box-shadow: 0 0 14px -4px var(--rarity, transparent), var(--shadow-card);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: transform var(--dur-tap) var(--ease-out),
+    box-shadow var(--dur-tap) var(--ease-out);
+}
+
+.perk-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0 26px -3px var(--rarity, var(--cyan)), var(--shadow-lift);
+}
+
+.perk-card:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.perk-name {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.perk-rarity {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rarity, var(--text-dim));
+  text-shadow: 0 0 10px currentColor;
+}
+
+.perk-taken {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+/* --- Faehigkeitenverwaltung im Upgrades-Bereich -------------------------- */
+
+.ability-slots {
+  margin: 8px 10px 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.ability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+  padding: 8px 10px 10px;
+ * Entscheidung mit Folgen.
+ */
+.event-panel {
+  width: min(620px, calc(100% - 28px));
+  border-color: color-mix(in srgb, var(--violet) 55%, var(--line));
+  box-shadow: 0 0 34px -8px var(--violet), var(--shadow-card);
+}
+
+.event-panel h2 {
+  color: var(--violet);
+  text-shadow: 0 0 26px rgba(180, 92, 255, 0.6), 0 0 8px rgba(180, 92, 255, 0.9);
+}
+
+.event-panel .offer-card {
+  --rarity: var(--violet);
+}
+
+/*
+ * Die Haendler-Drohne (GDD 11 Abschnitt 7).
+ *
+ * Goldener Rahmen, weil Gold im ganzen Spiel die Farbe des Handels ist - dieselbe wie an
+ * der Muenzanzeige und am Fahrzeug im Feld. Der Spieler soll das Fenster wiedererkennen,
+ * bevor er die Ueberschrift gelesen hat.
+ */
+.trader-panel {
+  width: min(660px, calc(100% - 28px));
+  border-color: color-mix(in srgb, var(--gold) 55%, var(--line));
+  box-shadow: 0 0 34px -8px var(--gold), var(--shadow-card);
+}
+
+.trader-panel h2 {
+  color: var(--gold);
+  text-shadow: 0 0 26px rgba(255, 204, 51, 0.6), 0 0 8px rgba(255, 204, 51, 0.9);
+}
+
+/* Der Preis steht unten und traegt die Ziffernschrift - er ist eine Zahl, kein Wort. */
+.trade-price {
+  margin-top: auto;
+  padding-top: 6px;
+  font-family: var(--font-number);
+  font-size: 13px;
+  color: var(--gold);
+}
+
+/*
+ * Ein Posten, den man sich nicht leisten kann, wird **blass statt unsichtbar**: Er bleibt
+ * die Auskunft "dafuer fehlt dir Gold" und ist damit ein Ziel, auf das man hinspart.
+ */
+.trade-card:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.trade-card:disabled:hover {
+  transform: none;
+  box-shadow: 0 0 18px -5px var(--rarity, transparent), var(--shadow-card);
+}
+
+/* Gekauft: Der Rahmen tritt zurueck, die Karte bleibt als Quittung stehen. */
+.trade-card.sold {
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+.trade-card.sold .trade-price {
+  color: var(--text-dim);
+}
+
+/*
+ * Der Bericht ueber die Abwesenheit (GDD 12 Abschnitt 5).
+ *
+ * Er verlangt keine Wahl, also gibt es keine Karten - nur eine Liste aus Beschriftung und
+ * Zahl. Die Zahlen stehen rechtsbuendig in der Ziffernschrift: So liegen sie untereinander
+ * und lassen sich vergleichen, statt an unterschiedlichen Stellen zu beginnen.
+ */
+.return-panel {
+  width: min(400px, calc(100% - 28px));
+}
+
+.return-list {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 16px;
+  margin: 4px 0 16px;
+  text-align: left;
+}
+
+.return-list dt {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.return-list dd {
+  margin: 0;
+  font-family: var(--font-number);
+  font-size: 13px;
+  text-align: right;
+  color: var(--edge);
+}
+
+/*
+ * Die Energiewelle eines Prestiges (GDD 13 Abschnitt 10).
+ *
+ * Drei Lagen in einem Element, weil sie zusammen **eine** Bewegung sind:
+ *
+ *   der Kern       ein greller Punkt in der Mitte, der sofort da ist und sofort geht
+ *   die Welle      ein Ring, der über das ganze Fenster hinausläuft
+ *   der Nachhall   eine violette Tönung, die zuletzt verblasst
+ *
+ * `background` trägt alle drei als Verläufe, `transform: scale` treibt sie auseinander.
+ * Getrennte Elemente wären genauer steuerbar und würden dabei genau das verlieren, was den
+ * Effekt ausmacht: dass er als **ein** Stoß gelesen wird.
+ *
+ * Der Schleier liegt außerhalb der Zeigerbedienung (`pointer-events: none`). Eine
+ * Animation, die knapp eine Sekunde lang Klicks schluckt, wäre eine Wartezeit mit Licht.
+ */
+.surge {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 9%),
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(127, 216, 255, 0) 14%,
+      rgba(127, 216, 255, 0.85) 22%,
+      rgba(180, 92, 255, 0.5) 30%,
+      rgba(180, 92, 255, 0) 44%
+    ),
+    radial-gradient(circle at 50% 50%, rgba(180, 92, 255, 0.28) 0%, rgba(180, 92, 255, 0) 70%);
+}
+
+.surge.firing {
+  animation: surge 1100ms var(--ease-out);
+}
+
+@keyframes surge {
+  0% {
+    opacity: 0;
+    transform: scale(0.15);
+  }
+  /* Der Stoß: voll da, noch klein. Alles davor ist Anlauf, alles danach Ausbreitung. */
+  12% {
+    opacity: 1;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(3.4);
+  }
+}
+
+/*
+ * Der Hinweiszettel (GDD 14 Abschnitt 4a).
+ *
+ * Er liegt am **unteren Rand ueber der Leiste** und nicht in der Mitte: Ein Hinweis haelt
+ * nichts an, also darf er auch nicht in der Bahn stehen. `pointer-events` bleibt am Knopf
+ * und nicht am Zettel - wer daneben klickt, klickt auf das Spielfeld.
+ */
+.hint-card {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(520px, calc(100% - 32px));
+  padding: 10px 12px 10px 16px;
+  border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--line));
+  border-radius: 12px;
+  background: var(--fill-panel);
+  box-shadow: 0 0 26px -8px var(--gold), var(--shadow-card);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.hint-card[hidden] {
+  display: none;
+}
+
+.hint-card.enter {
+  animation: enter-up var(--dur-card) var(--ease-out);
+}
+
+.hint-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.hint-card .chip {
+  flex: 0 0 auto;
+  pointer-events: auto;
+}
+
+/* Eine ausgewaehlte Schmelzkarte im Lager - sie brennt, bevor sie verschwindet. */
+ul.inventory .card.melting {
+  border-color: var(--gold);
+  box-shadow: 0 0 20px -4px var(--gold), inset 0 0 14px -6px var(--gold);
+}
+
+ul.sources.traits li {
+  color: var(--rarity, var(--text-dim));
+}
+
+/* Preis rechts, Beschriftung links - der Knopf sagt beides auf einmal. */
+.wide-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.wide-button b {
+  font-family: var(--font-pixel);
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--gold);
+}
+
+.shop-panel .wide-button + .wide-button,
+.shop-panel .wide-button + .chip {
+  margin-top: 8px;
+}
+
+/* --- Prestige (GDD 10, GDD 13 Abschnitt 6) ------------------------------- */
+
+.prestige-panel {
+  position: absolute;
+  top: 54px;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  overflow-y: auto;
+}
+
+.prestige-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.prestige-points {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.prestige-points span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.prestige-points b {
+  font-family: var(--font-pixel);
+  font-size: 30px;
+  font-weight: 400;
+  color: var(--violet);
+  text-shadow: 0 0 16px rgba(180, 92, 255, 0.55);
+}
+
+.prestige-reset {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+}
+
+.prestige-reset h2 {
+  margin-bottom: 4px;
+}
+
+.prestige-earn {
+  margin: 0 0 6px;
+  font-family: var(--font-pixel);
+  font-size: 19px;
+  color: var(--violet);
+  text-shadow: 0 0 12px rgba(180, 92, 255, 0.45);
+}
+
+.prestige-reset .small {
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/*
+ * Der Auslöser ist zweistufig: Erst zeigt er, was passiert, dann tut er es. Prestige ist
+ * die einzige Handlung im Spiel, die Fortschritt vernichtet - sie darf nicht aus Versehen
+ * geschehen. Der scharfgestellte Zustand pulst, damit der Unterschied nicht zu uebersehen ist.
+ */
+.wide-button.danger {
+  margin-top: 10px;
+  border-color: var(--magenta);
+  color: var(--magenta);
+}
+
+.wide-button.danger:hover:not(:disabled) {
+  box-shadow: 0 0 22px -4px var(--magenta);
+}
+
+@keyframes armed {
+  0%,
+  100% {
+    box-shadow: 0 0 14px -4px var(--magenta);
+  }
+  50% {
+    box-shadow: 0 0 30px -2px var(--magenta), inset 0 0 18px -6px var(--magenta);
+  }
+}
+
+.wide-button.danger.armed {
+  animation: armed 1.1s ease-in-out infinite;
+  color: var(--text);
+  background: rgba(255, 45, 120, 0.16);
+}
+
+.node-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  padding: 8px 0 12px;
+}
+
+/*
+ * Der Zustand steht in der Farbe (GDD 13 Abschnitt 6): gesperrt dunkel, verfuegbar
+ * leuchtend, gekauft aktiviert. Zu teuer ist **kein** eigener Zustand - der Knoten leuchtet
+ * weiter, nur der Klick greift nicht. Sonst waere nicht zu erkennen, worauf man sparen soll.
+ */
+.node-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--fill-card);
+  box-shadow: var(--shadow-card);
+  color: var(--text-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: transform var(--dur-tap) var(--ease-out),
+    box-shadow var(--dur-tap) var(--ease-out), opacity var(--dur-tap) var(--ease-out);
+}
+
+.node-card.available {
+  opacity: 1;
+  border-color: var(--violet);
+  color: var(--text);
+  box-shadow: 0 0 16px -5px var(--violet), var(--shadow-card);
+}
+
+.node-card.available:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 0 26px -4px var(--violet), var(--shadow-lift);
+}
+
+.node-card.bought {
+  opacity: 1;
+  border-color: var(--teal);
+  color: var(--text);
+  box-shadow: 0 0 16px -5px var(--teal), inset 0 0 14px -7px var(--teal);
+  cursor: default;
+}
+
+.node-card:disabled {
+  cursor: default;
+}
+
+.node-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.node-text {
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.node-cost {
+  font-family: var(--font-pixel);
+  font-size: 16px;
+  color: var(--violet);
+}
+
+.node-card.bought .node-cost {
+ * Der Hinweiszettel (GDD 14 Abschnitt 4a).
+ *
+ * Er liegt am **unteren Rand ueber der Leiste** und nicht in der Mitte: Ein Hinweis haelt
+ * nichts an, also darf er auch nicht in der Bahn stehen. `pointer-events` bleibt am Knopf
+ * und nicht am Zettel - wer daneben klickt, klickt auf das Spielfeld.
+ */
+.hint-card {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(520px, calc(100% - 32px));
+  padding: 10px 12px 10px 16px;
+  border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--line));
+  border-radius: 12px;
+  background: var(--fill-panel);
+  box-shadow: 0 0 26px -8px var(--gold), var(--shadow-card);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.hint-card[hidden] {
+  display: none;
+}
+
+.hint-card.enter {
+  animation: enter-up var(--dur-card) var(--ease-out);
+}
+
+.hint-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.hint-card .chip {
+  flex: 0 0 auto;
+  pointer-events: auto;
+}
+
+/* Eine ausgewaehlte Schmelzkarte im Lager - sie brennt, bevor sie verschwindet. */
+ul.inventory .card.melting {
+  border-color: var(--gold);
+  box-shadow: 0 0 20px -4px var(--gold), inset 0 0 14px -6px var(--gold);
+}
+
+ul.sources.traits li {
+  color: var(--rarity, var(--text-dim));
+}
+
+/* Preis rechts, Beschriftung links - der Knopf sagt beides auf einmal. */
+.wide-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 8px;
+  background: rgba(10, 20, 54, 0.9);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.7;
+  letter-spacing: 0.02em;
+}
+
+.devbar b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.devbar .hint {
+  color: rgba(143, 168, 212, 0.6);
+}
+
+.report {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: auto;
+  padding: 32px clamp(16px, 5vw, 64px) 64px;
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.report h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  letter-spacing: 0.12em;
+  color: var(--text);
+}
+
+.report .summary {
+  margin-bottom: 24px;
+  font-size: 15px;
+}
+
+.report .summary.ok {
+  color: var(--ok);
+}
+
+.report .summary.fail {
+  color: var(--fail);
+}
+
+.report h2 {
+  margin: 24px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.report ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report li {
+  padding: 2px 0 2px 22px;
+  text-indent: -22px;
+}
+
+.report li.ok::before {
+  content: '+  ';
+  color: var(--ok);
+}
+
+.report li.fail {
+  color: var(--fail);
+}
+
+.report li.fail::before {
+  content: 'x  ';
+}
+
+.report pre {
+  margin: 2px 0 8px 22px;
+  color: var(--fail);
+  text-indent: 0;
+  white-space: pre-wrap;
+  opacity: 0.85;
+}
+
+/* --- Breite Fenster ------------------------------------------------------ */
+
+/*
+ * Ab hier ist Platz fuer vier Kacheln nebeneinander - so steht es im Entwurf der unteren
+ * Leiste. Darunter bleibt es bei zwei: Eine Kachel unter 150 Pixeln Breite kann ihren
+ * Namen und ihren Preis nicht mehr nebeneinander zeigen.
+ */
+@media (min-width: 900px) {
+  .upgrade-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* --- Schmale Fenster ----------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .inventory-panel {
+    width: 190px;
+  }
+
+  .rail,
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.setting .label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.setting .chips {
+  display: flex;
+  gap: 6px;
+}
+
+/* --- Hinweise, Entwickleranzeige, Selbsttest ----------------------------- */
+
+.tooltip {
+  position: fixed;
+  z-index: 20;
+  max-width: 260px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(10, 20, 54, 0.94);
+  box-shadow: var(--glow-soft);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: none;
+}
+
+.tooltip[hidden] {
+  display: none;
+}
+
+/* Nur mit ?debug sichtbar - im normalen Bild hat sie nichts verloren. */
+.devbar {
+  position: absolute;
+  bottom: 64px;
+  left: 12px;
+  }
+
+  .upgrade-card {
+    padding: 5px 8px;
+    gap: 7px;
+  }
+
+  .nav-button {
+    width: 58px;
+    height: 58px;
+  }
+
+  .wave-card {
+    width: 176px;
+    padding: 7px 8px;
+  }
+
+  .resource-bar .res {
+    font-size: 25px;
+  }
+}
+
+/* ### FEHLENDE ZEILE 2952 ### */
+/* ### FEHLENDE ZEILE 2953 ### */
+/* ### FEHLENDE ZEILE 2954 ### */
+/* ### FEHLENDE ZEILE 2955 ### */
+/* ### FEHLENDE ZEILE 2956 ### */
+/* ### FEHLENDE ZEILE 2957 ### */
+/* ### FEHLENDE ZEILE 2958 ### */
+/* ### FEHLENDE ZEILE 2959 ### */
+/* ### FEHLENDE ZEILE 2960 ### */
+/* ### FEHLENDE ZEILE 2961 ### */
+/* ### FEHLENDE ZEILE 2962 ### */
+/* ### FEHLENDE ZEILE 2963 ### */
+/* ### FEHLENDE ZEILE 2964 ### */
+/* ### FEHLENDE ZEILE 2965 ### */
+/* ### FEHLENDE ZEILE 2966 ### */
+/* ### FEHLENDE ZEILE 2967 ### */
+/* ### FEHLENDE ZEILE 2968 ### */
+/* ### FEHLENDE ZEILE 2969 ### */
+/* ### FEHLENDE ZEILE 2970 ### */
+/* ### FEHLENDE ZEILE 2971 ### */
+/* ### FEHLENDE ZEILE 2972 ### */
+/* ### FEHLENDE ZEILE 2973 ### */
+/* ### FEHLENDE ZEILE 2974 ### */
+/* ### FEHLENDE ZEILE 2975 ### */
+/* ### FEHLENDE ZEILE 2976 ### */
+/* ### FEHLENDE ZEILE 2977 ### */
+/* ### FEHLENDE ZEILE 2978 ### */
+/* ### FEHLENDE ZEILE 2979 ### */
+/* ### FEHLENDE ZEILE 2980 ### */
+/* ### FEHLENDE ZEILE 2981 ### */
+/* ### FEHLENDE ZEILE 2982 ### */
+/* ### FEHLENDE ZEILE 2983 ### */
+/* ### FEHLENDE ZEILE 2984 ### */
+/* ### FEHLENDE ZEILE 2985 ### */
+/* ### FEHLENDE ZEILE 2986 ### */
+/* ### FEHLENDE ZEILE 2987 ### */
+/* ### FEHLENDE ZEILE 2988 ### */
+/* ### FEHLENDE ZEILE 2989 ### */
+/* ### FEHLENDE ZEILE 2990 ### */
+/* ### FEHLENDE ZEILE 2991 ### */
+/* ### FEHLENDE ZEILE 2992 ### */
+/* ### FEHLENDE ZEILE 2993 ### */
+/* ### FEHLENDE ZEILE 2994 ### */
+/* ### FEHLENDE ZEILE 2995 ### */
+/* ### FEHLENDE ZEILE 2996 ### */
+/* ### FEHLENDE ZEILE 2997 ### */
+/* ### FEHLENDE ZEILE 2998 ### */
+/* ### FEHLENDE ZEILE 2999 ### */
+/* ### FEHLENDE ZEILE 3000 ### */
+/* ### FEHLENDE ZEILE 3001 ### */
+/* ### FEHLENDE ZEILE 3002 ### */
+/* ### FEHLENDE ZEILE 3003 ### */
+/* ### FEHLENDE ZEILE 3004 ### */
+/* ### FEHLENDE ZEILE 3005 ### */
+/* ### FEHLENDE ZEILE 3006 ### */
+/* ### FEHLENDE ZEILE 3007 ### */
+/* ### FEHLENDE ZEILE 3008 ### */
+/* ### FEHLENDE ZEILE 3009 ### */
+/* ### FEHLENDE ZEILE 3010 ### */
+/* ### FEHLENDE ZEILE 3011 ### */
+/* ### FEHLENDE ZEILE 3012 ### */
+/* ### FEHLENDE ZEILE 3013 ### */
+/* ### FEHLENDE ZEILE 3014 ### */
+/* ### FEHLENDE ZEILE 3015 ### */
+/* ### FEHLENDE ZEILE 3016 ### */
+/* ### FEHLENDE ZEILE 3017 ### */
+/* ### FEHLENDE ZEILE 3018 ### */
+/* ### FEHLENDE ZEILE 3019 ### */
+/* ### FEHLENDE ZEILE 3020 ### */
+/* ### FEHLENDE ZEILE 3021 ### */
+/* ### FEHLENDE ZEILE 3022 ### */
+/* ### FEHLENDE ZEILE 3023 ### */
+/* ### FEHLENDE ZEILE 3024 ### */
+/* ### FEHLENDE ZEILE 3025 ### */
+/* ### FEHLENDE ZEILE 3026 ### */
+/* ### FEHLENDE ZEILE 3027 ### */
+/* ### FEHLENDE ZEILE 3028 ### */
+/* ### FEHLENDE ZEILE 3029 ### */
+/* ### FEHLENDE ZEILE 3030 ### */
+/* ### FEHLENDE ZEILE 3031 ### */
+/* ### FEHLENDE ZEILE 3032 ### */
+/* ### FEHLENDE ZEILE 3033 ### */
+/* ### FEHLENDE ZEILE 3034 ### */
+/* ### FEHLENDE ZEILE 3035 ### */
+/* ### FEHLENDE ZEILE 3036 ### */
+/* ### FEHLENDE ZEILE 3037 ### */
+/* ### FEHLENDE ZEILE 3038 ### */
+/* ### FEHLENDE ZEILE 3039 ### */
+/* ### FEHLENDE ZEILE 3040 ### */
+/* ### FEHLENDE ZEILE 3041 ### */
+/* ### FEHLENDE ZEILE 3042 ### */
+/* ### FEHLENDE ZEILE 3043 ### */
+/* ### FEHLENDE ZEILE 3044 ### */
+/* ### FEHLENDE ZEILE 3045 ### */
+/* ### FEHLENDE ZEILE 3046 ### */
+/* ### FEHLENDE ZEILE 3047 ### */
+/* ### FEHLENDE ZEILE 3048 ### */
+/* ### FEHLENDE ZEILE 3049 ### */
+/* ### FEHLENDE ZEILE 3050 ### */
+/* ### FEHLENDE ZEILE 3051 ### */
+/* ### FEHLENDE ZEILE 3052 ### */
+/* ### FEHLENDE ZEILE 3053 ### */
+/* ### FEHLENDE ZEILE 3054 ### */
+/* ### FEHLENDE ZEILE 3055 ### */
+/* ### FEHLENDE ZEILE 3056 ### */
+/* ### FEHLENDE ZEILE 3057 ### */
+/* ### FEHLENDE ZEILE 3058 ### */
+/* ### FEHLENDE ZEILE 3059 ### */
+/* ### FEHLENDE ZEILE 3060 ### */
+/* ### FEHLENDE ZEILE 3061 ### */
+/* ### FEHLENDE ZEILE 3062 ### */
+/* ### FEHLENDE ZEILE 3063 ### */
+/* ### FEHLENDE ZEILE 3064 ### */
+/* ### FEHLENDE ZEILE 3065 ### */
+/* ### FEHLENDE ZEILE 3066 ### */
+/* ### FEHLENDE ZEILE 3067 ### */
+/* ### FEHLENDE ZEILE 3068 ### */
+/* ### FEHLENDE ZEILE 3069 ### */
+/* ### FEHLENDE ZEILE 3070 ### */
+/* ### FEHLENDE ZEILE 3071 ### */
+/* ### FEHLENDE ZEILE 3072 ### */
+/* ### FEHLENDE ZEILE 3073 ### */
+/* ### FEHLENDE ZEILE 3074 ### */
+/* ### FEHLENDE ZEILE 3075 ### */
+/* ### FEHLENDE ZEILE 3076 ### */
+/* ### FEHLENDE ZEILE 3077 ### */
+/* ### FEHLENDE ZEILE 3078 ### */
+/* ### FEHLENDE ZEILE 3079 ### */
+/* ### FEHLENDE ZEILE 3080 ### */
+/* ### FEHLENDE ZEILE 3081 ### */
+/* ### FEHLENDE ZEILE 3082 ### */
+/* ### FEHLENDE ZEILE 3083 ### */
+/* ### FEHLENDE ZEILE 3084 ### */
+/* ### FEHLENDE ZEILE 3085 ### */
+/* ### FEHLENDE ZEILE 3086 ### */
+/* ### FEHLENDE ZEILE 3087 ### */
+/* ### FEHLENDE ZEILE 3088 ### */
+/* ### FEHLENDE ZEILE 3089 ### */
+/* ### FEHLENDE ZEILE 3090 ### */
+/* ### FEHLENDE ZEILE 3091 ### */
+/* ### FEHLENDE ZEILE 3092 ### */
+/* ### FEHLENDE ZEILE 3093 ### */
+/* ### FEHLENDE ZEILE 3094 ### */
+/* ### FEHLENDE ZEILE 3095 ### */
+/* ### FEHLENDE ZEILE 3096 ### */
+/* ### FEHLENDE ZEILE 3097 ### */
+/* ### FEHLENDE ZEILE 3098 ### */
+/* ### FEHLENDE ZEILE 3099 ### */
+/* ### FEHLENDE ZEILE 3100 ### */
+/* ### FEHLENDE ZEILE 3101 ### */
+/* ### FEHLENDE ZEILE 3102 ### */
+/* ### FEHLENDE ZEILE 3103 ### */
+/* ### FEHLENDE ZEILE 3104 ### */
+/* ### FEHLENDE ZEILE 3105 ### */
+/* ### FEHLENDE ZEILE 3106 ### */
+/* ### FEHLENDE ZEILE 3107 ### */
+/* ### FEHLENDE ZEILE 3108 ### */
+/* ### FEHLENDE ZEILE 3109 ### */
+/* ### FEHLENDE ZEILE 3110 ### */
+/* ### FEHLENDE ZEILE 3111 ### */
+/* ### FEHLENDE ZEILE 3112 ### */
+/* ### FEHLENDE ZEILE 3113 ### */
+/* ### FEHLENDE ZEILE 3114 ### */
+/* ### FEHLENDE ZEILE 3115 ### */
+/* ### FEHLENDE ZEILE 3116 ### */
+/* ### FEHLENDE ZEILE 3117 ### */
+/* ### FEHLENDE ZEILE 3118 ### */
+/* ### FEHLENDE ZEILE 3119 ### */
+/* ### FEHLENDE ZEILE 3120 ### */
+/* ### FEHLENDE ZEILE 3121 ### */
+/* ### FEHLENDE ZEILE 3122 ### */
+/* ### FEHLENDE ZEILE 3123 ### */
+/* ### FEHLENDE ZEILE 3124 ### */
+/* ### FEHLENDE ZEILE 3125 ### */
+/* ### FEHLENDE ZEILE 3126 ### */
+/* ### FEHLENDE ZEILE 3127 ### */
+/* ### FEHLENDE ZEILE 3128 ### */
+/* ### FEHLENDE ZEILE 3129 ### */
+/* ### FEHLENDE ZEILE 3130 ### */
+/* ### FEHLENDE ZEILE 3131 ### */
+/* ### FEHLENDE ZEILE 3132 ### */
+/* ### FEHLENDE ZEILE 3133 ### */
+/* ### FEHLENDE ZEILE 3134 ### */
+/* ### FEHLENDE ZEILE 3135 ### */
+/* ### FEHLENDE ZEILE 3136 ### */
+/* ### FEHLENDE ZEILE 3137 ### */
+/* ### FEHLENDE ZEILE 3138 ### */
+/* ### FEHLENDE ZEILE 3139 ### */
+/* ### FEHLENDE ZEILE 3140 ### */
+/* ### FEHLENDE ZEILE 3141 ### */
+/* ### FEHLENDE ZEILE 3142 ### */
+/* ### FEHLENDE ZEILE 3143 ### */
+/* ### FEHLENDE ZEILE 3144 ### */
+/* ### FEHLENDE ZEILE 3145 ### */
+/* ### FEHLENDE ZEILE 3146 ### */
+/* ### FEHLENDE ZEILE 3147 ### */
+/* ### FEHLENDE ZEILE 3148 ### */
+/* ### FEHLENDE ZEILE 3149 ### */
+/* ### FEHLENDE ZEILE 3150 ### */
+/* ### FEHLENDE ZEILE 3151 ### */
+/* ### FEHLENDE ZEILE 3152 ### */
+/* ### FEHLENDE ZEILE 3153 ### */
+/* ### FEHLENDE ZEILE 3154 ### */
+/* ### FEHLENDE ZEILE 3155 ### */
+/* ### FEHLENDE ZEILE 3156 ### */
+/* ### FEHLENDE ZEILE 3157 ### */
+/* ### FEHLENDE ZEILE 3158 ### */
+/* ### FEHLENDE ZEILE 3159 ### */
+/* ### FEHLENDE ZEILE 3160 ### */
+/* ### FEHLENDE ZEILE 3161 ### */
+/* ### FEHLENDE ZEILE 3162 ### */
+/* ### FEHLENDE ZEILE 3163 ### */
+/* ### FEHLENDE ZEILE 3164 ### */
+/* ### FEHLENDE ZEILE 3165 ### */
+/* ### FEHLENDE ZEILE 3166 ### */
+/* ### FEHLENDE ZEILE 3167 ### */
+/* ### FEHLENDE ZEILE 3168 ### */
+/* ### FEHLENDE ZEILE 3169 ### */
+/* ### FEHLENDE ZEILE 3170 ### */
+/* ### FEHLENDE ZEILE 3171 ### */
+/* ### FEHLENDE ZEILE 3172 ### */
+/* ### FEHLENDE ZEILE 3173 ### */
+/* ### FEHLENDE ZEILE 3174 ### */
+/* ### FEHLENDE ZEILE 3175 ### */
+/* ### FEHLENDE ZEILE 3176 ### */
+/* ### FEHLENDE ZEILE 3177 ### */
+/* ### FEHLENDE ZEILE 3178 ### */
+/* ### FEHLENDE ZEILE 3179 ### */
+/* ### FEHLENDE ZEILE 3180 ### */
+/* ### FEHLENDE ZEILE 3181 ### */
+/* ### FEHLENDE ZEILE 3182 ### */
+/* ### FEHLENDE ZEILE 3183 ### */
+/* ### FEHLENDE ZEILE 3184 ### */
+/* ### FEHLENDE ZEILE 3185 ### */
+/* ### FEHLENDE ZEILE 3186 ### */
+/* ### FEHLENDE ZEILE 3187 ### */
+/* ### FEHLENDE ZEILE 3188 ### */
+/* ### FEHLENDE ZEILE 3189 ### */
+/* ### FEHLENDE ZEILE 3190 ### */
+/* ### FEHLENDE ZEILE 3191 ### */
+/* ### FEHLENDE ZEILE 3192 ### */
+/* ### FEHLENDE ZEILE 3193 ### */
+/* ### FEHLENDE ZEILE 3194 ### */
+/* ### FEHLENDE ZEILE 3195 ### */
+/* ### FEHLENDE ZEILE 3196 ### */
+/* ### FEHLENDE ZEILE 3197 ### */
+/* ### FEHLENDE ZEILE 3198 ### */
+/* ### FEHLENDE ZEILE 3199 ### */
+/* ### FEHLENDE ZEILE 3200 ### */
+/* ### FEHLENDE ZEILE 3201 ### */
+/* ### FEHLENDE ZEILE 3202 ### */
+/* ### FEHLENDE ZEILE 3203 ### */
+/* ### FEHLENDE ZEILE 3204 ### */
+/* ### FEHLENDE ZEILE 3205 ### */
+/* ### FEHLENDE ZEILE 3206 ### */
+/* ### FEHLENDE ZEILE 3207 ### */
+/* ### FEHLENDE ZEILE 3208 ### */
+/* ### FEHLENDE ZEILE 3209 ### */
+/* ### FEHLENDE ZEILE 3210 ### */
+/* ### FEHLENDE ZEILE 3211 ### */
+/* ### FEHLENDE ZEILE 3212 ### */
+/* ### FEHLENDE ZEILE 3213 ### */
+/* ### FEHLENDE ZEILE 3214 ### */
+/* ### FEHLENDE ZEILE 3215 ### */
+/* ### FEHLENDE ZEILE 3216 ### */
+/* ### FEHLENDE ZEILE 3217 ### */
+/* ### FEHLENDE ZEILE 3218 ### */
+/* ### FEHLENDE ZEILE 3219 ### */
+/* ### FEHLENDE ZEILE 3220 ### */
+/* ### FEHLENDE ZEILE 3221 ### */
+/* ### FEHLENDE ZEILE 3222 ### */
+/* ### FEHLENDE ZEILE 3223 ### */
+/* ### FEHLENDE ZEILE 3224 ### */
+/* ### FEHLENDE ZEILE 3225 ### */
+/* ### FEHLENDE ZEILE 3226 ### */
+/* ### FEHLENDE ZEILE 3227 ### */
+/* ### FEHLENDE ZEILE 3228 ### */
+/* ### FEHLENDE ZEILE 3229 ### */
+/* ### FEHLENDE ZEILE 3230 ### */
+/* ### FEHLENDE ZEILE 3231 ### */
+/* ### FEHLENDE ZEILE 3232 ### */
+/* ### FEHLENDE ZEILE 3233 ### */
+/* ### FEHLENDE ZEILE 3234 ### */
+/* ### FEHLENDE ZEILE 3235 ### */
+/* ### FEHLENDE ZEILE 3236 ### */
+/* ### FEHLENDE ZEILE 3237 ### */
+/* ### FEHLENDE ZEILE 3238 ### */
+/* ### FEHLENDE ZEILE 3239 ### */
+.shop-panel .wide-button + .chip {
+  margin-top: 8px;
+}
+
+/* --- Prestige (GDD 10, GDD 13 Abschnitt 6) ------------------------------- */
+
+.prestige-panel {
+  position: absolute;
+  top: 54px;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  overflow-y: auto;
+}
+
+.prestige-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.prestige-points {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.prestige-points span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.prestige-points b {
+  font-family: var(--font-pixel);
+  font-size: 30px;
+  font-weight: 400;
+  color: var(--violet);
+  text-shadow: 0 0 16px rgba(180, 92, 255, 0.55);
+}
+
+.prestige-reset {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+}
+
+.prestige-reset h2 {
+  margin-bottom: 4px;
+}
+
+.prestige-earn {
+  margin: 0 0 6px;
+  font-family: var(--font-pixel);
+  font-size: 19px;
+  color: var(--violet);
+  text-shadow: 0 0 12px rgba(180, 92, 255, 0.45);
+}
+
+.prestige-reset .small {
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/*
+ * Der Auslöser ist zweistufig: Erst zeigt er, was passiert, dann tut er es. Prestige ist
+ * die einzige Handlung im Spiel, die Fortschritt vernichtet - sie darf nicht aus Versehen
+ * geschehen. Der scharfgestellte Zustand pulst, damit der Unterschied nicht zu uebersehen ist.
+ */
+.wide-button.danger {
+  margin-top: 10px;
+  border-color: var(--magenta);
+  color: var(--magenta);
+}
+
+.wide-button.danger:hover:not(:disabled) {
+  box-shadow: 0 0 22px -4px var(--magenta);
+}
+
+@keyframes armed {
+  0%,
+  100% {
+    box-shadow: 0 0 14px -4px var(--magenta);
+  }
+  50% {
+    box-shadow: 0 0 30px -2px var(--magenta), inset 0 0 18px -6px var(--magenta);
+  }
+}
+
+.wide-button.danger.armed {
+  animation: armed 1.1s ease-in-out infinite;
+  color: var(--text);
+  background: rgba(255, 45, 120, 0.16);
+}
+
+.node-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  padding: 8px 0 12px;
+}
+
+/*
+ * Der Zustand steht in der Farbe (GDD 13 Abschnitt 6): gesperrt dunkel, verfuegbar
+ * leuchtend, gekauft aktiviert. Zu teuer ist **kein** eigener Zustand - der Knoten leuchtet
+ * weiter, nur der Klick greift nicht. Sonst waere nicht zu erkennen, worauf man sparen soll.
+ */
+.node-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--fill-card);
+  box-shadow: var(--shadow-card);
+  color: var(--text-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: transform var(--dur-tap) var(--ease-out),
+    box-shadow var(--dur-tap) var(--ease-out), opacity var(--dur-tap) var(--ease-out);
+}
+
+.node-card.available {
+  opacity: 1;
+  border-color: var(--violet);
+  color: var(--text);
+  box-shadow: 0 0 16px -5px var(--violet), var(--shadow-card);
+}
+
+.node-card.available:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 0 26px -4px var(--violet), var(--shadow-lift);
+}
+
+.node-card.bought {
+  opacity: 1;
+  border-color: var(--teal);
+  color: var(--text);
+  box-shadow: 0 0 16px -5px var(--teal), inset 0 0 14px -7px var(--teal);
+  cursor: default;
+}
+
+.node-card:disabled {
+  cursor: default;
+}
+
+.node-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.node-text {
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.node-cost {
+  font-family: var(--font-pixel);
+  font-size: 16px;
+  color: var(--violet);
+}
+
+.node-card.bought .node-cost {
+  color: var(--teal);
+}
+
+/* --- Einstellungen ------------------------------------------------------- */
+
+.settings-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100% - 24px));
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.setting .label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.setting .chips {
+  display: flex;
+/* ### FEHLENDE ZEILE 3440 ### */
+/* ### FEHLENDE ZEILE 3441 ### */
+/* ### FEHLENDE ZEILE 3442 ### */
+/* ### FEHLENDE ZEILE 3443 ### */
+/* ### FEHLENDE ZEILE 3444 ### */
+/* ### FEHLENDE ZEILE 3445 ### */
+/* ### FEHLENDE ZEILE 3446 ### */
+/* ### FEHLENDE ZEILE 3447 ### */
+/* ### FEHLENDE ZEILE 3448 ### */
+/* ### FEHLENDE ZEILE 3449 ### */
+/* ### FEHLENDE ZEILE 3450 ### */
+/* ### FEHLENDE ZEILE 3451 ### */
+/* ### FEHLENDE ZEILE 3452 ### */
+/* ### FEHLENDE ZEILE 3453 ### */
+/* ### FEHLENDE ZEILE 3454 ### */
+/* ### FEHLENDE ZEILE 3455 ### */
+/* ### FEHLENDE ZEILE 3456 ### */
+/* ### FEHLENDE ZEILE 3457 ### */
+/* ### FEHLENDE ZEILE 3458 ### */
+/* ### FEHLENDE ZEILE 3459 ### */
+/* ### FEHLENDE ZEILE 3460 ### */
+/* ### FEHLENDE ZEILE 3461 ### */
+/* ### FEHLENDE ZEILE 3462 ### */
+/* ### FEHLENDE ZEILE 3463 ### */
+/* ### FEHLENDE ZEILE 3464 ### */
+/* ### FEHLENDE ZEILE 3465 ### */
+/* ### FEHLENDE ZEILE 3466 ### */
+/* ### FEHLENDE ZEILE 3467 ### */
+/* ### FEHLENDE ZEILE 3468 ### */
+/* ### FEHLENDE ZEILE 3469 ### */
+/* ### FEHLENDE ZEILE 3470 ### */
+/* ### FEHLENDE ZEILE 3471 ### */
+/* ### FEHLENDE ZEILE 3472 ### */
+/* ### FEHLENDE ZEILE 3473 ### */
+/* ### FEHLENDE ZEILE 3474 ### */
+/* ### FEHLENDE ZEILE 3475 ### */
+/* ### FEHLENDE ZEILE 3476 ### */
+/* ### FEHLENDE ZEILE 3477 ### */
+/* ### FEHLENDE ZEILE 3478 ### */
+/* ### FEHLENDE ZEILE 3479 ### */
+/* ### FEHLENDE ZEILE 3480 ### */
+/* ### FEHLENDE ZEILE 3481 ### */
+/* ### FEHLENDE ZEILE 3482 ### */
+/* ### FEHLENDE ZEILE 3483 ### */
+/* ### FEHLENDE ZEILE 3484 ### */
+/* ### FEHLENDE ZEILE 3485 ### */
+/* ### FEHLENDE ZEILE 3486 ### */
+/* ### FEHLENDE ZEILE 3487 ### */
+/* ### FEHLENDE ZEILE 3488 ### */
+/* ### FEHLENDE ZEILE 3489 ### */
+/* ### FEHLENDE ZEILE 3490 ### */
+/* ### FEHLENDE ZEILE 3491 ### */
+/* ### FEHLENDE ZEILE 3492 ### */
+/* ### FEHLENDE ZEILE 3493 ### */
+/* ### FEHLENDE ZEILE 3494 ### */
+/* ### FEHLENDE ZEILE 3495 ### */
+/* ### FEHLENDE ZEILE 3496 ### */
+/* ### FEHLENDE ZEILE 3497 ### */
+/* ### FEHLENDE ZEILE 3498 ### */
+/* ### FEHLENDE ZEILE 3499 ### */
+/* ### FEHLENDE ZEILE 3500 ### */
+/* ### FEHLENDE ZEILE 3501 ### */
+/* ### FEHLENDE ZEILE 3502 ### */
+/* ### FEHLENDE ZEILE 3503 ### */
+/* ### FEHLENDE ZEILE 3504 ### */
+/* ### FEHLENDE ZEILE 3505 ### */
+/* ### FEHLENDE ZEILE 3506 ### */
+/* ### FEHLENDE ZEILE 3507 ### */
+/* ### FEHLENDE ZEILE 3508 ### */
+/* ### FEHLENDE ZEILE 3509 ### */
+/* ### FEHLENDE ZEILE 3510 ### */
+/* ### FEHLENDE ZEILE 3511 ### */
+/* ### FEHLENDE ZEILE 3512 ### */
+/* ### FEHLENDE ZEILE 3513 ### */
+/* ### FEHLENDE ZEILE 3514 ### */
+/* ### FEHLENDE ZEILE 3515 ### */
+/* ### FEHLENDE ZEILE 3516 ### */
+/* ### FEHLENDE ZEILE 3517 ### */
+/* ### FEHLENDE ZEILE 3518 ### */
+/* ### FEHLENDE ZEILE 3519 ### */
+/* ### FEHLENDE ZEILE 3520 ### */
+/* ### FEHLENDE ZEILE 3521 ### */
+/* ### FEHLENDE ZEILE 3522 ### */
+/* ### FEHLENDE ZEILE 3523 ### */
+/* ### FEHLENDE ZEILE 3524 ### */
+/* ### FEHLENDE ZEILE 3525 ### */
+/* ### FEHLENDE ZEILE 3526 ### */
+/* ### FEHLENDE ZEILE 3527 ### */
+/* ### FEHLENDE ZEILE 3528 ### */
+/* ### FEHLENDE ZEILE 3529 ### */
+/* ### FEHLENDE ZEILE 3530 ### */
+/* ### FEHLENDE ZEILE 3531 ### */
+/* ### FEHLENDE ZEILE 3532 ### */
+/* ### FEHLENDE ZEILE 3533 ### */
+/* ### FEHLENDE ZEILE 3534 ### */
+/* ### FEHLENDE ZEILE 3535 ### */
+/* ### FEHLENDE ZEILE 3536 ### */
+/* ### FEHLENDE ZEILE 3537 ### */
+/* ### FEHLENDE ZEILE 3538 ### */
+/* ### FEHLENDE ZEILE 3539 ### */
+/* ### FEHLENDE ZEILE 3540 ### */
+/* ### FEHLENDE ZEILE 3541 ### */
+/* ### FEHLENDE ZEILE 3542 ### */
+/* ### FEHLENDE ZEILE 3543 ### */
+/* ### FEHLENDE ZEILE 3544 ### */
+/* ### FEHLENDE ZEILE 3545 ### */
+/* ### FEHLENDE ZEILE 3546 ### */
+/* ### FEHLENDE ZEILE 3547 ### */
+/* ### FEHLENDE ZEILE 3548 ### */
+/* ### FEHLENDE ZEILE 3549 ### */
+/* ### FEHLENDE ZEILE 3550 ### */
+/* ### FEHLENDE ZEILE 3551 ### */
+/* ### FEHLENDE ZEILE 3552 ### */
+/* ### FEHLENDE ZEILE 3553 ### */
+/* ### FEHLENDE ZEILE 3554 ### */
+/* ### FEHLENDE ZEILE 3555 ### */
+/* ### FEHLENDE ZEILE 3556 ### */
+/* ### FEHLENDE ZEILE 3557 ### */
+/* ### FEHLENDE ZEILE 3558 ### */
+/* ### FEHLENDE ZEILE 3559 ### */
+/* ### FEHLENDE ZEILE 3560 ### */
+/* ### FEHLENDE ZEILE 3561 ### */
+/* ### FEHLENDE ZEILE 3562 ### */
+/* ### FEHLENDE ZEILE 3563 ### */
+/* ### FEHLENDE ZEILE 3564 ### */
+/* ### FEHLENDE ZEILE 3565 ### */
+/* ### FEHLENDE ZEILE 3566 ### */
+/* ### FEHLENDE ZEILE 3567 ### */
+/* ### FEHLENDE ZEILE 3568 ### */
+/* ### FEHLENDE ZEILE 3569 ### */
+/* ### FEHLENDE ZEILE 3570 ### */
+/* ### FEHLENDE ZEILE 3571 ### */
+/* ### FEHLENDE ZEILE 3572 ### */
+/* ### FEHLENDE ZEILE 3573 ### */
+/* ### FEHLENDE ZEILE 3574 ### */
+/* ### FEHLENDE ZEILE 3575 ### */
+/* ### FEHLENDE ZEILE 3576 ### */
+/* ### FEHLENDE ZEILE 3577 ### */
+/* ### FEHLENDE ZEILE 3578 ### */
+/* ### FEHLENDE ZEILE 3579 ### */
+/* ### FEHLENDE ZEILE 3580 ### */
+/* ### FEHLENDE ZEILE 3581 ### */
+/* ### FEHLENDE ZEILE 3582 ### */
+/* ### FEHLENDE ZEILE 3583 ### */
+/* ### FEHLENDE ZEILE 3584 ### */
+/* ### FEHLENDE ZEILE 3585 ### */
+/* ### FEHLENDE ZEILE 3586 ### */
+/* ### FEHLENDE ZEILE 3587 ### */
+/* ### FEHLENDE ZEILE 3588 ### */
+/* ### FEHLENDE ZEILE 3589 ### */
+/* ### FEHLENDE ZEILE 3590 ### */
+/* ### FEHLENDE ZEILE 3591 ### */
+/* ### FEHLENDE ZEILE 3592 ### */
+/* ### FEHLENDE ZEILE 3593 ### */
+/* ### FEHLENDE ZEILE 3594 ### */
+/* ### FEHLENDE ZEILE 3595 ### */
+/* ### FEHLENDE ZEILE 3596 ### */
+/* ### FEHLENDE ZEILE 3597 ### */
+/* ### FEHLENDE ZEILE 3598 ### */
+/* ### FEHLENDE ZEILE 3599 ### */
+    padding: 7px 10px 8px;
+  }
+
+  .dock-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .nav {
+    order: 2;
+    justify-content: space-between;
+    padding: 5px;
+  }
+
+  /*
+   * Untereinander kostet die Leiste mehr Hoehe als nebeneinander, und Hoehe ist hier das
+   * Knappe. Deshalb gibt das Panel nach, nicht die Navischaltflaechen: Zwischen Basis und
+   * Kampf wird staendig gewechselt, und ein zu kleiner Reiter ist teurer als eine Kachel,
+   * die eine Zeile weit rollen muss.
+   */
+  /* Zwei Reihen statt drei - auf einem Telefon ist Hoehe das Knappe, der Rest rollt. */
+  .upgrade-panel {
+  color: var(--ok);
+    max-height: 168px;
+  }
+.report li.fail {
+  color: var(--fail);
+   * Kleinere Kacheln, damit **zwei** Gruppen nebeneinander passen.
+   *
+   * Bei voller Groesse ist eine Gruppe 200 Pixel breit; auf 375 Pixern Bildschirm passt
+   * dann genau eine je Zeile, und rechts daneben bleibt eine halbe Handbreit leer, waehrend
+   * die Liste auf vierzehn Zeilen anwaechst. Mit 50 Pixeln je Kachel stehen zwei Turmarten
+   * nebeneinander - halb so viel Rollweg bei gleicher Lesbarkeit.
+.report pre {
+  margin: 2px 0 8px 22px;
+  color: var(--fail);
+    padding: 8px;
+  white-space: pre-wrap;
+  opacity: 0.85;
+  .upgrade-card {
+    width: 50px;
+/* --- Schmale Fenster ----------------------------------------------------- */
+  }
+@media (max-width: 900px) {
+  .upgrade-card .foot {
+    padding: 0 3px 2px;
+  }
+
+  .upgrade-card .cost {
+    font-size: 14px;
+    width: 210px;
+  }
+  .nav-button {
+    width: 58px;
+    height: 58px;
+  }
+}
+  .wave-card {
+    width: 176px;
+ * Sehr schmal wird aus dem Nebeneinander ein Untereinander - und die Navileiste rutscht
+ * ganz nach unten, wie die Reiterleiste eines Telefonspiels. Bliebe sie in der Zeile,
+ * schrumpfte das Upgrade-Panel auf eine Spalte Restbreite, und genau die Kacheln sind das,
+ * was der Spieler waehrend einer Welle braucht.
+    font-size: 25px;
+@media (max-width: 720px) {
+  #dock {
+    padding: 7px 10px 8px;
+  }

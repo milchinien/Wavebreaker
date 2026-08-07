@@ -1,0 +1,46 @@
+﻿src/data/strings.ts:223:export function hasString(key: string): key is StringKey {
+src/selftest/suites/strings.ts:8:import { hasString, STRINGS, t } from '../../data/strings.ts'
+src/selftest/suites/strings.ts:36:  check('hasString erkennt unbekannte Schluessel', () => {
+src/selftest/suites/strings.ts:37:    assertEqual(hasString('game.title'), true)
+src/selftest/suites/strings.ts:38:    assertEqual(hasString('gibt.es.nicht'), false)
+abilities.ts
+buffs.ts
+camera.ts
+combat.ts
+content.ts
+economy.ts
+encounters.ts
+events.ts
+format.ts
+geometry.ts
+idle.ts
+interaction.ts
+loop.ts
+prestige.ts
+progression.ts
+rewards.ts
+rng.ts
+save.ts
+shop.ts
+station.ts
+strings.ts
+waves.ts
+{
+  "name": "wavebreaker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "WAVEBREAKER - modulare Kampfstation, Tower-Defense-Idle im Browser.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "selftest": "node src/selftest/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

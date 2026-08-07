@@ -1,0 +1,64 @@
+﻿{
+  "name": "wavebreaker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "WAVEBREAKER - modulare Kampfstation, Tower-Defense-Idle im Browser.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "selftest": "node src/selftest/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { defineConfig } from 'vite'
+
+const root = dirname(fileURLToPath(import.meta.url))
+
+export default defineConfig({
+  root,
+  // Fester Port fuer den Alltag; PORT setzt ihn um, damit zwei Sitzungen parallel
+  // entwickeln koennen, ohne sich den Port wegzunehmen.
+  server: { port: Number(process.env.PORT) || 5173, open: false },
+  build: {
+    outDir: resolve(root, 'dist'),
+    emptyOutDir: true,
+  },
+  // Der Ordner "prototypes" ist ein eigenes, abgeschlossenes Projekt und gehoert
+  // nicht zum Spiel. Ohne diese Einschraenkung durchsucht Vite ihn beim Start mit.
+  optimizeDeps: { entries: ['index.html'] },
+})
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>WAVEBREAKER</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!--
+      Zwei Zonen, keine schwebende Vollbildflaeche: oben das Spielfeld, unten die Leiste.
+      Das Canvas fuellt genau das Feld - deshalb sitzt die Station immer in der Mitte des
+      sichtbaren Ausschnitts und nicht hinter den Panels (GDD 13 Abschnitt 4).
+    -->
+    <div id="app">
+      <section id="field">
+        <canvas id="stage"></canvas>
+        <div id="overlay"></div>
+      </section>
+      <footer id="dock"></footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+launch.json
+scheduled_tasks.lock

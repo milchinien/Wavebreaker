@@ -1,0 +1,171 @@
+﻿  jedem Schlag auf das Modul zu, an dem er hängt, und kommt auf einem Sinusbogen zurück;
+  bei hohem Tempo wird daraus ein durchgehendes Kauen statt vieler Sprünge.
+  Man sieht jetzt auf einen Blick, *wer* gerade an der Station frisst — vorher zuckte nur
+  die Lebensleiste, und die Angreifer standen ununterscheidbar herum.
+
+- **Geschosse ziehen eine Spur** (2026-08-03) — Jedes Geschoss zieht jetzt die Strecke der
+  letzten 50 Millisekunden als Schweif hinter sich her, der aus dem Rohr herauswächst statt
+  im ersten Bild hinter dem Turm zu beginnen; ein schnelles Geschoss zieht dadurch einen
+  längeren Schweif als ein langsames.
+  Schüsse haben zum ersten Mal eine sichtbare Bahn statt zwischen zwei Bildern zu springen,
+  und die Lücke zwischen Mündungsfeuer und Einschlag ist geschlossen.
+
+- **Buff-Linien mit fließender Energie** (2026-08-03) — Auf einer gedämpften Grundlinie
+  laufen jetzt helle Striche vom Verstärker zum Ziel, jede Verbindung mit eigenem Versatz,
+  damit nichts im Gleichschritt marschiert.
+  Die Nachbarschaftsregel ist damit gerichtet ablesbar: Man sieht nicht nur, *dass* zwei
+  Module verbunden sind, sondern *wer wem* hilft — ohne einen Satz Text.
+
+- **Was bleibt, wandert** (2026-08-03) — Der Bereichswechsel schaltet jetzt in einem einzigen
+  Bild um; bewegt wird danach nur noch die Optik. Panels, die es in beiden Bereichen gibt,
+  fahren von ihrem alten an ihren neuen Platz (FLIP, `src/ui/flip.ts`, ~130 Zeilen ohne
+  Abhängigkeit), und nur was wirklich verschwindet, tritt ab — dafür an seinen letzten Ort
+  genagelt, damit es beim Gehen nichts mehr verschiebt.
+  Zwischen Kampf und Upgrades verschwindet kein einziges Panel; vorher ließ das Spiel trotzdem
+  alle fünf abtreten und wieder auffahren und behauptete damit einen Wechsel, den es nicht
+  gab. Nachgemessen wandern dort Rumpfleiste, Temporegler, Navileiste und Upgrade-Panel je
+  195 Pixel nach oben, statt zu blinken. Nebenbei fiel die Wartezeit von 160 ms zwischen Klick
+  und Wechsel weg, und mit ihr die Buchhaltung für den zweiten Klick.
+
+- **Der Ausgang schreibt sich selbst** (2026-08-03) — Eine geschaffte Welle setzt VICTORY in
+  grünem Neon in die Mitte des Feldes, eine verlorene DEFEAT in Magenta samt Ruck; der
+  Schriftzug tippt sich Buchstabe für Buchstabe mit ungleichmäßigem Anschlag und blinkendem
+  Cursor, steht anderthalb Sekunden und geht von selbst wieder.
+  Eine Welle endete bisher in einem einzigen Bild — der Zähler sprang, das Feld war leer.
+  Der laufende Anschlag gibt dem Ausgang eine *Dauer* und zieht das Auge in die Mitte,
+  während die Wellenmeldung oben weiter die Einzelheit trägt.
+
+- **Wellenübergang** (2026-08-03) — Jede neue Welle wird einmal groß über dem Feld benannt
+  und verschwindet von selbst wieder, in Bosswellen in Magenta; die Boss-Leiste fährt mit
+  Anlauf auf, und ein gefallener Boss hallt in drei Ringen nach, die verschieden schnell
+  aufgehen.
+  Wellen fühlen sich zum ersten Mal wie Abschnitte an statt wie ein durchlaufender Strom,
+  und der Bosstod ist eine Zäsur statt eines Gegners weniger.
+
+- **Station lebt** (2026-08-03) — Der Kern atmet jetzt langsamer und tiefer, sein Leuchten
+  schlägt bei einem Treffer auf das Doppelte des Atemgipfels auf und beruhigt sich
+  quadratisch; die Lebensleiste zuckt im selben Augenblick um zwei Pixel mit.
+  Die Station wirkt dadurch wie ein laufender Apparat statt wie ein Standbild, und ein
+  Treffer ist zu sehen, ohne dass man auf die Zahlen schaut.
+
+- **Gold springt und fliegt** (2026-08-03) — Beim Tod springen Goldfunken aus dem Gegner
+  heraus und rollen langsamer aus als seine Trümmer; beim Einsammeln fliegt jede Münze
+  sichtbar zum Zeiger und die Goldanzeige quittiert mit einem kurzen Puls.
+  Einsammeln fühlt sich zum ersten Mal wie Aufheben an statt wie ein Verschwinden, und man
+  sieht am Flug, *wie viel* Gold gerade den Weg in die Anzeige gefunden hat.
+
+- **Gegner zerfallen** (2026-08-03) — Ein sterbender Gegner wirft sechs Splitter in seiner
+  eigenen Farbe aus und schlägt eine kurze Druckwelle, statt einfach zu verschwinden;
+  Splitter und Wellen liegen hinter den lebenden Gegnern, damit der Zerfall zurücktritt.
+  Eine geräumte Welle sieht dadurch nach Arbeit aus statt nach Verschwinden, und man
+  erkennt an der Farbe der Splitter, *was* man gerade zerlegt hat.
+
+- **Trefferfeedback am Ziel** (2026-08-03) — Jedes Modul schlägt beim Schuss kurz zurück und
+  wirft ein Mündungsfeuer in Schussrichtung aus seiner Kante; der Einschlag am Gegner hat
+  jetzt einen hellen Kern, und ein kritischer Treffer blitzt deutlich weiter auf.
+  Man sieht damit zum ersten Mal, *welcher* Turm gerade feuert und *wohin* — vorher tauchten
+  Geschosse einfach in der Mitte auf, und ein Krit war nur an der Lebensleiste zu erkennen.
+
+- **Tiefe in den Menüs** (2026-08-03) — Panels und Karten liegen jetzt auf zwei
+  Schattenebenen, Karten heben sich unter dem Zeiger an und drücken sich beim Klick
+  wieder herunter, ein gekauftes Upgrade quittiert mit einem grünen Aufleuchten, und Gold
+  und Schaden laufen auf ihren neuen Stand zu statt zu springen.
+  Ein Kauf fühlt sich dadurch wie eine Handlung an und nicht wie ein Zahlenwechsel — man
+  sieht am Hochlaufen, *wie viel* dazugekommen ist, nicht nur *dass* sich etwas geändert hat.
+
+- **Weiche Bereichswechsel** (2026-08-03) — Panels fahren beim Sichtbarwerden aus der
+  Richtung auf, in der sie sitzen: das Lager von links, die rechte Spalte von rechts, die
+  untere Leiste von unten; der gewählte Reiter quittiert mit einem kurzen Stupser.
+  Der Wechsel zwischen Kampf und Basis wirkt dadurch wie ein Umschalten derselben Maschine
+  statt wie ein Bildwechsel, und das Auge findet nach dem Klick sofort wieder, wo es war.
+=== SETTINGS ===
+/**
+ * Einstellungen des Geraets (GDD 13 Abschnitt 3).
+ *
+ * Sie liegen **nicht im Spielstand**, sondern in einer eigenen Ablage. Der Grund ist keine
+ * Bequemlichkeit: Lautstaerke, Effektstufe und Bewegungsdaempfung sagen etwas ueber das
+ * Geraet aus, an dem gerade gespielt wird - nicht ueber den Fortschritt. Ein Spielstand,
+ * der spaeter auf ein anderes Geraet wandert, soll dessen Regler nicht ueberschreiben.
+ *
+ * Sie ueberleben deshalb auch das Loeschen des Spielstands und jedes Prestige.
+ *
+ * Ein fehlender oder kaputter Eintrag faellt auf den Startwert zurueck. Einstellungen sind
+ * die Stelle, an der ein Fehler am wenigsten kosten darf: Wer den Ton leiser gestellt hat
+ * und beim naechsten Start volle Lautstaerke bekommt, aergert sich - wer nichts hat, dem
+ * fehlt nur eine Bequemlichkeit.
+ */
+
+export type Settings = {
+  /** Buff-Linien dauerhaft zeigen, nicht nur bei Auswahl. */
+  buffLines: boolean
+  /** Kampfeffekte zeichnen: Splitter, Druckwellen, Muendungsfeuer (GDD 13 Abschnitt 10). */
+  effects: boolean
+  /** Bewegte Uebergaenge zwischen den Bereichen. Aus fuer wen sie stoeren. */
+  motion: boolean
+  /** Lautstaerke von 0 bis 1. */
+  volume: number
+}
+
+export const SETTINGS_KEY = 'wavebreaker.settings'
+
+export function defaultSettings(): Settings {
+  return { buffLines: true, effects: true, motion: true, volume: 0.5 }
+}
+
+type Storage = {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+}
+
+function storage(): Storage | null {
+  try {
+    if (typeof localStorage === 'undefined') return null
+    return localStorage
+  } catch {
+    return null
+  }
+}
+
+export function loadSettings(): Settings {
+  const base = defaultSettings()
+  const store = storage()
+  if (!store) return base
+
+  let raw: unknown
+  try {
+    const text = store.getItem(SETTINGS_KEY)
+    if (text === null) return base
+    raw = JSON.parse(text)
+  } catch {
+    return base
+  }
+
+  if (typeof raw !== 'object' || raw === null) return base
+  const entry = raw as Record<string, unknown>
+
+  return {
+    buffLines: readBoolean(entry['buffLines'], base.buffLines),
+    effects: readBoolean(entry['effects'], base.effects),
+    motion: readBoolean(entry['motion'], base.motion),
+    volume: readVolume(entry['volume'], base.volume),
+  }
+}
+
+export function saveSettings(settings: Settings): void {
+  const store = storage()
+  if (!store) return
+  try {
+    store.setItem(SETTINGS_KEY, JSON.stringify(settings))
+  } catch {
+    // Speicher gesperrt oder voll - das Spiel laeuft weiter, nur ohne gemerkte Regler.
+  }
+}
+
+function readBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback
+}
+
+function readVolume(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.max(0, Math.min(1, value))
+}

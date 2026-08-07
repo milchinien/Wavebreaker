@@ -1,0 +1,52 @@
+﻿src/core/loop.ts:25: * Quelle fuer Einzelbilder. Im Browser `requestAnimationFrame`, im Test ein
+src/core/loop.ts:74:    request: (cb) => requestAnimationFrame(cb),
+src/ui/shell.ts:169:    window.setTimeout(() => {
+--- surge ---
+/**
+ * Die Energiewelle eines Prestiges, über dem gesamten Bild (GDD 13 Abschnitt 10).
+ *
+ * Die Kampfebene hat ihren Teil schon (`surgeStation` in `sim/combat.ts`): Ringe, die von
+ * der Mitte auslaufen. Der hier ist der andere Teil - **das ganze Fenster** blitzt auf, die
+ * Oberfläche mit. Erst beides zusammen macht aus dem Effekt eine Zäsur: Ein Prestige setzt
+ * nicht die Station zurück, sondern den Run, und der Run ist alles, was man sieht.
+ *
+ * Zwei Entscheidungen prägen die Datei:
+ *
+ * **Sie hängt am Ereignisbus, nicht am Knopf.** `prestige.done` wird gemeldet, seit es das
+ * Prestige gibt; hier hört jemand zu. Wer diese Datei löscht, ändert am Spiel nichts außer
+ * dem Blitz — dieselbe Bauart wie beim Klang.
+ *
+ * **Sie fängt keine Klicks ab.** Der Schleier liegt über allem, ist aber für den Zeiger
+ * nicht da. Eine Animation, die eine halbe Sekunde lang die Bedienung sperrt, wäre eine
+ * Wartezeit mit Lichteffekt.
+ */
+
+import { on, type Unsubscribe } from '../core/events.ts'
+
+export type Surge = {
+  detach(): void
+}
+
+export function mountSurge(overlay: HTMLElement): Surge {
+  const veil = document.createElement('div')
+  veil.className = 'surge'
+  overlay.appendChild(veil)
+
+  const stop: Unsubscribe = on('prestige.done', () => {
+    // Neu anstoßen statt nur die Klasse zu setzen: Zwei Prestiges kurz hintereinander
+    // sollen zweimal blitzen, nicht einmal.
+    veil.classList.remove('firing')
+    void veil.offsetWidth
+    veil.classList.add('firing')
+  })
+
+  // Die Bewegung räumt sich selbst weg - dafür braucht es keine Uhr.
+  veil.addEventListener('animationend', () => veil.classList.remove('firing'))
+
+  return {
+    detach() {
+      stop()
+      veil.remove()
+    },
+  }
+}

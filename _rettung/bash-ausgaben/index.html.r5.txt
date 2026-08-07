@@ -1,0 +1,65 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>WAVEBREAKER</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!--
+      Zwei Zonen, keine schwebende Vollbildflaeche: oben das Spielfeld, unten die Leiste.
+      Das Canvas fuellt genau das Feld - deshalb sitzt die Station immer in der Mitte des
+      sichtbaren Ausschnitts und nicht hinter den Panels (GDD 13 Abschnitt 4).
+    -->
+    <div id="app">
+      <section id="field">
+        <canvas id="stage"></canvas>
+        <div id="overlay"></div>
+      </section>
+      <footer id="dock"></footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+=== .view-title / .settings-panel CSS ===
+251:.view-title {
+252-  display: none;
+253-}
+254-
+255-#app[data-view='combat'] .resource-bar,
+256-#app[data-view='upgrades'] .resource-bar,
+257-#app[data-view='combat'] .speed-control,
+258-#app[data-view='upgrades'] .speed-control,
+259-#app[data-view='combat'] .hull-bar,
+260-#app[data-view='upgrades'] .hull-bar {
+261-  display: flex;
+262-}
+263-
+--
+468:.settings-panel {
+469-  animation: enter-center var(--dur-view) var(--ease-out);
+470-}
+471-
+472-.prestige-panel {
+473-  animation: enter-up var(--dur-view) var(--ease-out);
+474-}
+475-
+476:.view-title {
+477-  animation: enter-title var(--dur-view) var(--ease-out);
+478-}
+479-
+480-/*
+481- * Abtritt. `data-leaving` steht am `#app`, solange der alte Bereich noch zu sehen ist
+482- * (siehe `goTo` in `ui/shell.ts`). Die Dauer ist kuerzer als der Auftritt: Wegtreten darf
+483- * schnell gehen, Ankommen soll man sehen.
+484- *
+485- * `forwards` haelt den Endzustand, damit das Panel nicht im letzten Bild noch einmal
+486- * aufblitzt, bevor der Bereich wirklich wechselt.
+487- */
+488-#app[data-leaving] .upgrade-panel,
+--
+985:.view-title {
+986-  position: absolute;
+987-  top: 14px;
+988-  left: 50%;

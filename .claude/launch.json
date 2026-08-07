@@ -1,0 +1,18 @@
+﻿{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "wavebreaker",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "prototypes", "run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "prototypes",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "prototypes", "run", "dev"],
+      "port": 5174
+    }
+  ]
+}
+
