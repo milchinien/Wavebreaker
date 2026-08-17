@@ -14,7 +14,7 @@ Diese 16 Dokumente beschreiben das gesamte Spiel. Sie sind aufeinander abgestimm
 
 | Nr. | Dokument | Inhalt |
 |-----|----------|--------|
-| 01 | [Spielvision und Grundkonzept](01-spielvision-und-grundkonzept.md) | Genre, High Concept, Spielfantasie, die fünf Design-Säulen, übergeordnete Prinzipien |
+| 01 | [Spielvision und Grundkonzept](01-vision-grundkonzept-kernsysteme.md) | Genre, High Concept, Spielfantasie, die fünf Design-Säulen, übergeordnete Prinzipien |
 | 02 | [Kern-Spielschleife und Spielerfahrung](02-kern-spielschleife-und-spielerfahrung.md) | Hauptschleife, die zwei Spielzustände, typischer Run, Niederlage-System, Langzeitmotivation |
 
 ### Die Kampfstation
@@ -112,7 +112,7 @@ und Funktion für Funktion. Das GDD sagt *was*, der Implementierungsplan *in wel
 | Elite-Gegner | Chance pro Gegner, steigt mit der Welle | [07, Abschnitt 6](07-gegner-bosse-und-wellen.md) |
 | Kapseln / Events | Drop-Chance / alle 15–25 Wellen | [11, Abschnitt 2](11-events-und-versorgungskapseln.md) |
 | Tutorial | keines — einmalige Hinweise bei neuen Systemen | [14, Abschnitt 4a](14-progression-und-freischaltungen.md) |
-| Titel | WELLENBRECHER / WAVEBREAKER | [01, Abschnitt 1a](01-spielvision-und-grundkonzept.md) |
+| Titel | WELLENBRECHER / WAVEBREAKER | [01, Abschnitt 1a](01-vision-grundkonzept-kernsysteme.md) |
 | Spielsprache | Englisch (GDD bleibt Deutsch) | [16, Abschnitt 1](16-technische-umsetzung.md) |
 | Pacing | erstes Prestige nach 30–60 Minuten | [15, Abschnitt 3](15-balancing-und-skalierung.md) |
 
