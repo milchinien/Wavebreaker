@@ -4,6 +4,11 @@
 > `public/` — nur dorthin wird ausgeliefert.
 > `assets/raw/_extracted` enthält die entpackten Archive und ist ebenfalls nur Quelle.
 
+> **Zu den `_rettung/...`-Skripten unten:** Der Ordner `_rettung/` liegt nicht mehr im
+> Arbeitsbaum. Er steckt vollständig in der Git-Historie — zuletzt in Commit `2b8f52c`.
+> Wer eines der genannten Skripte braucht, holt es von dort:
+> `git show 2b8f52c:_rettung/muenzen-bauen.ps1`
+
 ## Regel
 
 Ein Bild wandert erst dann nach `public/`, wenn es an einer Stelle **wirklich gebraucht**

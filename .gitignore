@@ -17,7 +17,8 @@ assets/raw/_extracted/
 #   2. Groesse. Ein Repository mit mehreren Gigabyte Rohmaterial ist weder
 #      klonbar noch von GitHub angenommen.
 #
-# Wer das Projekt neu aufsetzt, legt die Pakete selbst unter Assets/raw ab und
-# baut die Ausschnitte mit den Skripten in _rettung/ nach.
+# Wer das Projekt neu aufsetzt, legt die Pakete selbst unter Assets/raw ab und baut die
+# Ausschnitte mit den Skripten aus _rettung/ nach - der Ordner liegt nicht mehr im
+# Arbeitsbaum, sondern in der Git-Historie (Commit 2b8f52c), siehe docs/anlagen.md.
 Assets/
 assets/

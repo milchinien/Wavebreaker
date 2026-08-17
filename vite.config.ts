@@ -13,7 +13,7 @@ export default defineConfig({
     outDir: resolve(root, 'dist'),
     emptyOutDir: true,
   },
-  // Der Ordner "prototypes" ist ein eigenes, abgeschlossenes Projekt und gehoert
-  // nicht zum Spiel. Ohne diese Einschraenkung durchsucht Vite ihn beim Start mit.
+  // Vite soll beim Start nur vom Spiel-Einstieg aus suchen und nicht den ganzen Baum
+  // durchkaemmen. (Urspruenglich wegen des inzwischen entfernten Ordners "prototypes".)
   optimizeDeps: { entries: ['index.html'] },
 })
