@@ -24,6 +24,27 @@ export const MODULE_SIDE = 56
 /** Toleranz fuer Kanten- und Punktvergleiche. Die Gleitkomma-Drift liegt weit darunter. */
 export const EPS = MODULE_SIDE * 1e-3
 
+/**
+ * Groesste Kantenzahl, die ein Modul haben darf. Muss zu `FootprintSides` (`data/types.ts`)
+ * passen; welche Formen erlaubt sind, entscheidet dort der Winkelsatz.
+ *
+ * Sie steht hier, weil die Grobpruefung in `polygonsOverlap` sie braucht: Der Umkreis
+ * waechst mit der Kantenzahl, und eine Grobpruefung, die einen zu kleinen Umkreis annimmt,
+ * verwirft echte Ueberlappungen still. Vorher stand dort `circumradius(6)` als Zahl - beim
+ * Freigeben einer groesseren Form haette der Spieler Module ineinander gebaut, ohne dass
+ * irgendwo ein Fehler aufgetreten waere.
+ */
+export const MAX_MODULE_SIDES = 6
+
+/**
+ * Innenwinkel eines regelmaessigen n-Ecks in Grad.
+ *
+ * Der Wert, an dem haengt, ob sich eine Ecke der Station **schliessen** laesst: Um einen
+ * Punkt herum muessen die Innenwinkel der anliegenden Module 360 Grad ergeben. Die
+ * Herleitung, welche Formen das ueberhaupt zulassen, steht bei `FootprintSides`.
+ */
+export const interiorAngle = (sides: number): number => 180 - 360 / sides
+
 export type Edge = { a: Vec2; b: Vec2 }
 export type Bounds = { minX: number; minY: number; maxX: number; maxY: number }
 
@@ -166,8 +187,10 @@ function projectionRange(poly: readonly Vec2[], axis: Vec2): { min: number; max:
  */
 export function polygonsOverlap(first: readonly Vec2[], second: readonly Vec2[]): boolean {
   // Grobpruefung ueber die Umkreise. Die Seitenlaenge ist bei allen Modulen gleich,
-  // der groesste Umkreis ist der des Sechsecks.
-  if (dist(centroid(first), centroid(second)) > 2 * circumradius(6) + EPS) return false
+  // der groesste Umkreis ist der der groessten zugelassenen Form.
+  if (dist(centroid(first), centroid(second)) > 2 * circumradius(MAX_MODULE_SIDES) + EPS) {
+    return false
+  }
 
   const a = inset(first, ERODE)
   const b = inset(second, ERODE)

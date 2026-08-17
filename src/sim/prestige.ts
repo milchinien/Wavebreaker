@@ -17,19 +17,30 @@
 import { emit } from '../core/events.ts'
 import { randomSeed } from '../core/rng.ts'
 import {
+  effectiveWave,
   GOLD_PER_PRESTIGE_POINT,
   MAX_ABILITY_SLOTS,
   PRESTIGE_MIN_GOLD,
   PRESTIGE_WAVE_DIVISOR,
   PRESTIGE_WAVE_EXPONENT,
+  rewardScaleFor,
   START_ABILITY_SLOTS,
   START_TOWER_SLOTS,
 } from '../data/balance.ts'
-import { isKnownPrestigeNode, prestigeNodeById } from '../data/prestige.ts'
+import { isKnownPrestigeNode, prestigeNodeById, PRESTIGE_NODES } from '../data/prestige.ts'
+// Nur die Katalog-Summe, nicht `sim/stats.ts`: Die zieht ihrerseits die Prestige-Faktoren
+// von hier, und ein Kreis zwischen beiden Dateien waere die Folge (`data/upgrades.ts`).
+import { globalSum } from '../data/upgrades.ts'
 import type { TraitTier } from '../data/traits.ts'
 import type { Rarity } from '../data/types.ts'
 import { grantReward, spendPrestigePoints } from '../app/rewards.ts'
-import { createInitialRun, createRuntime, markDirty, type GameState } from '../app/state.ts'
+import {
+  createInitialRun,
+  createRuntime,
+  markDirty,
+  waveRecord,
+  type GameState,
+} from '../app/state.ts'
 import { surgeStation } from './combat.ts'
 
 // ---------------------------------------------------------------------------
@@ -75,13 +86,22 @@ export function unlockedTraitTier(state: GameState): TraitTier | null {
   return null
 }
 
-/** Turmplaetze: Startwert plus jeder gekaufte Platz-Knoten (GDD 10, Bereich 2). */
+/**
+ * Turmplaetze: Startwert plus jeder gekaufte Platz-Knoten (GDD 10, Bereich 2) plus die mit
+ * Gold gekauften Plaetze aus dem Upgrade-Katalog (`Foreman`, `Pathfinder`, `Architect`).
+ *
+ * Beide Quellen stehen bewusst in **einer** Funktion, obwohl die eine dauerhaft ist und die
+ * andere beim Prestige verfaellt: Wie viele Plaetze die Station hat, ist eine einzige Zahl,
+ * und wer sie an zwei Stellen bildet, bekommt zwei Antworten. Der Unterschied zwischen
+ * dauerhaft und vergaenglich liegt dort, wo er hingehoert - in `run.upgrades` gegen
+ * `permanent.prestigeNodes`.
+ */
 export function towerSlots(state: GameState): number {
   let slots = START_TOWER_SLOTS
   for (const id of ['towers.slot1', 'towers.slot2', 'towers.slot3']) {
     if (isUnlocked(state, id)) slots += 1
   }
-  return slots
+  return slots + globalSum(state.run.upgrades, 'towerSlots')
 }
 
 /** Faehigkeitenslots: einer zu Beginn, zwei weitere ueber den Baum (GDD 09 Abschnitt 8). */
@@ -110,13 +130,19 @@ export function availableSpeeds(state: GameState): (1 | 2 | 4)[] {
  * wie Upgrades und Perks - deshalb gibt es hier nur die Summe, nicht die Anwendung.
  */
 export function prestigeGlobalBonus(state: GameState, key: string): number {
+  /*
+   * Seit E7 eine **Schleife ueber die Daten** statt einer Kette von Fallunterscheidungen.
+   *
+   * Vorher stand hier fuer jeden Goldknoten eine eigene Zeile mit seiner Zahl - die Zahl
+   * also zweimal, hier und in `data/prestige.ts`. Ein fuenfter Goldknoten war damit zwei
+   * Aenderungen, und die zweite konnte man vergessen; er waere dann gekauft, sichtbar und
+   * wirkungslos gewesen. Jetzt traegt der Knoten seine Wirkung selbst.
+   */
   let total = 0
-  if (key === 'goldBonus') {
-    if (isUnlocked(state, 'eco.gold1')) total += 0.1
-    if (isUnlocked(state, 'eco.gold2')) total += 0.25
-    if (isUnlocked(state, 'eco.gold3')) total += 0.5
-  } else if (key === 'xpBonus') {
-    if (isUnlocked(state, 'eco.xp1')) total += 0.25
+  for (const node of PRESTIGE_NODES) {
+    const effect = node.effect
+    if (effect?.kind !== 'global' || effect.key !== key) continue
+    if (isUnlocked(state, node.id)) total += effect.amount
   }
   return total
 }
@@ -145,11 +171,38 @@ export function prestigeGlobalBonus(state: GameState, key: string): number {
  *
  * Gezaehlt wird der **Wellenrekord dieses Runs**, nicht die gerade gespielte Welle: Wer
  * zurueckspult, um Gold zu sammeln, soll dafuer nicht bestraft werden.
+ *
+ * ---
+ *
+ * **Die Ligen greifen in beide Terme ein, und zwar in entgegengesetzte Richtungen**
+ * (docs/liga-system.md Abschnitt 4.5):
+ *
+ * *Der Wellenterm zieht sie herein.* Gezaehlt wird die **effektive** Rekordwelle. Ohne das
+ * waere Welle 50 in Liga 8 so viel wert wie Welle 50 in Liga 1 - und die Liga, die im Spiel
+ * alles schwerer macht, brächte beim Zuruecksetzen nichts ein.
+ *
+ *   Liga 1 Welle 50 -> 1,2 Punkte · Liga 5 -> 11,1 · Liga 10 -> 37,3
+ *
+ * *Der Goldterm rechnet sie heraus.* Geteilt wird durch die volle Belohnungsskala dieser
+ * Welle. Das behebt eine Schieflage, die es **schon vor den Ligen gab** und die sie nur
+ * sichtbar macht: Gold waechst exponentiell mit der Welle (1,06 je Welle), der Wellenterm
+ * nur quadratisch - in tiefen Wellen erdrueckt der Goldanteil den anderen schon heute. Mit
+ * Ligen (Faktor 1,5 obendrauf) wuerde er ihn ausloeschen.
+ *
+ * Nach der Teilung misst der Term, **wie gruendlich** jemand gefarmt hat - in Wellenwerten,
+ * nicht in Goldstuecken. Wie tief er gekommen ist, misst bereits der erste Term, und keine
+ * Leistung soll zweimal zaehlen.
+ *
+ * Beides ist eine Aenderung an GDD 10 Abschnitt 5 und ausdruecklich **unvermessen**. Faellt
+ * sie beim Justieren durch, ist der Rueckfall in `docs/liga-system.md` Abschnitt 14.2
+ * beschrieben: Goldterm streichen und die Punkte allein an die effektive Rekordwelle haengen.
  */
 export function prestigePoints(state: GameState): number {
-  const wave = Math.max(0, state.run.waveRecord)
+  const league = state.run.league
+  const wave = effectiveWave(Math.max(0, waveRecord(state)), league)
   const fromWave = Math.pow(wave / PRESTIGE_WAVE_DIVISOR, PRESTIGE_WAVE_EXPONENT)
-  const fromGold = Math.max(0, state.run.goldEarned) / GOLD_PER_PRESTIGE_POINT
+  const scale = GOLD_PER_PRESTIGE_POINT * rewardScaleFor(wave, league)
+  const fromGold = Math.max(0, state.run.goldEarned) / scale
   return Math.floor(fromWave + fromGold)
 }
 
@@ -229,7 +282,9 @@ export function doPrestige(state: GameState, coreId?: string): boolean {
   if (!canPrestige(state)) return false
 
   const earned = prestigePoints(state)
-  const wave = state.run.waveRecord
+  // Effektiv, weil `bestWaveEver` effektiv zaehlt (`app/state.ts`): Der Rekord dieses Runs
+  // ist eine Ligazahl, der Bestwert eine ligenuebergreifende.
+  const wave = effectiveWave(waveRecord(state), state.run.league)
 
   // Die Punkte sind eine Belohnung wie Gold und XP und laufen deshalb durch dieselbe eine
   // Stelle - noch **vor** dem Zuruecksetzen, solange der alte Run und seine Laufzeitdaten

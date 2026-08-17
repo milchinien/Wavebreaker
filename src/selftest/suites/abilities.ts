@@ -20,6 +20,7 @@ import { buyAbility, fireAbility, toggleAbilitySlot } from '../../app/actions.ts
 import { createInitialState, type GameState } from '../../app/state.ts'
 import { invalidateStationView, resetStationViewCache, stationView } from '../../app/view.ts'
 import {
+  abilityUnlockCost,
   activateAbility,
   canActivate,
   cooldownLeft,
@@ -65,20 +66,23 @@ export function abilitiesSuite(): void {
 
   check('Freischalten kostet Gold und passiert genau einmal', () => {
     const state = rig(500)
-    const def = abilityById('overload')
+    // Der Preis kommt aus `abilityUnlockCost`, nicht aus `def.unlockCost`: Der Rohwert im
+    // Datensatz steht vor dem Goldmassstab, abgebucht wird der gerechnete Betrag.
+    const cost = abilityUnlockCost(abilityById('overload'))
 
     assertEqual(unlockAbility(state, 'overload'), true)
-    assertEqual(state.run.gold, 500 - def.unlockCost)
+    assertEqual(state.run.gold, 500 - cost)
     assertEqual(isUnlocked(state, 'overload'), true)
 
     assertEqual(unlockAbility(state, 'overload'), false, 'ein zweites Mal geht nicht')
-    assertEqual(state.run.gold, 500 - def.unlockCost, 'und kostet auch nichts')
+    assertEqual(state.run.gold, 500 - cost, 'und kostet auch nichts')
   })
 
   check('ohne genug Gold aendert sich nichts', () => {
-    const state = rig(10)
+    const state = rig(1)
+    assert(abilityUnlockCost(abilityById('shield')) > 1, 'sonst prueft der Fall nichts')
     assertEqual(unlockAbility(state, 'shield'), false)
-    assertEqual(state.run.gold, 10)
+    assertEqual(state.run.gold, 1)
     assertEqual(isUnlocked(state, 'shield'), false)
   })
 

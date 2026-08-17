@@ -9,15 +9,16 @@
  *   Buff-Linien  die Bauflaeche                   (`render/overlays.ts`)
  *   Effekte      die Kampfebene                   (`render/scene.ts`)
  *   Bewegung     das Stilblatt ueber `data-motion` (`src/style.css`)
- *   Lautstaerke  der Klanganschluss               (`app/audio.ts`)
+ *   Lautstaerke  drei Busse des Mischpults        (`app/mixer.ts`)
  *   Hinweise     der Merkzettel im Spielstand     (`sim/hints.ts`)
  *
  * Eine Sprachwahl gibt es nicht: Es gibt nur eine Sprache. Sie kommt, wenn eine zweite
  * Tabelle in `data/strings.ts` steht - vorher waere sie ein Schalter mit einer Stellung.
  */
 
+import { BUSES, defaultMix, type Bus } from '../app/mixer.ts'
 import type { SpeedFactor } from '../core/loop.ts'
-import { t } from '../data/strings.ts'
+import { t, type StringKey } from '../data/strings.ts'
 
 export type SettingsControls = {
   speed(): SpeedFactor
@@ -37,9 +38,14 @@ export type SettingsControls = {
   /** Bewegte Uebergaenge zwischen den Bereichen. */
   motion(): boolean
   setMotion(on: boolean): void
-  /** Lautstaerke von 0 bis 1. */
-  volume(): number
-  setVolume(value: number): void
+  /**
+   * Pegel einer Klanggruppe, 0 bis 1 (`app/mixer.ts`).
+   *
+   * Drei Regler statt einem, weil "zu laut" fast nie "alles zu laut" heisst: Wer die
+   * Schuesse daempfen will, moechte die Zaesur am Wellenende behalten.
+   */
+  busLevel(bus: Bus): number
+  setBusLevel(bus: Bus, value: number): void
   /** Alle einmaligen Hinweise wieder zeigen (GDD 14 Abschnitt 4a). */
   resetHints(): void
   resetCamera(): void
@@ -57,8 +63,74 @@ export type SettingsPanel = {
   update(): void
 }
 
-/** Waehlbare Lautstaerken. Ein Schieberegler waere feiner, als der Ton es hergibt. */
-const VOLUMES: readonly number[] = [0, 0.25, 0.5, 1]
+/** Die Beschriftung je Bus. Reihenfolge und Namen kommen aus `app/mixer.ts`. */
+const BUS_LABEL: Record<Bus, StringKey> = {
+  music: 'settings.busMusic',
+  sfx: 'settings.busSfx',
+  ui: 'settings.busUi',
+}
+
+/**
+ * Die Schrittweite des Reglers, in Prozent.
+ *
+ * Ein Prozent - fein genug, dass sich der Regler stufenlos anfuehlt, und grob genug, dass
+ * die Anzeige daneben eine ganze Zahl bleibt. Wer mit der Tastatur zieht, kommt so mit
+ * gedrueckter Pfeiltaste in ein bis zwei Sekunden von 0 auf 100.
+ */
+const STEP_PERCENT = 1
+
+/**
+ * Was vor dem Stummschalten eingestellt war.
+ *
+ * Ohne diese Notiz waere Stummschalten eine Einbahnstrasse: Drei Regler auf null zu ziehen
+ * ist ein Griff, sie danach wieder dorthin zu stellen, wo sie waren, ist Raten. Die Notiz
+ * lebt nur so lange wie die Seite - was gespeichert wird, ist immer der Zustand, den man
+ * hoert, nicht der, den man einmal hatte.
+ */
+let beforeMute: Record<Bus, number> | null = null
+
+/**
+ * Die Regler, die gerade im Bild stehen - je Wurzelknoten einer.
+ *
+ * Der Grund ist ein Fehler, der beim Nachmessen aufgefallen ist: Die Taste `M` wird in
+ * `main.ts` abgefangen und geht am Bereich vorbei. Ohne diese Liste schaltet sie den Ton
+ * richtig stumm, die drei Regler daneben stehen aber weiter auf ihren alten Prozentzahlen -
+ * und ein Regler, der etwas anderes anzeigt als er tut, ist schlimmer als gar keiner.
+ *
+ * Als `Map` und nicht als `Set`: `mountSettings` raeumt seine Wurzel aus und baut neu auf.
+ * Der Eintrag wird dabei ersetzt statt verdoppelt, und niemand haelt einen abgeraeumten
+ * Knoten fest.
+ */
+const livePanels = new Map<HTMLElement, () => void>()
+
+/** Sind alle drei Gruppen stumm? */
+function muted(controls: SettingsControls): boolean {
+  return BUSES.every((bus) => controls.busLevel(bus) <= 0)
+}
+
+/**
+ * Alles stumm - oder zurueck auf das, was vorher stand.
+ *
+ * Steht hier und nicht in `main.ts`, obwohl die Taste `M` dort abgefangen wird: Der
+ * Schalter im Bereich und die Taste muessen dasselbe tun, und "dasselbe" ist genau dann
+ * gesichert, wenn es nur einmal geschrieben steht.
+ */
+export function toggleMute(controls: SettingsControls): void {
+  if (muted(controls)) {
+    // Ohne Notiz - der Spieler hat alle drei selbst auf null gezogen - kommt der Startwert
+    // zurueck. Irgendwohin muss der Schalter fuehren, und stumm bleiben waere keine
+    // Umschaltung.
+    const restore = beforeMute ?? defaultMix()
+    beforeMute = null
+    for (const bus of BUSES) controls.setBusLevel(bus, restore[bus])
+  } else {
+    const kept = {} as Record<Bus, number>
+    for (const bus of BUSES) kept[bus] = controls.busLevel(bus)
+    beforeMute = kept
+    for (const bus of BUSES) controls.setBusLevel(bus, 0)
+  }
+  for (const refresh of livePanels.values()) refresh()
+}
 
 export function mountSettings(root: HTMLElement, controls: SettingsControls): SettingsPanel {
   root.replaceChildren()
@@ -99,24 +171,25 @@ export function mountSettings(root: HTMLElement, controls: SettingsControls): Se
     update()
   })
 
-  // --- Lautstaerke ---
-  const volumeButtons: { button: HTMLButtonElement; value: number }[] = []
-  const volumeRow = row(root, t('settings.volume'))
-  for (const step of VOLUMES) {
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'chip'
-    // Null heisst "stumm" und nicht "null Prozent": Der Spieler sucht einen Ausschalter,
-    // keinen Wert am Ende einer Reihe.
-    button.textContent =
-      step === 0 ? t('settings.mute') : t('settings.volumeStep', { value: Math.round(step * 100) })
-    button.addEventListener('click', () => {
-      controls.setVolume(step)
+  // --- Klang: drei Busse, drei Regler ---
+  //
+  // Der Ausschalter steht in derselben Zeile wie die Ueberschrift und nicht als vierte
+  // Stellung an einem der Regler: Stummschalten ist eine Handlung, kein Pegel. Wer den Ton
+  // schnell weghaben will, sucht einen Knopf und keine Null am Ende einer Skala.
+  const muteButton = document.createElement('button')
+  muteButton.type = 'button'
+  muteButton.className = 'chip'
+  // Kein `update()` daneben: Das erledigt `toggleMute` fuer alle Regler im Bild, damit
+  // Knopf und Taste `M` nicht nur dasselbe tun, sondern auch dasselbe anzeigen.
+  muteButton.addEventListener('click', () => toggleMute(controls))
+  row(root, t('settings.volume')).appendChild(muteButton)
+
+  const sliders = BUSES.map((bus) =>
+    slider(root, t(BUS_LABEL[bus]), () => controls.busLevel(bus), (value) => {
+      controls.setBusLevel(bus, value)
       update()
-    })
-    volumeButtons.push({ button, value: step })
-    volumeRow.appendChild(button)
-  }
+    }),
+  )
 
   // --- Hinweise ---
   const hintButton = document.createElement('button')
@@ -152,12 +225,14 @@ export function mountSettings(root: HTMLElement, controls: SettingsControls): Se
     setToggle(effectButton, controls.effects())
     setToggle(motionButton, controls.motion())
 
-    const volume = controls.volume()
-    for (const entry of volumeButtons) {
-      entry.button.classList.toggle('active', Math.abs(entry.value - volume) < 0.01)
-    }
+    const off = muted(controls)
+    muteButton.textContent = off ? t('settings.unmute') : t('settings.mute')
+    muteButton.classList.toggle('active', off)
+
+    for (const entry of sliders) entry.sync()
   }
 
+  livePanels.set(root, update)
   update()
   return { update }
 }
@@ -175,6 +250,56 @@ function toggle(
   button.addEventListener('click', () => write(!read()))
   row(root, label).appendChild(button)
   return button
+}
+
+/**
+ * Ein stufenloser Regler von 0 bis 100 Prozent, mit seinem Wert daneben.
+ *
+ * Der Wert steht **immer** da, nicht nur beim Ziehen. Ein Regler ohne Zahl laesst sich
+ * nicht wiederfinden: Wer die Effekte gestern auf 40 hatte, sieht heute einen Griff
+ * irgendwo links der Mitte und weiss nichts.
+ *
+ * Geschrieben wird bei `input`, also waehrend des Ziehens - der Spieler hoert seine
+ * Aenderung, waehrend er sie macht, und nicht erst beim Loslassen. Genau deshalb reicht der
+ * Regler auch bis null: Stumm ist eine gueltige Stellung und braucht keinen zweiten Weg.
+ */
+function slider(
+  root: HTMLElement,
+  label: string,
+  read: () => number,
+  write: (value: number) => void,
+): { sync(): void } {
+  const input = document.createElement('input')
+  input.type = 'range'
+  input.min = '0'
+  input.max = '100'
+  input.step = String(STEP_PERCENT)
+  input.setAttribute('aria-label', label)
+  // Das Stilblatt gehoert nicht dieser Datei; die zwei Angaben, ohne die der Regler in der
+  // Zeile falsch sitzt, stehen deshalb hier.
+  input.style.width = '150px'
+  input.style.accentColor = 'var(--accent)'
+
+  const readout = document.createElement('span')
+  readout.className = 'label'
+  // Feste Breite, sonst wandert der Regler bei jedem Prozentschritt um ein Zeichen.
+  readout.style.minWidth = '42px'
+  readout.style.textAlign = 'right'
+  readout.style.fontVariantNumeric = 'tabular-nums'
+
+  function sync(): void {
+    const percent = Math.round(read() * 100)
+    input.value = String(percent)
+    readout.textContent = t('settings.volumeStep', { value: percent })
+  }
+
+  input.addEventListener('input', () => write(Number(input.value) / 100))
+
+  const line = row(root, label)
+  line.style.alignItems = 'center'
+  line.append(input, readout)
+  sync()
+  return { sync }
 }
 
 function setToggle(button: HTMLButtonElement, on: boolean): void {

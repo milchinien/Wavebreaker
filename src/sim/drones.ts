@@ -25,6 +25,7 @@ import type { Vec2 } from '../core/vec.ts'
 import { towerById } from '../data/towers.ts'
 import type { GameState } from '../app/state.ts'
 import { applyDamage } from './combat.ts'
+import { specialValue } from './stats.ts'
 import { findTarget } from './targeting.ts'
 import type { PlacedModule } from './station.ts'
 
@@ -85,7 +86,11 @@ export function stepDrones(state: GameState, dt: number): void {
     // Sofortiger Treffer statt Geschoss: Eine Drohne auf Kreisbahn wuerde ihr Geschoss
     // ohnehin ueber eine kurze Strecke schicken, und ein weiterer Geschosstyp im Pool
     // brachte nichts als Aufwand.
-    applyDamage(state, target, spec.damage)
+    // `Hunting Pack` legt auf jeden Biss drauf. Die Drohne ist die Schuetzin, ihr Modul der
+    // Halter - fuer den Overdrive zaehlt deshalb das Modul, denn es traegt die Kachel.
+    applyDamage(state, target, spec.damage + specialValue(state, 'droneDamage'), {
+      sourceUid: drone.ownerUid,
+    })
     drone.cooldown = spec.interval
   }
 }
@@ -98,7 +103,14 @@ function syncDrones(state: GameState): void {
   const wanted = new Map<string, { count: number; color: string }>()
   for (const module of combat.modules) {
     const spec = droneSpecOf(module)
-    if (spec) wanted.set(module.uid, { count: spec.count, color: accentOf(module) })
+    // `Swarm`: eine Drohne mehr je Bucht. Die Liste zieht von selbst nach - sie wird je
+    // Takt gegen diese Zahl abgeglichen, es gibt keinen Zustand, der auseinanderlaufen kann.
+    if (spec) {
+      wanted.set(module.uid, {
+        count: spec.count + specialValue(state, 'droneCount'),
+        color: accentOf(module),
+      })
+    }
   }
 
   // Zu viel weg: Drohnen ohne Modul und ueberzaehlige desselben Moduls.

@@ -1,5 +1,8 @@
 /**
- * Beweis aus E17 (Abwesenheitsertrag und Helfer) und E18 (Hinweise).
+ * Beweis aus E17 (Abwesenheitsertrag und Helfer).
+ *
+ * Die Hinweise aus E18 standen frueher hier mit darin; sie haben mit `suites/hints.ts` eine
+ * eigene Sammlung bekommen, seit ihre **Reihenfolge** mitgeprueft wird.
  *
  * Der Plan nennt fuer E17 genau eine Abnahme:
  *
@@ -17,20 +20,25 @@
  */
 
 import { assert, assertEqual, check, suite } from '../../core/assert.ts'
-import { MELT_COST, OFFLINE_MAX_SECONDS, OFFLINE_MIN_SECONDS, TICK_RATE } from '../../data/balance.ts'
+import { OFFLINE_MAX_SECONDS, OFFLINE_MIN_SECONDS, TICK_RATE } from '../../data/balance.ts'
 import { createInitialState, type GameState } from '../../app/state.ts'
 import { invalidateStationView, stationView } from '../../app/view.ts'
 import { stepBattle, syncStation } from '../../sim/battle.ts'
 import { collectAll } from '../../sim/economy.ts'
-import { HINTS, markHintSeen, pendingHint, resetHints } from '../../sim/hints.ts'
-import { collectorLevel, helperCount, helperRadius, helperSpeed, stepHelpers } from '../../sim/helpers.ts'
+import {
+  collectorLevel,
+  COLLECTOR_PATH,
+  helperCount,
+  helperRadius,
+  helperSpeed,
+  stepHelpers,
+} from '../../sim/helpers.ts'
 import {
   capOfflineTime,
   offlineEfficiency,
   offlineUnlocked,
   simulateOffline,
 } from '../../sim/offline.ts'
-import { place } from '../../sim/station.ts'
 import { startWave } from '../../sim/waves.ts'
 
 /** Ein Zustand mit stehender Station, bereit fuer echten Kampf. */
@@ -83,7 +91,7 @@ export function idleSuite(): void {
     // Der Goldsammler zaehlt nur, wenn er auch **gekauft** ist (GDD 12 Abschnitt 10).
     const withNode = withOffline(ready(), 'eco.offline2', 'helper.collector')
     assertEqual(offlineEfficiency(withNode), offlineEfficiency(better))
-    withNode.run.upgrades['global.collector'] = 1
+    withNode.run.upgrades[COLLECTOR_PATH] = 1
     assert(offlineEfficiency(withNode) > offlineEfficiency(better), 'der Sammler muss zaehlen')
 
     // Aktives Spielen bleibt immer besser (GDD 12 Abschnitt 7).
@@ -200,7 +208,7 @@ export function idleSuite(): void {
     // der erste Takt liesse die naechste Welle beginnen.
     const state = withOffline(ready(7))
     state.run.wave = 12
-    state.run.waveRecord = 12
+    state.run.waveRecords = [12]
 
     const result = simulateOffline(state, OFFLINE_MIN_SECONDS, stationView(state))
     assert(result !== null, 'die Rechnung muss ein Ergebnis liefern')
@@ -222,24 +230,24 @@ export function idleSuite(): void {
 
     // Nur die Stufe ohne Knoten: ebenfalls keiner.
     const bought = ready()
-    bought.run.upgrades['global.collector'] = 3
+    bought.run.upgrades[COLLECTOR_PATH] = 3
     assertEqual(collectorLevel(bought), 0)
     assertEqual(helperCount(bought), 0)
 
     // Beides: jetzt faehrt einer.
-    state.run.upgrades['global.collector'] = 1
+    state.run.upgrades[COLLECTOR_PATH] = 1
     assertEqual(helperCount(state), 1)
   })
 
   check('Radius, Tempo und Anzahl wachsen mit den Stufen', () => {
     const state = ready()
     state.permanent.prestigeNodes.push('helper.collector')
-    state.run.upgrades['global.collector'] = 1
+    state.run.upgrades[COLLECTOR_PATH] = 1
 
     const radius = helperRadius(state)
     const speed = helperSpeed(state)
 
-    state.run.upgrades['global.collector'] = 5
+    state.run.upgrades[COLLECTOR_PATH] = 5
     assert(helperRadius(state) > radius, 'der Radius muss mit der Stufe wachsen')
     assert(helperSpeed(state) > speed, 'das Tempo ebenso')
 
@@ -255,7 +263,7 @@ export function idleSuite(): void {
   check('ein Helfer faehrt zur naechsten Muenze und hebt sie auf', () => {
     const state = ready()
     state.permanent.prestigeNodes.push('helper.collector')
-    state.run.upgrades['global.collector'] = 1
+    state.run.upgrades[COLLECTOR_PATH] = 1
     state.run.coins.push({ x: 260, y: 0, value: 50, count: 1 })
 
     // Genug Takte, um die Strecke zu fahren - bei 120 Einheiten je Sekunde sind das rund
@@ -269,7 +277,7 @@ export function idleSuite(): void {
   check('ein Helfer verlaesst das Feld nicht', () => {
     const state = ready()
     state.permanent.prestigeNodes.push('helper.collector')
-    state.run.upgrades['global.collector'] = 1
+    state.run.upgrades[COLLECTOR_PATH] = 1
     // Eine Muenze weit ausserhalb: Der Helfer darf ihr nicht aus dem Bild folgen.
     state.run.coins.push({ x: 40_000, y: 0, value: 1, count: 1 })
 
@@ -283,90 +291,15 @@ export function idleSuite(): void {
   check('ueberzaehlige Helfer verschwinden von selbst', () => {
     const state = ready()
     state.permanent.prestigeNodes.push('helper.collector', 'helper.better', 'helper.fast')
-    state.run.upgrades['global.collector'] = 1
+    state.run.upgrades[COLLECTOR_PATH] = 1
     stepHelpers(state, 1 / 60)
     assertEqual(state.runtime.helpers.length, 2)
 
     // Ein Prestige nimmt die Stufe weg - die Liste muss dem von selbst folgen.
-    state.run.upgrades['global.collector'] = 0
+    state.run.upgrades[COLLECTOR_PATH] = 0
     stepHelpers(state, 1 / 60)
     assertEqual(state.runtime.helpers.length, 0)
   })
 
-  suite('sim/hints · einmalige Hinweise')
-
-  check('jeder Hinweis hat eine eindeutige Kennung', () => {
-    const ids = new Set(HINTS.map((hint) => hint.id))
-    assertEqual(ids.size, HINTS.length)
-  })
-
-  check('ein gesehener Hinweis kommt nicht wieder', () => {
-    const state = ready()
-    state.run.coins.push({ x: 0, y: 0, value: 1, count: 1 })
-
-    const first = pendingHint(state)
-    assert(first !== null, 'liegendes Gold muss einen Hinweis ausloesen')
-    assertEqual(first.id, 'hint.collect')
-
-    assertEqual(markHintSeen(state, first.id), true)
-    assertEqual(markHintSeen(state, first.id), false, 'zweimal ablegen ist kein Fehler, aber wirkungslos')
-    assert(pendingHint(state)?.id !== 'hint.collect', 'er darf nicht wiederkommen')
-  })
-
-  check('ein unbekannter Hinweis laesst sich nicht ablegen', () => {
-    const state = ready()
-    assertEqual(markHintSeen(state, 'hint.gibtesnicht'), false)
-    assertEqual(state.permanent.seenHints.length, 0)
-  })
-
-  check('Hinweise erscheinen erst, wenn ihre Bedingung zutrifft', () => {
-    const state = ready()
-    // Frischer Zustand: kein Gold im Feld, kein Gold auf dem Konto, keine drei Tuerme.
-    // Der Schmelz-Hinweis darf hier noch nicht kommen.
-    state.permanent.seenHints.push('hint.melt')
-    assertEqual(state.run.station.inventory.length, MELT_COST, 'Startlager hat genau drei')
-
-    const state2 = ready()
-    state2.run.gold = 0
-    state2.run.station.inventory.length = 0
-    const hint = pendingHint(state2)
-    assert(hint === null || hint.id !== 'hint.melt', 'ohne drei Tuerme kein Schmelz-Hinweis')
-  })
-
-  check('Zuruecksetzen zeigt alle Hinweise wieder', () => {
-    const state = ready()
-    for (const hint of HINTS) state.permanent.seenHints.push(hint.id)
-    assertEqual(pendingHint(state), null)
-
-    resetHints(state)
-    assertEqual(state.permanent.seenHints.length, 0)
-  })
-
-  check('der Hinweis zum Buff-Turm nennt den Zeitpunkt', () => {
-    // GDD 14 Abschnitt 4a nennt den Zeitpunkt des Buff-Turms das groesste
-    // Verstaendnisrisiko des Spiels - der Text muss ihn deshalb ausdruecklich ansprechen.
-    const state = ready()
-    const hint = HINTS.find((entry) => entry.id === 'hint.buff')
-    assert(hint !== undefined, 'den Hinweis muss es geben')
-    assert(hint.when(state), 'das Startlager enthaelt einen Verstaerker')
-  })
-
-  check('ein Buff-Turm im Lager loest den Hinweis aus, ein platzierter nicht mehr', () => {
-    const state = ready()
-    const hint = HINTS.find((entry) => entry.id === 'hint.buff')
-    assert(hint !== undefined, 'den Hinweis muss es geben')
-    assertEqual(hint.when(state), true)
-
-    // Alle Verstaerker platzieren: Der Hinweis hat seinen Zweck erfuellt.
-    refresh(state)
-    for (const module of [...state.run.station.inventory]) {
-      const edges = stationView(state).freeEdges
-      const edge = edges[0]
-      if (!edge) break
-      place(state.run.station, module.uid, edge)
-      invalidateStationView(state)
-    }
-    assertEqual(state.run.station.inventory.length, 0)
-    assertEqual(hint.when(state), false)
-  })
+  // Die Hinweise haben eine eigene Sammlung: `suites/hints.ts`.
 }

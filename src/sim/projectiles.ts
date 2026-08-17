@@ -24,8 +24,41 @@ export type Projectile = {
    * sie, damit die Zeichenebene den Schweif legen kann, ohne die Bewegung nachzurechnen.
    */
   dir: Vec2
+  /**
+   * Die Modulmitte, aus der geschossen wurde.
+   *
+   * Sie steht hier, weil der Schweif **zum Rohr zurueckzeigen** muss und nicht einfach
+   * entgegen der aktuellen Flugrichtung: Ein Geschoss folgt seinem Ziel, also dreht `dir`
+   * unterwegs weg. Ein Schweif entlang `-dir` zeigte dann irgendwohin, und im Standbild
+   * fehlte genau die Auskunft, die er geben soll - welcher Turm gerade feuert. Mit dem
+   * Ursprung trifft die Verlaengerung jedes Keils sein Modul, egal wie weit die Bahn
+   * inzwischen gekruemmt ist.
+   */
+  origin: Vec2
+  /**
+   * Wie weit das abfeuernde Modul um `origin` herum reicht - der Umkreis seines Grundrisses,
+   * in Welteinheiten.
+   *
+   * Sie steht neben dem Ursprung, weil sie dieselbe Frage beantwortet: **Wo faengt der Turm
+   * an?** Der Schweif zeigt auf `origin` zu und muss davor enden, sonst laeuft er ueber die
+   * hellste Kante der Station und ist hinten heller als vorn. Ohne dieses Mass muesste die
+   * Zeichenebene das groesste denkbare Modul annehmen und liesse bei einem Dreieck eine
+   * Luecke von gut zwanzig Einheiten stehen.
+   *
+   * Es ist reine Geometrie des Schuetzen, so wie `origin` - kein Zeichenwert. Es haengt am
+   * Geschoss und nicht am Turm, weil der Turm beim Einschlag laengst abgerissen sein kann.
+   */
+  reach: number
   /** Kennung des verfolgten Gegners. */
   targetId: number
+  /**
+   * Das Modul, das geschossen hat.
+   *
+   * Es haengt am Geschoss und nicht am Turm, aus demselben Grund wie `origin` und `payload`:
+   * Beim Einschlag kann der Turm laengst abgerissen oder umgesetzt sein. Gebraucht wird die
+   * Kennung fuer den Overdrive - "ein Turret, das toetet" ist ohne sie nicht zu beantworten.
+   */
+  sourceUid: string
   speed: number
   damage: number
   crit: boolean
@@ -56,6 +89,10 @@ export type ProjectileSpec = {
   speed: number
   crit: boolean
   color: string
+  /** Umkreis des abfeuernden Moduls in Welteinheiten - siehe `Projectile.reach`. */
+  reach: number
+  /** Das abfeuernde Modul - siehe `Projectile.sourceUid`. */
+  sourceUid: string
 } & ProjectilePayload
 
 function blankProjectile(id: number): Projectile {
@@ -63,7 +100,10 @@ function blankProjectile(id: number): Projectile {
     id,
     pos: { x: 0, y: 0 },
     dir: { x: 0, y: 0 },
+    origin: { x: 0, y: 0 },
+    reach: 0,
     targetId: -1,
+    sourceUid: '',
     speed: 0,
     damage: 0,
     crit: false,
@@ -88,6 +128,9 @@ export function spawnProjectile(
   // Pools, und bei sechs Schuessen je Sekunde und Turm faellt es ins Gewicht.
   projectile.pos.x = from.x
   projectile.pos.y = from.y
+  projectile.origin.x = from.x
+  projectile.origin.y = from.y
+  projectile.reach = spec.reach
 
   // Startrichtung, damit schon das erste Bild einen Schweif in der richtigen Lage hat.
   const toTarget = Math.hypot(target.pos.x - from.x, target.pos.y - from.y) || 1
@@ -95,6 +138,7 @@ export function spawnProjectile(
   projectile.dir.y = (target.pos.y - from.y) / toTarget
 
   projectile.targetId = target.id
+  projectile.sourceUid = spec.sourceUid
   projectile.speed = spec.speed
   projectile.damage = spec.damage
   projectile.crit = spec.crit
@@ -144,7 +188,10 @@ function impact(state: GameState, projectile: Projectile, target: Enemy): void {
   if (payload?.burn) applyBurn(state, target, payload.burn.dps, payload.burn.duration)
   if (payload?.chill) applyChill(state, target, payload.chill.factor, payload.chill.duration)
 
-  applyDamage(state, target, projectile.damage, { crit: projectile.crit })
+  applyDamage(state, target, projectile.damage, {
+    crit: projectile.crit,
+    sourceUid: projectile.sourceUid,
+  })
 
   if (payload?.explode) {
     applyExplosion(state, at, payload.explode.radius, payload.explode.damage, target)

@@ -20,10 +20,16 @@ import type { StatKey } from '../data/types.ts'
 import { dropGold, goldValueFor } from './economy.ts'
 import { releaseEnemy, type Enemy } from './enemies.ts'
 import { maybeDropPod } from './events.ts'
+import {
+  checkLastStand,
+  overdriveOnHit,
+  overdriveOnKill,
+  type Overdrive,
+} from './overdrive.ts'
 import type { Drone } from './drones.ts'
 import type { Projectile } from './projectiles.ts'
 import type { PlacedModule } from './station.ts'
-import { globalMultiplier } from './stats.ts'
+import { globalMultiplier, globalValue, hasRule, specialValue } from './stats.ts'
 // Nur der Typ - `towers` bindet `combat` ein, ein Wert von dort waere ein Kreis.
 import type { RangeCircle } from './towers.ts'
 import type { WavePlan } from './waves.ts'
@@ -39,6 +45,16 @@ export type Hit = { pos: Vec2; age: number; life: number; kind: 'enemy' | 'stati
 
 /** Lebensdauer eines Trefferblitzes bei Tempo x1, in Sekunden. */
 export const HIT_LIFE = 0.35
+
+/**
+ * Wie lange ein getroffener Gegner nachbrennt, bei Tempo x1, in Sekunden.
+ *
+ * Kuerzer als der Blitz selbst: Der Blitz ist das Ereignis und darf ausklingen, die
+ * Aufhellung ist die Zuordnung und muss wieder verschwinden, bevor der naechste Treffer
+ * kommt. Bliebe sie so lange stehen wie der Blitz, waere bei hohem Angriffstempo jeder
+ * beschossene Gegner dauerhaft weiss - und ein Zustand, den alle haben, sagt nichts mehr.
+ */
+export const ENEMY_FLASH_LIFE = 0.14
 
 /**
  * Lebensdauer eines Effekts in Simulationssekunden - gedehnt um das eingestellte Tempo.
@@ -164,6 +180,48 @@ export const BITE_LIFE = 0.34
 export type Gain = { pos: Vec2; value: number; age: number; life: number; active: boolean }
 
 /**
+ * Die Schadenszahl ueber dem Gegner (GDD 13 Abschnitt 10).
+ *
+ * Sie ist die **Quittung des Schusses**: Ohne sie sieht der Spieler nur, dass ein Balken
+ * kuerzer wird, und kann zwei Tuerme nicht vergleichen. Ein Upgrade, dessen Wirkung man
+ * nicht sieht, ist kein Fortschritt, sondern eine Behauptung im Menue.
+ *
+ * Sie traegt **nur Zahlen**, keinen Text: Die Zeichenebene setzt daraus die Zeile, weil
+ * jeder Spielertext aus `data/strings.ts` kommt - dieselbe Aufteilung wie beim Gewinn.
+ *
+ * `seq` ist die laufende Nummer aller Schadensmeldungen und damit das **Alter in einer
+ * Zahl**: Je groesser, desto juenger. Die Zeichenebene liest daraus, welche zwei Zahlen die
+ * frischen sind; das Feld `age` taugt dafuer nicht, weil es bei Tempo x2 doppelt so schnell
+ * laeuft und zwei gleich alte Zahlen nicht auseinanderhaelt.
+ *
+ * `drift` ist der seitliche Versatz beim Aufsteigen. Ohne ihn stapeln sich alle Treffer auf
+ * denselben Gegner zu einer einzigen Saeule, in der keine Zahl mehr lesbar ist.
+ */
+export type DamageNumber = {
+  pos: Vec2
+  /**
+   * Der Halbmesser dessen, der getroffen wurde - in Welteinheiten, wie `Enemy.radius`.
+   *
+   * Er ist keine Regel, sondern die **Herkunft** der Zahl: Sie gehoert zu einem Koerper mit
+   * einer Groesse, und ohne diese Groesse kann die Zeichenebene sie nicht neben ihn legen.
+   * `pos` allein nennt nur den Mittelpunkt; ein Boss und ein Schwarmgegner haetten daran
+   * denselben Anker, obwohl zwischen ihren Raendern siebzig Bildpunkte liegen.
+   *
+   * Gebraucht wird er, damit die aufsteigende Zahl **oberhalb** des Lebensbalkens beginnt
+   * statt mitten hindurchzulaufen (siehe `drawDamageNumbers` in `render/combat.ts`). Der
+   * Balken haengt am gezeichneten Rand des Gegners, also muss die Zahl denselben Rand kennen.
+   */
+  radius: number
+  value: number
+  crit: boolean
+  drift: number
+  seq: number
+  age: number
+  life: number
+  active: boolean
+}
+
+/**
  * Ein Laserstrahl (GDD 05: Laser-Turm).
  *
  * Reine Anzeige - der Schaden ist im selben Augenblick schon angekommen. Er lebt einen
@@ -194,6 +252,37 @@ const BURST_SLOTS = 16
 const PICKUP_SLOTS = 24
 const GAIN_SLOTS = 12
 export const GAIN_LIFE = 0.85
+
+/**
+ * So viele Schadenszahlen koennen gleichzeitig stehen.
+ *
+ * Deutlich mehr als bei jedem anderen Vorrat, und das mit Absicht: Eine Welle bringt bis zu
+ * 200 Gegner und 600 Geschosse, und getroffen wird viel oefter als gestorben. Bei zwoelf
+ * Plaetzen - der Groesse des Gewinnvorrats - waere die Zahl eines Treffers nach einer
+ * Zwanzigstelsekunde wieder ueberschrieben; man saehe ein Flackern statt einer Auskunft.
+ *
+ * Nach oben deckelt ihn dasselbe Argument von der anderen Seite: Was nicht mehr lesbar ist,
+ * ist kein Text mehr, sondern Rauschen ueber der Station. Vierundsechzig ist der Punkt, an
+ * dem ein dichter Pulk voll beschriftet ist und das Feld darunter noch durchscheint.
+ */
+const DAMAGE_SLOTS = 64
+/**
+ * Lebensdauer einer Schadenszahl bei Tempo x1.
+ *
+ * Kuerzer als der Gewinn: Der Gewinn ist die Belohnung und darf nachhallen, der Schaden ist
+ * eine laufende Auskunft. Bliebe sie so lange stehen, ueberlagerten sich bei acht Schuessen
+ * je Sekunde die Zahlen desselben Turms.
+ *
+ * Eine Sekunde und nicht die urspruenglichen 0,7: Eine Zahl muss **gelesen** werden koennen,
+ * und gelesen wird sie nicht dort, wo der Blick gerade steht, sondern nachdem er hingewandert
+ * ist. Bei 0,7 s war eine ausgebaute Station in Welle 12 nachgemessen bei rund acht Meldungen
+ * je Sekunde - also im Mittel fuenf Zahlen gleichzeitig, und zwar fuenf sehr kurze. Der
+ * Eindruck war nicht "ruhig", sondern "zuckt": Jede Zahl war schon weg, bevor sie jemand
+ * anschauen konnte. Die laengere Frist macht aus demselben Gefecht ein stehendes Feld
+ * Zahlen, das sich lesen laesst. Nach oben deckelt es der Ringspeicher: Ueber einer Sekunde
+ * ueberholen sich bei dichtem Feuer die Plaetze, und eine Zahl verschwaende mitten im Stehen.
+ */
+export const DAMAGE_LIFE = 1
 /**
  * Kommt innerhalb dieser Zeit weiteres Gold dazu, waechst die letzte Zahl weiter, statt
  * dass eine zweite daneben steht. Wer den Zeiger ueber ein Feld voller Muenzen zieht,
@@ -275,6 +364,18 @@ export type CombatState = {
   /** Aufsteigende Betraege beim Einsammeln. */
   gains: Gain[]
   gainCursor: number
+  /** Aufsteigende Schadenszahlen samt Schreibzeiger und laufender Nummer. */
+  damages: DamageNumber[]
+  damageCursor: number
+  /**
+   * Zaehlt **jede** Schadensmeldung, auch die ausgeduennten.
+   *
+   * Er hat zwei Aufgaben, und beide brauchen genau diesen Zaehlstand: Er ordnet die Zahlen
+   * nach Alter (`DamageNumber.seq`), und er duennt bei hohem Tempo aus - jede zweite
+   * beziehungsweise jede vierte Meldung bekommt eine Zahl. Zaehlte er nur die abgelegten,
+   * kaeme das Ausduennen nie zum Zug.
+   */
+  damageSeq: number
   /** Nachzittern des Kerns nach einem Treffer auf die Station. */
   stationFlash: StationFlash
   nextId: number
@@ -303,6 +404,25 @@ export type CombatState = {
   /** Fester Vorrat an Laserstrahlen samt Schreibzeiger - wie Muendungsfeuer. */
   beams: Beam[]
   beamCursor: number
+
+  /**
+   * Module, die gerade im Overdrive sind (`sim/overdrive.ts`).
+   *
+   * Anders als `abilityBonus` und `eventBonus` steht hier **kein fertiger Zuschlag**: Der
+   * Zustand gilt je Modul und nicht fuer die ganze Station, und deshalb kann ihn auch nicht
+   * `applyTimed` auflegen. Er wird in `moduleStats` gelesen, wo das Modul bekannt ist.
+   */
+  overdrive: Map<string, Overdrive>
+  /** Hat `Last Stand` in dieser Welle bereits ausgeloest? */
+  lastStandDone: boolean
+  /**
+   * Welches Ziel ein Laser wie lange haelt (`Focal Lens`, `sim/towers.ts`).
+   *
+   * Der einzige Katalogwert mit eigenem Gedaechtnis. Er steht hier und nicht am Modul, weil
+   * `PlacedModule` die **Bauform** beschreibt und ein Umbau sie neu erzeugt - eine Haltezeit
+   * ueberlebte das nicht, und sie soll es auch nicht.
+   */
+  beamFocus: Map<string, { targetId: number; seconds: number }>
 
   /** Additive Boni auf Kampfwerte aller Module. */
   abilityBonus: Partial<Record<StatKey, number>>
@@ -418,6 +538,19 @@ export function createCombatState(): CombatState {
       active: false,
     })),
     gainCursor: 0,
+    damages: Array.from({ length: DAMAGE_SLOTS }, () => ({
+      pos: { x: 0, y: 0 },
+      radius: 0,
+      value: 0,
+      crit: false,
+      drift: 0,
+      seq: 0,
+      age: 0,
+      life: DAMAGE_LIFE,
+      active: false,
+    })),
+    damageCursor: 0,
+    damageSeq: 0,
     stationFlash: { age: 0, life: STATION_FLASH_LIFE, active: false },
     nextId: 1,
     killsThisWave: 0,
@@ -433,6 +566,9 @@ export function createCombatState(): CombatState {
       active: false,
     })),
     beamCursor: 0,
+    overdrive: new Map(),
+    lastStandDone: false,
+    beamFocus: new Map(),
     abilityBonus: {},
     damageReduction: 0,
     enemySpeedFactor: 1,
@@ -461,6 +597,20 @@ export function fireFlash(
   color: string,
 ): void {
   const combat = state.runtime.combat
+  /*
+   * Ohne Zuschauer entsteht hier gar nichts (wie in `placeFlash`).
+   *
+   * Rueckstoss und Blitz sind beide reine Anzeige - `recoils` liest allein
+   * `render/station.ts`, die Muendungsblitze allein `render/combat.ts`. In der Abwesenheit
+   * fallen in einer Stunde zehntausende Schuesse; jeder davon belegte bisher einen Platz im
+   * Ringspeicher und einen Eintrag in der Rueckstoss-Karte, die niemand je sieht.
+   *
+   * Der Selbsttest verlangte diese Regel schon ("waehrend der Abwesenheit entstehen keine
+   * optischen Effekte"), erwischte den Blitz aber nur zufaellig: Er lief durch, solange im
+   * **letzten** Takt der Abwesenheit gerade kein Turm geschossen hatte. Sobald sich die
+   * Gegner anders im Feld verteilten, war das nicht mehr so.
+   */
+  if (!combat.observed) return
   const interval = effectLife(state, MUZZLE_INTERVAL)
 
   let recoil = combat.recoils.get(uid)
@@ -514,10 +664,13 @@ export function placeFlash(state: GameState, uid: string): void {
  * (GDD 13 Abschnitt 10).
  *
  * Der Zufall kommt aus dem **Optikstrom**: Weil hier je nach Tempo unterschiedlich viele
- * Zahlen gezogen werden, duerfte er den Spielzufall nicht verschieben.
+ * Zahlen gezogen werden, duerfte er den Spielzufall nicht verschieben. Aus demselben Grund
+ * darf der Riegel fuer den unbeobachteten Kampf hier stehen: Was er einspart, sind
+ * Ziehungen aus genau diesem Strom, nicht aus dem des Spiels.
  */
 export function burstEnemy(state: GameState, enemy: Enemy, color: string): void {
   const combat = state.runtime.combat
+  if (!combat.observed) return
   const rng = state.runtime.fxRng
   const speed = Math.max(1, state.runtime.speedFactor)
   const count = Math.max(2, Math.round(6 / Math.sqrt(speed)))
@@ -614,6 +767,7 @@ export function surgeStation(state: GameState): void {
  */
 export function echoBoss(state: GameState, boss: Enemy, color: string): void {
   const combat = state.runtime.combat
+  if (!combat.observed) return
 
   for (let i = 0; i < 3; i++) {
     const burst = combat.bursts[combat.burstCursor] as Burst
@@ -638,6 +792,7 @@ export function echoBoss(state: GameState, boss: Enemy, color: string): void {
  */
 export function spillGold(state: GameState, at: Vec2): void {
   const combat = state.runtime.combat
+  if (!combat.observed) return
   const rng = state.runtime.fxRng
   const count = state.runtime.speedFactor >= 4 ? 1 : 2
 
@@ -697,6 +852,68 @@ export function spawnGain(state: GameState, at: Vec2, amount: number): void {
   gain.age = 0
   gain.life = effectLife(state, GAIN_LIFE)
   gain.active = true
+}
+
+/**
+ * Der angerichtete Schaden steigt ueber dem Gegner auf.
+ *
+ * Ringspeicher wie ueberall sonst: Der aelteste Eintrag weicht, es entsteht kein Speicher je
+ * Treffer. Anders als beim Gewinn wird **nicht** zusammengefasst - dort zaehlt eine Zahl
+ * hoch, weil der Spieler einen Betrag einsammelt; hier ist jeder Treffer ein eigenes
+ * Ereignis, und zwei Tuerme, die auf denselben Gegner feuern, sollen als zwei Zahlen
+ * sichtbar sein.
+ *
+ * Bei Tempo x2 und x4 wird **ausgeduennt, nicht beschleunigt**: Es faellt viermal so viel
+ * Schaden je echter Sekunde an, und jede einzelne Zahl zu zeigen ergaebe einen Ziffernteppich
+ * ueber der Station. Gezeigt wird jede zweite beziehungsweise vierte - die Zahlen bleiben
+ * dabei einzeln lesbar, und ihre **Groessenordnung** stimmt weiter, weil sie nicht
+ * verkuerzt, sondern nur seltener gezeigt werden.
+ *
+ * Der seitliche Versatz kommt aus dem Optikstrom (`fxRng`) und nicht aus dem Spielzufall:
+ * Wie viele Zahlen gezogen werden, haengt am eingestellten Tempo - aus dem Spielstrom
+ * gezogen verschoebe die Anzeige den Spielverlauf.
+ */
+export function spawnDamage(
+  state: GameState,
+  at: Vec2,
+  radius: number,
+  amount: number,
+  crit: boolean,
+): void {
+  const combat = state.runtime.combat
+  if (!combat.observed) return
+  // Unter einem halben Punkt bliebe nach dem Runden eine "0" stehen - eine Zahl, die
+  // nichts sagt und trotzdem einen Platz belegt.
+  if (!Number.isFinite(amount) || amount < 0.5) return
+
+  combat.damageSeq += 1
+  const speed = Math.max(1, Math.round(state.runtime.speedFactor))
+  if (combat.damageSeq % speed !== 0) return
+
+  const slot = combat.damages[combat.damageCursor] as DamageNumber
+  combat.damageCursor = (combat.damageCursor + 1) % combat.damages.length
+  slot.pos.x = at.x
+  slot.pos.y = at.y
+  slot.radius = radius
+  slot.value = amount
+  slot.crit = crit
+  /*
+   * Der Ausschlag meidet die Null: Ein Wert nahe null hiesse "genau ueber dem Gegner", und
+   * zwei Treffer im selben Takt legten sich dann Ziffer auf Ziffer.
+   *
+   * Die **Seite** entscheidet dabei die laufende Nummer und nicht mehr der Wurf. Bei einer
+   * Muenze faellt in der Haelfte aller Faelle zweimal hintereinander dieselbe Seite, und
+   * genau dann stehen zwei aufeinanderfolgende Zahlen desselben Turms wieder in einer
+   * Spalte - das war im Standbild von Welle 12 der haeufigste Grund, aus dem aus zwei
+   * Zahlen ein Klumpen wurde. Im Wechsel gehen sie garantiert auseinander. Die **Weite**
+   * bleibt beim Optikstrom: Sie soll ungleich sein, damit keine zwei Reihen entstehen.
+   */
+  const side = combat.damageSeq % 2 === 0 ? 1 : -1
+  slot.drift = side * state.runtime.fxRng.range(0.45, 1)
+  slot.seq = combat.damageSeq
+  slot.age = 0
+  slot.life = effectLife(state, DAMAGE_LIFE)
+  slot.active = true
 }
 
 /*
@@ -822,6 +1039,14 @@ export function applyExplosion(
   radius: number,
   damage: number,
   except?: Enemy,
+  /**
+   * Darf diese Explosion nachzuenden (`Sympathetic Detonation`)?
+   *
+   * Der Nachschlag ruft dieselbe Funktion mit `false` - **eine** Kette und keine
+   * Rekursion. Halb so stark und halb so stark davon waere ein Rauschen, das nie ganz
+   * aufhoert, und die Zahl der Durchlaeufe haenge an einer Gleitkommaschwelle.
+   */
+  echo = true,
 ): number {
   const combat = state.runtime.combat
   if (radius <= 0 || damage <= 0) return 0
@@ -837,6 +1062,13 @@ export function applyExplosion(
   }
 
   ring(state, center, radius * 0.5, PALETTE_BLAST, BURST_LIFE * 2)
+
+  // `Sympathetic Detonation`: derselbe Umkreis noch einmal, halb so stark. Das
+  // ausgenommene Ziel bleibt ausgenommen - es hat seinen Treffer schon bekommen.
+  if (echo && hasRule(state, 'sympatheticDetonation')) {
+    applyExplosion(state, center, radius, damage / 2, except, false)
+  }
+
   return hit
 }
 
@@ -959,7 +1191,9 @@ export function stepEnemyStates(state: GameState, dt: number): void {
 
     if (enemy.burnLeft > 0) {
       enemy.burnLeft -= dt
-      applyDamage(state, enemy, enemy.burnDps * dt)
+      // Als `overTime` gekennzeichnet: Der Schaden zaehlt voll, aber ein Takt Verbrennung
+      // bekommt weder eine Meldung noch eine eigene Zahl ueber dem Feld.
+      applyDamage(state, enemy, enemy.burnDps * dt, { overTime: true })
       if (enemy.burnLeft <= 0) {
         enemy.burnLeft = 0
         enemy.burnDps = 0
@@ -986,6 +1220,23 @@ export function stepEnemyStates(state: GameState, dt: number): void {
 // ---------------------------------------------------------------------------
 
 /** Ein Treffer auf die Station. `atPos` dient nur dem Aufblitzen an der Trefferstelle. */
+/**
+ * `Field Repair`: Die Huelle flickt sich waehrend des Gefechts (`data/upgrades.ts`).
+ *
+ * Sie heilt **nie ueber den Hoechstwert** und nie eine gefallene Station wieder hoch: Ist
+ * die Huelle auf null, laeuft `restartWave` - eine Regeneration, die das ueberholte, machte
+ * aus dem Verlust einer Welle eine Frage der Reihenfolge im Takt.
+ */
+export function regenStation(state: GameState, dt: number): void {
+  const combat = state.runtime.combat
+  if (combat.stationHp <= 0 || combat.stationHp >= combat.maxStationHp) return
+
+  const perSecond = globalValue(state, 'hullRegen')
+  if (perSecond <= 0) return
+
+  combat.stationHp = Math.min(combat.maxStationHp, combat.stationHp + perSecond * dt)
+}
+
 export function damageStation(state: GameState, amount: number, atPos: Vec2): void {
   const combat = state.runtime.combat
   if (!Number.isFinite(amount) || amount <= 0) return
@@ -997,6 +1248,10 @@ export function damageStation(state: GameState, amount: number, atPos: Vec2): vo
   if (taken <= 0) return
 
   combat.stationHp = Math.max(0, combat.stationHp - taken)
+
+  // `Last Stand` schlaegt an, sobald die Huelle unter die Schwelle faellt - hier und nicht
+  // je Takt, weil sie sich nur an dieser einen Stelle verringert.
+  checkLastStand(state)
 
   if (combat.observed) {
     // Der Kern zuckt. Ein neuer Treffer setzt das Zittern zurueck, statt es zu stapeln.
@@ -1071,7 +1326,30 @@ export function berserkFactor(enemy: Enemy): number {
 // Schaden an Gegnern
 // ---------------------------------------------------------------------------
 
-export type DamageFlags = { crit?: boolean }
+/**
+ * `overTime` kennzeichnet Schaden, der **je Takt** anfaellt - heute die Verbrennung.
+ *
+ * Er trifft sechzigmal je Sekunde mit einem Sechzigstel der Wirkung. Als Meldung und als
+ * Zahl ueber dem Feld waere das kein Treffer, sondern ein Zaehlwerk: sechzig "3" statt einer
+ * "180". Der Schaden selbst laeuft unveraendert durch dieselbe Stelle wie jeder andere -
+ * nur die Quittung bleibt aus.
+ */
+export type DamageFlags = {
+  crit?: boolean
+  overTime?: boolean
+  /**
+   * Welches Modul diesen Schaden verursacht hat - oder nichts, wenn niemand dahintersteht.
+   *
+   * Sie kam mit dem Overdrive dazu und beantwortet die eine Frage, die der Kampf vorher nie
+   * stellen musste: **wer** hat getroffen. Ohne sie liesse sich "ein Turret, das toetet, geht
+   * in Overdrive" nicht ausdruecken - der Schaden kannte bis dahin nur sein Ziel.
+   *
+   * Sie ist freiwillig, und das ist kein Versehen: Verbrennung, Explosionen eines
+   * "Volatile"-Elites und der Rueckstrahl eines Reflektors haben keinen Schuetzen. Ein
+   * Pflichtfeld zwaenge dort zu einer erfundenen Antwort.
+   */
+  sourceUid?: string
+}
 
 /** Schaden auf einen Gegner. Toetet ihn, wenn seine HP auf null fallen. */
 export function applyDamage(
@@ -1091,7 +1369,28 @@ export function applyDamage(
    * nicht toeten kann, ist kein Gegner, sondern ein Hindernis.
    */
   const blocked = Math.max(0, Math.min(0.9, enemy.shield))
-  const dealt = (flags.crit ? amount * CRIT_MULTIPLIER : amount) * (1 - blocked)
+
+  /*
+   * Drei Katalogwerte greifen hier - an der einen Stelle, durch die jeder Schaden laeuft:
+   *
+   *   `Killing Blow`   hebt den Kritmultiplikator.
+   *   `Shatterpoint`   laesst verlangsamte Gegner mehr kritischen Schaden nehmen. Nur auf
+   *                    kritische Treffer, sonst waere es dasselbe wie `Ashfall`.
+   *   `Ashfall`        laesst brennende Gegner mehr Schaden aus **allen** Quellen nehmen -
+   *                    auch aus der Verbrennung selbst, und genau das ist gemeint.
+   *
+   * Sie sind Eigenschaften des **Ziels** und des Treffers, nicht des Schuetzen. Deshalb
+   * stehen sie hier und nicht in `sim/towers.ts`: Ein brennender Gegner nimmt mehr, egal
+   * wer schiesst.
+   */
+  let multiplier = 1
+  if (flags.crit) {
+    multiplier *= CRIT_MULTIPLIER + specialValue(state, 'critDamage')
+    if (enemy.chillLeft > 0 && hasRule(state, 'shatterpoint')) multiplier *= 1.5
+  }
+  if (enemy.burnLeft > 0 && hasRule(state, 'ashfall')) multiplier *= 1.2
+
+  const dealt = amount * multiplier * (1 - blocked)
   if (dealt <= 0) return
 
   enemy.hp -= dealt
@@ -1113,7 +1412,48 @@ export function applyDamage(
     })
   }
 
-  if (enemy.hp <= 0) killEnemy(state, enemy)
+  /*
+   * Die Quittung des Treffers: gemeldet und als Zahl ueber den Gegner gelegt.
+   *
+   * Beides steht hier und nicht in einem Zuhoerer der Meldung. Der Zuhoerer braeuchte den
+   * Spielstand, den die Meldung nicht traegt - und alle uebrigen Effekte des Kampfes
+   * (Blitze, Splitter, Druckwellen, Gewinne) legt der Kampf ebenso direkt in seinen
+   * eigenen Vorrat. Die Meldung bleibt trotzdem: An ihr haengt spaeter der Klang.
+   */
+  if (flags.overTime !== true) {
+    emit('enemy.damaged', {
+      amount: dealt,
+      crit: flags.crit === true,
+      x: enemy.pos.x,
+      y: enemy.pos.y,
+    })
+    spawnDamage(state, enemy.pos, enemy.radius, dealt, flags.crit === true)
+
+    /*
+     * Und der Getroffene brennt kurz durch (E14, GDD 13 Abschnitt 10).
+     *
+     * Nur hier und nicht bei `overTime`: Die Verbrennung trifft sechzigmal je Sekunde: Eine
+     * Aufhellung je Tick waere kein Aufblitzen, sondern ein zweiter Anstrich - und der
+     * brennende Gegner hat mit seinem goldenen Glimmen bereits seinen eigenen Zustand.
+     *
+     * `age` wird zurueckgesetzt statt aufaddiert: Zwei Treffer kurz hintereinander sollen
+     * zweimal aufblitzen und nicht einmal doppelt so lang leuchten.
+     */
+    enemy.flash = 0
+    enemy.flashLife = effectLife(state, ENEMY_FLASH_LIFE)
+  }
+
+  /*
+   * Der Overdrive-Ausloeser sitzt hier und nicht in `killEnemy`: Nur an dieser Stelle ist
+   * bekannt, **wer** getroffen hat. `killEnemy` wird auch von der Verbrennung und von
+   * Explosionen gerufen, hinter denen kein Schuetze steht.
+   */
+  if (enemy.hp <= 0) {
+    killEnemy(state, enemy)
+    if (flags.sourceUid !== undefined) overdriveOnKill(state, flags.sourceUid)
+  } else if (flags.sourceUid !== undefined && flags.overTime !== true) {
+    overdriveOnHit(state, flags.sourceUid)
+  }
 }
 
 /**
@@ -1274,16 +1614,28 @@ export function stepEffects(state: GameState, dt: number): void {
     if (gain.age > gain.life) gain.active = false
   }
 
+  for (const damage of combat.damages) {
+    if (!damage.active) continue
+    damage.age += dt
+    if (damage.age > damage.life) damage.active = false
+  }
+
   const flash = combat.stationFlash
   if (flash.active) {
     flash.age += dt
     if (flash.age > flash.life) flash.active = false
   }
 
-  // Der Biss altert am Gegner selbst - er gehoert zu ihm und nicht in einen Vorrat.
+  // Der Biss und die Trefferquittung altern am Gegner selbst - beide gehoeren zu ihm und
+  // nicht in einen Vorrat.
   for (const enemy of combat.enemies) {
-    if (enemy.biteLife <= 0) continue
-    enemy.bite += dt
-    if (enemy.bite > enemy.biteLife) enemy.biteLife = 0
+    if (enemy.biteLife > 0) {
+      enemy.bite += dt
+      if (enemy.bite > enemy.biteLife) enemy.biteLife = 0
+    }
+    if (enemy.flashLife > 0) {
+      enemy.flash += dt
+      if (enemy.flash > enemy.flashLife) enemy.flashLife = 0
+    }
   }
 }

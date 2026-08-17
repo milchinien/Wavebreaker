@@ -199,9 +199,14 @@ export function progressionSuite(): void {
 
     const after = effectiveTowerStats(state, CORE_UID)
     assert(after !== null, 'der Kern muss weiterhin Werte haben')
+    // Seit E7 traegt ein Perk dieselbe Effekt-Union wie ein Upgrade - der Betrag steht
+    // deshalb nur an den Formen, die einen haben.
+    const effect = perkById('perk.damage.1').effect
+    assertEqual(effect.kind, 'percent', 'ein Schadensperk wirkt anteilig')
+    const step = effect.kind === 'percent' ? effect.amount : 0
     assertClose(
       after.damage,
-      before.damage * (1 + perkById('perk.damage.1').effect.amount),
+      before.damage * (1 + step),
       1e-9,
       'der Schaden muss durch dieselbe Kette laufen',
     )
@@ -236,9 +241,10 @@ export function progressionSuite(): void {
     state.run.perks.push('perk.gold.1')
     assertClose(globalMultiplier(state, 'goldBonus'), 1.1, 1e-9)
 
-    state.run.upgrades['global.goldBonus'] = 1
-    // Additiv aus beiden Quellen - Perk 10 % plus Upgrade 6 % ergibt 16 %.
-    assertClose(globalMultiplier(state, 'goldBonus'), 1.16, 1e-9)
+    // `Scrapper's Eye` ist der Goldfaktor des Katalogs (`data/upgrades.ts`).
+    state.run.upgrades['f1.scrapperseye'] = 1
+    // Additiv aus beiden Quellen - Perk 10 % plus Upgrade 8 % ergibt 18 %.
+    assertClose(globalMultiplier(state, 'goldBonus'), 1.18, 1e-9)
   })
 
   check('Erfahrungsbonus gibt es nur als Perk und trotzdem ueber dieselbe Abfrage', () => {

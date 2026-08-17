@@ -11,13 +11,19 @@
 
 import { emit } from '../core/events.ts'
 import type { Vec2 } from '../core/vec.ts'
-import { upgradeCost } from '../data/balance.ts'
-import { isKnownUpgrade, upgradeById } from '../data/upgrades.ts'
+import { upgradeStepCost } from '../data/balance.ts'
+import {
+  isKnownUpgrade,
+  levelOf,
+  upgradeById,
+  windowOpen,
+  type UpgradeWindow,
+} from '../data/upgrades.ts'
 import { activateAbility, toggleEquipped, unlockAbility } from '../sim/abilities.ts'
 import { placeFlash, spawnGain, spawnPickups } from '../sim/combat.ts'
 import { collectAt, collectRadius, meanCoinValue, type Coin } from '../sim/economy.ts'
 import { collectPodsAt, resolveEvent } from '../sim/events.ts'
-import { buyNode, doPrestige, isUnlocked } from '../sim/prestige.ts'
+import { buyNode, doPrestige, isUnlocked, towerSlots } from '../sim/prestige.ts'
 import { buyFromTrader, dismissTrader, reachTraderAt } from '../sim/trader.ts'
 import { choosePerk } from '../sim/progression.ts'
 import {
@@ -27,8 +33,8 @@ import {
   takeTowerOffer,
   towerCost,
 } from '../sim/shop.ts'
-import { maxStationHp, upgradeLevel } from '../sim/stats.ts'
-import { nextWave, previousWave, setAutoMode } from '../sim/waves.ts'
+import { maxStationHp } from '../sim/stats.ts'
+import { enterLeague, nextWave, previousWave, setAutoMode, skipToWave } from '../sim/waves.ts'
 import { spendGold } from './rewards.ts'
 import {
   canMove,
@@ -147,6 +153,35 @@ export function setView(state: GameState, view: View): void {
   emit('view.changed', { view })
 }
 
+/**
+ * Ein anderes Upgrade-Fenster oeffnen (`docs/upgrade-umbau.md` Abschnitt 8.5).
+ *
+ * Ein gesperrtes Fenster laesst sich nicht oeffnen - und die Regel steht **hier**, nicht in
+ * der Leiste: Ein Reiter, der im Menue gesperrt aussieht, waere sonst ueber einen anderen
+ * Weg trotzdem zu erreichen. Dieselbe Ueberlegung wie bei `upgradeBlock`.
+ *
+ * Es ist ausdruecklich **kein** Bereichswechsel: Der Aufrufer bleibt, wo er ist, und nur die
+ * Kacheln darunter tauschen.
+ */
+export function setUpgradeWindow(state: GameState, window: UpgradeWindow): boolean {
+  if (!windowOpen(state.run.upgrades, window)) return false
+  if (state.runtime.upgradeWindow === window) return true
+  state.runtime.upgradeWindow = window
+  return true
+}
+
+/**
+ * Nach einem Kauf oder einem Prestige: Steht der Reiter noch auf einem offenen Fenster?
+ *
+ * Ein Prestige nimmt die Tore zurueck (sie stehen in `run.upgrades`). Ohne diese Zeile
+ * bliebe der Reiter auf "Doctrine" stehen und zeigte ein Fenster, das der neue Run erst
+ * wieder freischalten muss.
+ */
+export function ensureOpenWindow(state: GameState): void {
+  if (windowOpen(state.run.upgrades, state.runtime.upgradeWindow)) return
+  state.runtime.upgradeWindow = 1
+}
+
 /** Kann an dieser Kante gebaut werden - und wenn nicht, warum? */
 export function placementError(state: GameState, at: FreeEdge): ActionResult {
   const { buildUid, dragUid } = state.runtime
@@ -169,39 +204,76 @@ function findModuleOrCore(state: GameState, uid: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Kosten der naechsten Stufe eines Pfads. `null`, wenn das Maximum erreicht ist oder der
- * Pfad noch gar nicht freigeschaltet ist.
+ * Warum eine Kachel nicht kaufbar ist - oder `null`, wenn sie es ist.
  *
- * Die Freischaltung wird **hier** geprueft und nicht nur im Menue: Ein Pfad, der im Menue
- * fehlt, waere sonst ueber einen anderen Weg trotzdem kaufbar. Die Regel gehoert an die
- * Handlung, nicht an ihre Darstellung.
+ * Vier Gruende, und jeder braucht im Hinweis einen eigenen Satz: Ein gesperrtes Fenster
+ * sagt etwas anderes als eine fehlende Voraussetzung, und beides etwas anderes als ein
+ * ausgereizter Pfad. Genau deshalb gibt diese Funktion einen **Grund** zurueck und nicht
+ * nur ein Ja/Nein - `nextUpgradeCost` unten wirft ihn wieder weg, das Menue nicht.
+ *
+ * Die Pruefung liegt **hier** und nicht im Menue: Ein Pfad, der dort fehlt, waere sonst
+ * ueber einen anderen Weg trotzdem kaufbar. Die Regel gehoert an die Handlung, nicht an
+ * ihre Darstellung.
+ */
+export type UpgradeBlock = 'unknown' | 'node' | 'window' | 'requires' | 'excluded' | 'max'
+
+export function upgradeBlock(state: GameState, path: string): UpgradeBlock | null {
+  if (!isKnownUpgrade(path)) return 'unknown'
+  const def = upgradeById(path)
+
+  // Der Prestige-Knoten steht vor allem anderen: Er ist die einzige Sperre, die ein Run
+  // nicht selbst aufheben kann (GDD 12 Abschnitt 10).
+  if (def.requiresNode !== undefined && !isUnlocked(state, def.requiresNode)) return 'node'
+  if (!windowOpen(state.run.upgrades, def.window)) return 'window'
+  if (def.requires !== undefined && levelOf(state.run.upgrades, def.requires) === 0) {
+    return 'requires'
+  }
+  // Die beiden Doktrinen aus Fenster 3: Wer eine gekauft hat, kommt an die andere in
+  // diesem Run nicht mehr heran. Das ist die Entscheidung, die sie ausmacht.
+  if (def.excludes !== undefined && levelOf(state.run.upgrades, def.excludes) > 0) {
+    return 'excluded'
+  }
+  if (levelOf(state.run.upgrades, path) >= def.maxLevel) return 'max'
+  return null
+}
+
+/**
+ * Kosten der naechsten Stufe eines Pfads. `null`, wenn er aus irgendeinem Grund nicht
+ * kaufbar ist.
  */
 export function nextUpgradeCost(state: GameState, path: string): number | null {
-  if (!isKnownUpgrade(path)) return null
+  if (upgradeBlock(state, path) !== null) return null
   const def = upgradeById(path)
-  if (def.unlock !== undefined && !isUnlocked(state, def.unlock)) return null
-  const level = upgradeLevel(state.run.upgrades, path)
-  if (level >= def.maxLevel) return null
-  return upgradeCost(def.baseCost, level + 1)
+  return upgradeStepCost(def, levelOf(state.run.upgrades, path) + 1)
 }
 
 /**
  * Ein Upgrade kaufen. Wirkt sofort - alle Werte laufen durch `sim/stats.ts`, es gibt
  * keinen zweiten Ort, an dem Kampfwerte entstehen.
+ *
+ * Drei Dinge muessen nach dem Kauf **nachgezogen** werden, weil sie nicht bei jeder Abfrage
+ * neu entstehen, sondern irgendwo gespeichert stehen:
  */
 export function buyUpgrade(state: GameState, path: string): boolean {
   const cost = nextUpgradeCost(state, path)
   if (cost === null) return false
   if (!spendGold(state, cost)) return false
 
-  const level = upgradeLevel(state.run.upgrades, path) + 1
+  const level = levelOf(state.run.upgrades, path) + 1
   state.run.upgrades[path] = level
 
-  // Mehr Stations-HP wirken sofort, nicht erst ab der naechsten Welle.
-  const combat = state.runtime.combat
-  const previousMax = combat.maxStationHp
-  combat.maxStationHp = maxStationHp(state)
-  if (combat.maxStationHp > previousMax) combat.stationHp += combat.maxStationHp - previousMax
+  // 1. Turmplaetze stehen in der Station und nicht in einer Formel - `Foreman` und seine
+  //    beiden Geschwister muessen dort ankommen, sonst erscheint der Platz erst nach dem
+  //    naechsten Prestige.
+  state.run.station.slots = towerSlots(state)
+
+  // 2. Buffs haengen seit E2 auch an Upgrades (`Choir`, `Wide Chorus`). Die Stationssicht
+  //    ist zwischengespeichert und wuerde die alte Rechnung weiterreichen, bis das naechste
+  //    Modul gesetzt wird.
+  invalidateStationView(state)
+
+  // 3. Mehr Stations-HP wirken sofort, nicht erst ab der naechsten Welle.
+  applyStationHpChange(state)
 
   markDirty(state)
   emit('upgrade.bought', { path, level, cost })
@@ -319,6 +391,8 @@ export function buyPrestigeNode(state: GameState, nodeId: string): boolean {
 export function performPrestige(state: GameState, coreId?: string): boolean {
   if (!doPrestige(state, coreId)) return false
   setView(state, 'combat')
+  // Die Tore stehen in `run.upgrades` und sind damit weg - der Reiter muss zurueck.
+  ensureOpenWindow(state)
   return true
 }
 
@@ -336,6 +410,34 @@ export function goToNextWave(state: GameState): boolean {
 
 export function goToPreviousWave(state: GameState): boolean {
   return previousWave(state)
+}
+
+/** Direkt auf eine erreichte Welle - die Regel steht in `sim/waves.ts`. */
+export function goToWave(state: GameState, wave: number): boolean {
+  return skipToWave(state, wave)
+}
+
+// ---------------------------------------------------------------------------
+// Ligensteuerung (docs/liga-system.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Die Liga wechseln - die zweite Achse derselben Steuerung.
+ *
+ * Ohne Bestaetigungsfenster: Der Wechsel kostet nichts und ist jederzeit umkehrbar. Ein
+ * Fenster davor behauptete eine Tragweite, die er nicht hat - und hielte nebenbei den Kampf
+ * auf, den es laut GDD 02 nie aufhalten darf.
+ */
+export function goToLeague(state: GameState, league: number): boolean {
+  return enterLeague(state, league)
+}
+
+export function goToNextLeague(state: GameState): boolean {
+  return enterLeague(state, state.run.league + 1)
+}
+
+export function goToPreviousLeague(state: GameState): boolean {
+  return enterLeague(state, state.run.league - 1)
 }
 
 // ---------------------------------------------------------------------------
@@ -379,7 +481,7 @@ export function collectGoldAt(state: GameState, pos: { x: number; y: number }): 
 
   spawnPickups(state, taken, pos, mean)
   spawnGain(state, pos, collected)
-  emit('gold.collected', { amount: collected })
+  emit('gold.collected', { amount: collected, coins: taken.length })
   return collected
 }
 

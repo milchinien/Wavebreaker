@@ -14,6 +14,8 @@
  * fehlt nur eine Bequemlichkeit.
  */
 
+import { BUSES, clampLevel, defaultMix, type MixLevels } from './mixer.ts'
+
 export type Settings = {
   /** Buff-Linien dauerhaft zeigen, nicht nur bei Auswahl. */
   buffLines: boolean
@@ -21,14 +23,14 @@ export type Settings = {
   effects: boolean
   /** Bewegte Uebergaenge zwischen den Bereichen. Aus fuer wen sie stoeren. */
   motion: boolean
-  /** Lautstaerke von 0 bis 1. */
-  volume: number
+  /** Ein Pegel je Klanggruppe, jeweils 0 bis 1 (`app/mixer.ts`). */
+  mix: MixLevels
 }
 
 export const SETTINGS_KEY = 'wavebreaker.settings'
 
 export function defaultSettings(): Settings {
-  return { buffLines: true, effects: true, motion: true, volume: 0.5 }
+  return { buffLines: true, effects: true, motion: true, mix: defaultMix() }
 }
 
 type Storage = {
@@ -66,7 +68,7 @@ export function loadSettings(): Settings {
     buffLines: readBoolean(entry['buffLines'], base.buffLines),
     effects: readBoolean(entry['effects'], base.effects),
     motion: readBoolean(entry['motion'], base.motion),
-    volume: readVolume(entry['volume'], base.volume),
+    mix: readMix(entry, base.mix),
   }
 }
 
@@ -84,7 +86,26 @@ function readBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback
 }
 
-function readVolume(value: unknown, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
-  return Math.max(0, Math.min(1, value))
+/**
+ * Die drei Pegel lesen - und einen alten Eintrag mitnehmen.
+ *
+ * Bis es die Busse gab, stand hier ein einziges Feld `volume`. Wer damals leise gestellt
+ * hat, bekommt seinen Wert auf alle drei Gruppen uebertragen statt auf den Startwert
+ * zurueckgesetzt. Das ist kein Luxus: Ein Spiel, das nach einer Aktualisierung ungefragt
+ * wieder auf volle Lautstaerke springt, macht genau einmal einen sehr schlechten Eindruck.
+ *
+ * Der neue Eintrag hat Vorrang. Sind beide da, ist `volume` ein Ueberbleibsel.
+ */
+function readMix(entry: Record<string, unknown>, fallback: MixLevels): MixLevels {
+  const legacy = entry['volume']
+  const inherited = typeof legacy === 'number' ? clampLevel(legacy, fallback.music) : null
+
+  const raw = entry['mix']
+  const stored = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null
+
+  const mix = { ...fallback }
+  for (const bus of BUSES) {
+    mix[bus] = clampLevel(stored?.[bus], inherited ?? fallback[bus])
+  }
+  return mix
 }

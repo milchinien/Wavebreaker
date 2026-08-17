@@ -21,7 +21,7 @@ import {
 import { grantReward } from '../app/rewards.ts'
 import type { GameState } from '../app/state.ts'
 import type { Enemy } from './enemies.ts'
-import { globalMultiplier } from './stats.ts'
+import { globalMultiplier, globalValue } from './stats.ts'
 
 export type Coin = {
   x: number
@@ -31,14 +31,34 @@ export type Coin = {
   count: number
 }
 
-/** Wie viel Gold ein Gegner faellen laesst - samt globalem Gold-Bonus (GDD 08 Abschnitt 5.3). */
+/**
+ * Wie viel Gold ein Gegner faellen laesst (GDD 08 Abschnitt 2 und 5.3).
+ *
+ * `Tithe` legt einen festen Betrag je Gegner obendrauf, `Scrapper's Eye` vervielfacht das
+ * Ganze - flach vor Faktor, dieselbe Reihenfolge wie bei den Kampfwerten. Fuer den Spieler
+ * heisst das: Der feste Betrag traegt die ersten Wellen, in denen ein Gegner ohnehin kaum
+ * etwas bringt, und der Faktor uebernimmt spaeter.
+ */
 export function goldValueFor(state: GameState, enemy: Enemy): number {
-  return enemy.goldReward * globalMultiplier(state, 'goldBonus')
+  const flat = enemy.goldReward + globalValue(state, 'goldPerKill')
+
+  /*
+   * `Tribute`: Bosse und Elites zahlen besser.
+   *
+   * Gefragt wird der **Gegner**, nicht die Welle: Ein Elite kann auf jeder Welle erscheinen,
+   * und ein Boss ist auf seiner Welle nicht der einzige Gegner. Der Faktor setzt hinter dem
+   * allgemeinen Goldbonus auf - er ist ein Aufschlag auf den Fund, nicht auf die Wirtschaft.
+   */
+  const special = enemy.elite.length > 0 || state.runtime.combat.bossId === enemy.id
+  const tribute = special ? 1 + globalValue(state, 'bossGold') : 1
+
+  return flat * globalMultiplier(state, 'goldBonus') * tribute
 }
 
-/** Sammelradius samt globalem Upgrade. */
+/** Sammelradius: Grundwert plus `Magnet Glove`, das Ganze mal den Faktoren aus Perks. */
 export function collectRadius(state: GameState): number {
-  return COLLECT_RADIUS * globalMultiplier(state, 'collectRadius')
+  const flat = COLLECT_RADIUS + globalValue(state, 'collectRadiusFlat')
+  return flat * globalMultiplier(state, 'collectRadius')
 }
 
 export function dropGold(state: GameState, pos: Vec2, amount: number): void {
@@ -138,7 +158,7 @@ export function collectAt(
   state: GameState,
   pos: Vec2,
   radius: number,
-  taken?: Vec2[],
+  taken?: Coin[],
 ): number {
   const coins = state.run.coins
   if (coins.length === 0) return 0
@@ -149,9 +169,18 @@ export function collectAt(
   for (const coin of coins) {
     if (dist(pos, { x: coin.x, y: coin.y }) <= radius) {
       collected += coin.value
-      // Die Orte gehen an die Anzeige, damit die Muenzen sichtbar zum Zeiger fliegen
-      // koennen. Die Simulation selbst braucht sie nicht.
-      taken?.push({ x: coin.x, y: coin.y })
+      /*
+       * Die aufgehobenen Muenzen gehen **vollstaendig** an die Anzeige, damit sie sichtbar
+       * zum Zeiger fliegen koennen. Die Simulation selbst braucht sie nicht.
+       *
+       * Vollstaendig heisst: samt Wert. Vorher ging nur der Ort heraus - `spawnPickups`
+       * las dann `coin.value` als `undefined`, und `coinLook` rechnete daraus einen
+       * Radius von NaN. Die aufgehobene Muenze flog also unsichtbar zum Zeiger. Dass es
+       * durchging, liegt an der Kovarianz von Feldern in TypeScript: Ein `Coin[]` laesst
+       * sich als `Vec2[]` uebergeben, und was danach hineingelegt wird, prueft niemand
+       * mehr. Deshalb steht hier jetzt `Coin` und nicht `Vec2`.
+       */
+      taken?.push({ ...coin })
     } else remaining.push(coin)
   }
 

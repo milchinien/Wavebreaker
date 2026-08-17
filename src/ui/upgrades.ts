@@ -1,60 +1,41 @@
 /**
- * Upgrade-Panel (GDD 08 Abschnitt 5, GDD 13 Abschnitt 6).
+ * Das Upgrade-Panel (GDD 13 Abschnitt 6, `docs/upgrade-umbau.md` Abschnitt 8).
  *
- * Es sitzt dauerhaft unten in der Kampfansicht - Verbessern ist die Handlung, die der
- * Spieler waehrend einer Welle staendig ausfuehrt, und sie soll keinen Bereichswechsel
- * kosten.
+ * **Auf der Kachel steht nichts ausser Bild und Rahmen.** Kein Wert, kein Preis, keine
+ * Stufe. Das ist die Entscheidung, aus der alles andere hier folgt - und sie ist das
+ * Gegenteil dessen, was die Vorgaengerfassung getan hat.
  *
- * **Bilder statt Zeilen.** Vorher trug jede Kachel ihren Namen als Text, und weil vierzehn
- * Kategorien nicht nebeneinander passten, lagen darueber eine Reiterleiste und ein
- * Sektionsbalken: drei Ebenen Beschriftung fuer drei Zahlen. Jetzt ist ein Pfad **eine
- * Kachel** - Zeichen, Stufe, Preis - und alle Pfade stehen zugleich da. Was ein Pfad
- * genau tut, sagt der Hinweis unter dem Zeiger; auf der Kachel steht nur, was man zum
- * Entscheiden braucht.
+ * Der Grund ist die Zahl der Kacheln: Zwanzig Stueck in zwei Reihen lassen einer Kachel bei
+ * gewoehnlicher Fensterbreite rund achtzig Pixel Kante. Ein Name, ein Wert und ein Preis
+ * darin waeren drei Zeilen Kleinstschrift nebeneinander - lesbar erst, wenn man nah
+ * herangeht, und dann liest man ohnehin nur eine. Ein **Bild** dagegen ist auf achtzig
+ * Pixeln genau richtig, und der Rahmen sagt in derselben Flaeche noch, ob man kaufen kann.
  *
- * Zwei Zeichen tragen die Bedeutung:
- *   das grosse   **was** verbessert wird - Schaden, Tempo, Reichweite
- *   die Marke    **wessen** Wert das ist - Kern, Turmart, Station
- * Dazu die Leitfarbe der Gruppe, in der auch ihr Turm auf dem Feld leuchtet. Drei Kacheln
- * derselben Gruppe stehen eng beieinander, zwischen den Gruppen ist mehr Luft - so liest
- * man die Ordnung, ohne dass irgendwo eine Ueberschrift steht.
+ * Was dadurch verloren geht, holt der Hinweis zurueck - und zwar vollstaendig: Er ist die
+ * einzige Stelle, an der Zahlen stehen, und er sagt bei **jeder** Kachel dasselbe
+ * (`ui/upgradetext.ts`).
  *
- * Turm-Upgrades stehen bewusst **je Turmart** und nicht je Exemplar (GDD 08 Abschnitt 5.2):
- * Bei 15 Tuermen bliebe das Menue sonst nicht ueberschaubar, und die eigentliche
- * Entscheidung - in welchen Turmtyp investiere ich? - gaebe es gar nicht.
- *
- * Zwei Groessen, eine Liste:
- *   compact  drei Reihen unten in der Kampfansicht, der Rest rollt
- *   full     der ganze Satz im Bereich "Upgrades"
- *
- * Aufgebaut wird nur bei einem Wechsel der Groesse. Gold aendert sich mit jedem
- * eingesammelten Stapel - wuerde das Panel dabei neu entstehen, spraenge bei jedem Klick
- * die Bildlaufposition zurueck.
+ * Fuenf Zustaende traegt der Rahmen, und die Farbe ist die **Art** und nicht das Ziel: So
+ * sieht man beim Ueberfliegen, wo die teuren Entscheidungen eines Fensters liegen - die
+ * Auskunft, die man beim Ueberfliegen braucht.
  */
 
-import { formatNumber, formatPercent } from '../core/format.ts'
+import { formatInt } from '../core/format.ts'
 import { t } from '../data/strings.ts'
-import { TOWERS } from '../data/towers.ts'
 import {
-  globalUpgrades,
-  upgradesForCore,
-  upgradesForTower,
+  upgradeById,
+  upgradeIcon,
+  upgradesInWindow,
+  WINDOW_SLOTS,
   type UpgradeDef,
+  type UpgradeWindow,
 } from '../data/upgrades.ts'
-import { buyUpgrade, nextUpgradeCost } from '../app/actions.ts'
+import { buyUpgrade, nextUpgradeCost, upgradeBlock } from '../app/actions.ts'
 import type { GameState } from '../app/state.ts'
-import { isUnlocked } from '../sim/prestige.ts'
 import { upgradeLevel } from '../sim/stats.ts'
-import { PALETTE } from '../render/theme.ts'
-import { GLOBAL_ICON, icon, STAT_ICON, towerIcon, type IconName } from './icons.ts'
+import { mountReveal } from './reveal.ts'
 import { hideTooltip, showTooltip } from './tooltip.ts'
-
-/** Symbol eines Pfads: Kampfwerte tragen ihr Wertzeichen, globale ihr Wirkzeichen. */
-function iconFor(def: UpgradeDef): IconName {
-  if (def.stat) return STAT_ICON[def.stat]
-  if (def.global) return GLOBAL_ICON[def.global]
-  return 'upgrade'
-}
+import { amountText, kindName, totalText } from './upgradetext.ts'
 
 export type UpgradeMode = 'compact' | 'full'
 
@@ -64,63 +45,9 @@ export type UpgradeMenu = {
   setMode(mode: UpgradeMode): void
 }
 
-type Category = {
-  id: string
-  name: string
-  /** Leitfarbe der Gruppe - dieselbe, in der der Turm auf dem Feld leuchtet. */
-  accent: string
-  /** Marke der Gruppe. Sie steht klein auf jeder ihrer Kacheln. */
-  icon: IconName
-  paths: readonly UpgradeDef[]
-}
-
 type Tile = {
   def: UpgradeDef
-  card: HTMLButtonElement
-  level: HTMLElement
-  cost: HTMLElement
-}
-
-/**
- * Kern, jede Turmart mit eigenen Pfaden, zuletzt die Station.
- *
- * Gesperrte Pfade fallen heraus - der Helfer erscheint erst, wenn der Prestige-Baum ihn
- * kaufbar gemacht hat (GDD 12 Abschnitt 10). Das ist eine **Datenabfrage** am Datensatz,
- * keine Fallunterscheidung nach "Helfer": Ein zweiter Helfer braucht hier keine Zeile.
- */
-function categories(state: GameState): Category[] {
-  const list: Category[] = [
-    {
-      id: 'core',
-      name: t('upgrades.core'),
-      accent: PALETTE.edge,
-      icon: towerIcon('core', 'core'),
-      paths: upgradesForCore(),
-    },
-  ]
-
-  for (const tower of TOWERS) {
-    const paths = upgradesForTower(tower.id)
-    if (paths.length === 0) continue
-    list.push({
-      id: tower.id,
-      name: tower.name,
-      accent: tower.accent,
-      icon: towerIcon(tower.id, 'tower'),
-      paths,
-    })
-  }
-
-  list.push({
-    id: 'global',
-    name: t('upgrades.global'),
-    accent: PALETTE.gold,
-    icon: 'base',
-    paths: globalUpgrades().filter(
-      (def) => def.unlock === undefined || isUnlocked(state, def.unlock),
-    ),
-  })
-  return list
+  node: HTMLButtonElement
 }
 
 export function mountUpgradeMenu(
@@ -130,26 +57,43 @@ export function mountUpgradeMenu(
 ): UpgradeMenu {
   let mode: UpgradeMode = 'compact'
   let tiles: Tile[] = []
+  /** Fuer welches Fenster das Raster gebaut wurde. */
+  let builtFor: UpgradeWindow | null = null
 
   root.replaceChildren()
 
-  // Gerollt wird innen, nicht am Panel: Aussen haengt in der vollen Ansicht noch die
-  // Faehigkeitenverwaltung, und die soll nicht mit den Kacheln davonfahren.
-  const body = document.createElement('div')
-  body.className = 'cat-body'
   const grid = document.createElement('div')
-  grid.className = 'upgrade-grid'
-  body.appendChild(grid)
-  root.appendChild(body)
+  grid.className = 'up-grid'
+  root.appendChild(grid)
+
+  // Die Punktmatrix unter dem Zeiger haengt am Raster und nicht an den Kacheln: `build`
+  // wirft die Kacheln bei jedem Fensterwechsel weg (`ui/reveal.ts`).
+  mountReveal(grid, '.up-tile')
 
   function build(): void {
+    const window = state.runtime.upgradeWindow
     tiles = []
     grid.replaceChildren()
+    builtFor = window
 
-    // Neu einlesen: Ein eben gekaufter Prestige-Knoten macht einen Pfad sichtbar, und das
-    // soll nicht erst beim naechsten Programmstart zu sehen sein.
-    for (const group of categories(state)) {
-      grid.appendChild(groupNode(group, state, tiles, onChange))
+    for (const def of upgradesInWindow(window)) {
+      const node = tileNode(def, state, onChange)
+      tiles.push({ def, node })
+      grid.appendChild(node)
+    }
+
+    /*
+     * Leere Plaetze bis zwanzig auffuellen.
+     *
+     * Ein leerer Platz ist ein **sichtbar leerer Platz** und keine Luecke: Er sagt, dass das
+     * Fenster noch Raum hat. Ohne ihn ruecken die vorhandenen Kacheln auseinander, und ein
+     * Fenster mit achtzehn Eintraegen saehe anders aus als eines mit zwanzig - obwohl sich
+     * nur der Inhalt unterscheidet, nicht das Raster.
+     */
+    for (let i = upgradesInWindow(window).length; i < WINDOW_SLOTS; i++) {
+      const empty = document.createElement('div')
+      empty.className = 'up-tile up-empty'
+      grid.appendChild(empty)
     }
 
     last = ''
@@ -159,27 +103,16 @@ export function mountUpgradeMenu(
   let last = ''
 
   function update(): void {
+    if (builtFor !== state.runtime.upgradeWindow) {
+      build()
+      return
+    }
+
     const signature = `${Math.floor(state.run.gold)}|${JSON.stringify(state.run.upgrades)}`
     if (signature === last) return
     last = signature
 
-    for (const tile of tiles) {
-      const level = upgradeLevel(state.run.upgrades, tile.def.id)
-      const cost = nextUpgradeCost(state, tile.def.id)
-
-      // Eine Null auf jeder ungekauften Kachel waere Rauschen. Die Stufe steht erst da,
-      // wenn es eine gibt - und genau daran sieht man auf einen Blick, wo schon Gold liegt.
-      tile.level.textContent = level > 0 ? String(level) : ''
-      tile.cost.textContent = cost === null ? t('upgrades.max') : formatNumber(cost)
-
-      // Kein `disabled`: Ein gesperrter Knopf bekommt keine Zeigerereignisse mehr, und
-      // damit faende ausgerechnet der Pfad keinen Hinweis, den man sich noch nicht leisten
-      // kann. Der Klick greift trotzdem nicht - `buyUpgrade` prueft selbst.
-      const affordable = cost !== null && state.run.gold >= cost
-      tile.card.classList.toggle('affordable', affordable)
-      tile.card.classList.toggle('locked', !affordable)
-      tile.card.setAttribute('aria-disabled', String(!affordable))
-    }
+    for (const tile of tiles) paint(tile, state)
   }
 
   build()
@@ -190,94 +123,79 @@ export function mountUpgradeMenu(
       if (next === mode) return
       mode = next
       root.classList.toggle('wide', mode === 'full')
-      build()
     },
   }
 }
 
-/** Eine Gruppe: ihre Kacheln stehen eng zusammen und wandern beim Umbruch gemeinsam. */
-function groupNode(
-  group: Category,
-  state: GameState,
-  tiles: Tile[],
-  onChange: () => void,
-): HTMLElement {
-  const node = document.createElement('div')
-  node.className = 'cat-group'
-  node.style.setProperty('--accent', group.accent)
-  for (const def of group.paths) node.appendChild(tile(group, def, state, tiles, onChange))
+/**
+ * Der Zustand einer Kachel als ein Wort.
+ *
+ * Die Reihenfolge der Abfragen ist die Reihenfolge der Endgueltigkeit: Was ausgekauft ist,
+ * bleibt ausgekauft; was hinter einem Prestige-Knoten oder einem Tor liegt, ist gesperrt,
+ * egal wie viel Gold dasteht.
+ */
+function stateOf(def: UpgradeDef, state: GameState): string {
+  const block = upgradeBlock(state, def.id)
+  if (block === 'max') return 'maxed'
+  if (block !== null) return 'locked'
+
+  const cost = nextUpgradeCost(state, def.id)
+  return cost !== null && state.run.gold >= cost ? 'ready' : 'unaffordable'
+}
+
+function paint(tile: Tile, state: GameState): void {
+  const level = upgradeLevel(state.run.upgrades, tile.def.id)
+  const status = stateOf(tile.def, state)
+
+  tile.node.dataset['state'] = status
+  // Der Fortschritt als Anteil - das Stilblatt macht daraus die Kerben am Rand. Endlose
+  // Pfade haben keinen: Ein Anteil an Unendlich ist keine Auskunft.
+  const share = Number.isFinite(tile.def.maxLevel) ? level / tile.def.maxLevel : 0
+  tile.node.style.setProperty('--fill', String(share))
+  tile.node.classList.toggle('has-level', level > 0)
+
+  tile.node.setAttribute('aria-disabled', String(status !== 'ready'))
+}
+
+function tileNode(def: UpgradeDef, state: GameState, onChange: () => void): HTMLButtonElement {
+  const node = document.createElement('button')
+  node.type = 'button'
+  node.className = 'up-tile'
+  node.dataset['kind'] = def.kind
+  node.setAttribute('aria-label', def.name)
+
+  const art = document.createElement('i')
+  art.className = 'up-art'
+  art.style.setProperty('--icon', `url('/icons/upgrades/${upgradeIcon(def)}.svg')`)
+  node.appendChild(art)
+
+  node.addEventListener('click', () => {
+    if (!buyUpgrade(state, def.id)) return
+    node.classList.remove('bought')
+    void node.offsetWidth
+    node.classList.add('bought')
+    // Der Hinweis steht noch offen und zeigt den alten Preis - er wird sofort nachgezogen.
+    pointAt(node, describe(state, def))
+    onChange()
+  })
+  node.addEventListener('animationend', () => node.classList.remove('bought'))
+
+  node.addEventListener('pointerenter', () => pointAt(node, describe(state, def)))
+  node.addEventListener('pointerleave', () => hideTooltip())
+
   return node
 }
 
-/** Eine Kachel: Stufe oben, Zeichen in der Mitte, Marke und Preis unten. */
-function tile(
-  group: Category,
-  def: UpgradeDef,
-  state: GameState,
-  tiles: Tile[],
-  onChange: () => void,
-): HTMLButtonElement {
-  const card = document.createElement('button')
-  card.type = 'button'
-  card.className = 'upgrade-card'
-  card.setAttribute('aria-label', t('upgrades.tipTitle', { group: group.name, path: def.label }))
-
-  const level = document.createElement('b')
-  level.className = 'lv'
-
-  const symbol = document.createElement('span')
-  symbol.className = 'sym'
-  symbol.innerHTML = icon(iconFor(def), 32)
-
-  const mark = document.createElement('span')
-  mark.className = 'mark'
-  mark.innerHTML = icon(group.icon, 16)
-
-  const cost = document.createElement('span')
-  cost.className = 'cost'
-
-  const foot = document.createElement('span')
-  foot.className = 'foot'
-  foot.append(mark, cost)
-
-  card.append(level, symbol, foot)
-
-  card.addEventListener('click', () => {
-    if (!buyUpgrade(state, def.id)) return
-    // Neu anstossen, falls zweimal schnell hintereinander gekauft wird: Ohne den
-    // Zwischenschritt bleibt die laufende Bewegung stehen und die zweite Quittung fehlt.
-    card.classList.remove('bought')
-    void card.offsetWidth
-    card.classList.add('bought')
-    // Der Hinweis steht noch offen und zeigt den alten Preis - er wird sofort nachgezogen.
-    pointAt(card, describe(state, group, def))
-    onChange()
-  })
-  // Die Quittung raeumt sich selbst weg - dafuer braucht es keine Uhr.
-  card.addEventListener('animationend', () => card.classList.remove('bought'))
-
-  // Der Text, der frueher auf der Kachel stand, steht jetzt hier - aber nur, wenn man
-  // ihn braucht.
-  card.addEventListener('pointerenter', () => {
-    pointAt(card, describe(state, group, def))
-  })
-  card.addEventListener('pointerleave', () => hideTooltip())
-
-  tiles.push({ def, card, level, cost })
-  return card
-}
-
 /**
- * Der Hinweis haengt an der Kachel, nicht am Zeiger - sonst zittert er beim Bewegen.
+ * Der Hinweis haengt an der Kachel, wird aber ueber dem **ganzen Panel** freigehalten.
  *
- * Freigehalten wird nicht die Kachel, sondern das **ganze Panel**. Eine Kachelwand hat
- * keinen Platz zwischen ihren Zeilen: Wer nur der Kachel selbst ausweicht, legt den Hinweis
- * ueber ihre Nachbarn, und ein Hinweis, der die naechste Kachel verdeckt, verhindert genau
- * den Vergleich, fuer den man ihn aufschlaegt. So steht er ueber der Leiste im freien Feld.
+ * Eine Kachelwand hat keinen Platz zwischen ihren Zeilen: Wer nur der Kachel selbst
+ * ausweicht, legt den Hinweis ueber ihre Nachbarn - und ein Hinweis, der die naechste Kachel
+ * verdeckt, verhindert genau den Vergleich, fuer den man ihn aufschlaegt.
  */
-function pointAt(card: HTMLElement, content: string): void {
-  const box = card.getBoundingClientRect()
-  const panel = card.closest('.upgrade-panel')?.getBoundingClientRect() ?? box
+function pointAt(node: HTMLElement, content: string): void {
+  const box = node.getBoundingClientRect()
+  const panel = node.closest('.upgrade-panel')?.getBoundingClientRect() ?? box
 
   showTooltip({ x: box.left + box.width / 2, y: panel.top }, content, {
     center: true,
@@ -285,21 +203,54 @@ function pointAt(card: HTMLElement, content: string): void {
   })
 }
 
-/** Was auf der Kachel keinen Platz hat: voller Name, Wirkung, Stufe, Preis. */
-function describe(state: GameState, group: Category, def: UpgradeDef): string {
+/**
+ * Alles, was von der Kachel verschwunden ist - und bei jeder Kachel in derselben Form.
+ *
+ * Die letzte Zeile ist die wichtigste: Sie sagt **warum** nicht gekauft werden kann. Ein
+ * Katalog mit Voraussetzungen und Ausschluessen hat Kacheln, die aus fuenf verschiedenen
+ * Gruenden stillstehen, und "kein Preis" nennt keinen davon. `Brink` ohne `Last Stand` saehe
+ * sonst genauso aus wie `Storm Doctrine` nach dem Kauf von `Iron Doctrine` - dabei wartet
+ * das eine auf einen Kauf und das andere ist fuer diesen Run endgueltig verloren.
+ */
+function describe(state: GameState, def: UpgradeDef): string {
   const level = upgradeLevel(state.run.upgrades, def.id)
   const cost = nextUpgradeCost(state, def.id)
+  const block = upgradeBlock(state, def.id)
 
-  // Pfade ohne prozentuale Wirkung - bisher nur der Goldsammler - zeigen ihre Stufe.
-  // Ein "+0 %" waere dort schlicht falsch.
-  const effect =
-    def.amount === 0
-      ? t('upgrades.level', { level })
-      : formatPercent(def.amount * level, { sign: true })
+  const rows: string[] = []
+
+  const per = amountText(def.effect)
+  if (per !== null) rows.push(row(t('upgrades.perLevel'), per))
+
+  const total = totalText(def, level)
+  if (total !== null) rows.push(row(t('upgrades.total'), total))
+
+  rows.push(row(t('upgrades.levelRow'), levelText(def, level)))
+
+  let foot: string
+  if (cost !== null) foot = t('hud.costs', { amount: formatInt(cost) })
+  else if (block === 'max') foot = t('upgrades.max')
+  else if (block === 'requires' && def.requires !== undefined) {
+    foot = t('upgrades.needs', { name: upgradeById(def.requires).name })
+  } else if (block === 'excluded' && def.excludes !== undefined) {
+    foot = t('upgrades.blocked', { name: upgradeById(def.excludes).name })
+  } else if (block === 'node') foot = t('upgrades.sealed')
+  else foot = t('upgrades.locked')
+  rows.push(row(t('upgrades.costRow'), foot))
 
   return (
-    `<b>${t('upgrades.tipTitle', { group: group.name, path: def.label })}</b>` +
-    `<br>${effect} · ${t('upgrades.tipLevel', { level, max: def.maxLevel })}` +
-    `<br>${cost === null ? t('upgrades.max') : t('hud.costs', { amount: formatNumber(cost) })}`
+    `<b>${def.name}</b> <em>${kindName(def.kind)}</em>` +
+    `<br>${def.info}` +
+    `<table class="tip-rows">${rows.join('')}</table>`
   )
+}
+
+function row(label: string, value: string): string {
+  return `<tr><th>${label}</th><td>${value}</td></tr>`
+}
+
+/** Endlose Pfade haben kein Maximum - "3 / Infinity" waere keine Auskunft. */
+function levelText(def: UpgradeDef, level: number): string {
+  if (!Number.isFinite(def.maxLevel)) return t('upgrades.level', { level })
+  return t('upgrades.tipLevel', { level, max: def.maxLevel })
 }

@@ -34,6 +34,9 @@
   --gold: #ffcc33;
   --violet: #b45cff;
   --section: #29a3f5;
+  /* Leben eines Gegners. Nur auf der Leinwand in Gebrauch (PALETTE.life), steht aber hier
+     mit, weil Leinwand und DOM dieselben Werte fuehren muessen. */
+  --life: #ff0000;
 
   /* Rollen. Im Spiel wird auf diese Namen verwiesen, nicht auf die Farben darueber. */
   --bg: var(--ink);
@@ -45,6 +48,19 @@
   --ok: var(--teal);
   --fail: var(--magenta);
   --warn: var(--gold);
+
+  /*
+   * Die drei Ressourcenfarben der Kopfleiste (`.resource-bar`).
+   *
+   * Eine Farbe je Ressource, und keine zwei duerfen sich eine teilen - genau daran erkennt
+   * man in der Zeile seine Zahl, bevor man das Zeichen daneben ansieht. Sie stehen als
+   * eigene Rollen und nicht als `--gold`/`--edge`/`--magenta`, weil sie waermer und um
+   * einiges ruhiger sind als die Signalfarben des Spielfelds: Ein Kontostand ist Auskunft,
+   * kein Alarm, und drei Neonfarben nebeneinander leuchteten lauter als der Kampf darunter.
+   */
+  --res-level: #f0b86e;
+  --res-gold: #f5dd49;
+  --res-prestige: #e894b8;
 
   /*
    * Die drei Leuchtstufen. Jede besteht aus demselben Dreiklang: eine harte Linie direkt
@@ -271,7 +287,13 @@ button {
 #dock {
   position: relative;
   flex: 0 0 auto;
-  padding: 8px 10px 10px;
+  /*
+   * Nur oben Luft. Links, rechts und unten sitzen Navileiste und Upgrade-Panel auf der
+   * Bildschirmkante - dieselbe Regel wie fuer die Schilder ueber dem Feld. Der Abstand nach
+   * oben bleibt, weil dort keine Bildschirmkante ist, sondern die Trennlinie zum Feld: Was
+   * an ihr klebte, saehe aus, als haenge es daran.
+   */
+  padding: 8px 0 0;
   border-top: 1px solid var(--cyan);
   background: linear-gradient(180deg, rgba(16, 32, 78, 0.55), var(--ink-deep));
   box-shadow: 0 -10px 26px rgba(70, 200, 255, 0.1);
@@ -279,11 +301,20 @@ button {
 
 /* --- Sichtbarkeit je Bereich --------------------------------------------- */
 
-.resource-bar,
+/*
+ * Was hier steht, gehoert einem Bereich. Was **nicht** hier steht, gehoert allen.
+ *
+ * Die Ressourcenzeile ist der wichtigste Eintrag dieser Liste, weil sie fehlt: Sie kommt in
+ * keiner einzigen `[data-view]`-Regel vor und laesst sich damit gar nicht bereichsweise
+ * ein- oder ausschalten. Frueher stand sie nur im Kampf und in den Upgrades - der Spieler
+ * verliess also genau den Bereich, in dem er kauft, und die Waehrung war aus dem Bild.
+ * Jede Ueberlagerung ersetzt seitdem nur die Flaeche darunter, nie die Kopfleiste.
+ */
 .speed-control,
 .hull-bar,
 .wave-card,
 .upgrade-panel,
+.action-panel,
 .wave-banner,
 .meta-card,
 .inventory-panel,
@@ -294,8 +325,6 @@ button {
   display: none;
 }
 
-#app[data-view='combat'] .resource-bar,
-#app[data-view='upgrades'] .resource-bar,
 #app[data-view='combat'] .speed-control,
 #app[data-view='upgrades'] .speed-control,
 #app[data-view='combat'] .hull-bar,
@@ -326,6 +355,84 @@ button {
 #app[data-view='combat'] .upgrade-panel,
 #app[data-view='upgrades'] .upgrade-panel {
   display: flex;
+}
+
+/*
+ * Das Handlungsfach steht dort, wo im Kampf die Kachelwand steht - und nur dort, wo es keine
+ * gibt. Die zwei Faecher darin gehoeren je einem Bereich; das jeweils andere ist weg, nicht
+ * bloss leer.
+ */
+#app[data-view='base'] .action-panel,
+#app[data-view='prestige'] .action-panel {
+  display: flex;
+}
+
+.action-slot {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+#app[data-view='base'] .action-buy,
+#app[data-view='prestige'] .action-prestige {
+  display: flex;
+}
+
+/*
+ * Und mit dem Panel waechst die Reiterleiste - nur mit ihm.
+ *
+ * Die Leiste nimmt sich die Breite, die der Deckel des Panels uebrig laesst (`.dock-row`).
+ * Wo kein Panel steht, laesst auch keines etwas uebrig: In der Basis, in den Einstellungen
+ * und im Prestige traegt die untere Leiste nichts als die sechs Reiter, und die duerfen
+ * dann nicht die halbe Fensterbreite und ein Drittel der Fensterhoehe fuellen - sie
+ * naehmen dem Spielfeld genau den Platz weg, den es dort braucht.
+ *
+ * Beides steht als Wert und nicht als zweite Regel auf `.dock-row`: Die schmalen Fenster
+ * bauen die Leiste ganz anders (siehe "Schmale Fenster"), und eine Bereichsregel waere
+ * staerker als ihre - der Umbruch fiele in genau den zwei Bereichen aus, in denen es auf
+ * ihn ankommt.
+ */
+/*
+ * Sechs Reiter im Format 1:2, hochkant, alle gleich gross.
+ *
+ * Das Seitenverhaeltnis ist die eigentliche Aussage dieser zwei Zeilen: Ein Reiter ist ein
+ * **Bild** und kein Knopf mit einem Zeichen darauf (`public/nav/`), und ein Bildformat, das
+ * ueberall dasselbe ist, laesst sich einmal zeichnen und sechsmal fuellen. Quadrate waeren
+ * die naheliegende Wahl gewesen und die falsche: Was in einer Bucht der Station steht, steht
+ * aufrecht.
+ *
+ * Die kleine Fassung greift nur auf schmalen Bildern - **nicht** in einzelnen Bereichen. Sie
+ * hing eine Fassung lang am Bereich, weil die Leiste ohne Kachelwand daneben keine Hoehe
+ * vorgegeben bekommt, und war in der Basis und im Prestige damit halb so gross wie im Kampf.
+ * Das war der Fehler: Ein Reiter ist dasselbe Ding, egal wo man gerade steht, und er darf
+ * nicht bei jedem Bereichswechsel die Groesse wechseln. Die Hoehe steht deshalb jetzt als
+ * Zahl da und wird nicht mehr vom Nachbarn geerbt.
+ */
+#app {
+  --nav-cols: repeat(6, 46px);
+  --nav-rows: 92px;
+}
+
+/*
+ * Die grosse Fassung: 98 x 195 px, das Format 1:2.
+ *
+ * Die 195 sind die Innenhoehe der Kachelwand bei einem 1000-px-Deckel (zwei Reihen zu 92,6 px
+ * plus 6 px Fuge plus 16 px Polsterung, minus Rahmen und die 12 px Polsterung der Leiste).
+ * Damit stehen Leiste und Kachelwand im Kampf auf **exakt** derselben Hoehe - und in jedem
+ * anderen Bereich, wo keine Kachelwand steht, eben auch. Dreht jemand an `--panel-max`,
+ * gehoert diese Zahl mitgedreht; sie ist die einzige Stelle, an der die beiden zusammenhaengen.
+ *
+ * 1641 px ist die Fensterbreite, ab der beides nebeneinander passt: 631 px Leiste, 10 px
+ * Fuge, 1000 px Panel. Darunter bleibt es bei der kleinen Fassung, sonst nimmt die Leiste
+ * der Kachelwand die Breite weg, die deren Kacheln lesbar haelt (`selftest/guards.ts`).
+ */
+@media (min-width: 1641px) {
+  #app {
+    --nav-cols: repeat(6, 98px);
+    --nav-rows: 195px;
+  }
 }
 
 #app[data-view='base'] .meta-card,
@@ -399,6 +506,19 @@ button {
   }
 }
 
+/*
+ * Dasselbe fuer die Faehigkeitenschiene: Sie ist nur senkrecht mittig gesetzt und faehrt
+ * von links herein. Ohne das `-50%` im Startbild begaenne die Fahrt eine halbe Schienenhoehe
+ * zu tief - eine Bewegung, die niemand bestellt hat.
+ */
+@keyframes enter-rail {
+  from {
+    opacity: 0;
+    transform: translate(-18px, -50%) scale(0.985);
+    filter: blur(6px);
+  }
+}
+
 /* Mittig gesetzte Elemente behalten ihre Verschiebung, sonst springen sie aus der Mitte. */
 @keyframes enter-center {
   from {
@@ -413,6 +533,19 @@ button {
     opacity: 0;
     transform: translateX(-50%) translateY(-10px);
     filter: blur(5px);
+  }
+}
+
+/*
+ * Die Ressourcenzeile faehrt von oben herein - wie `enter-down`, aber mit ihrer mittigen
+ * Verschiebung im Startbild. Ohne das `-50%` faenge die Fahrt eine halbe Zeilenbreite zu
+ * weit rechts an: Ein Startbild ersetzt die Transformation des Knotens, es ergaenzt sie nicht.
+ */
+@keyframes enter-head {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-14px) scale(0.985);
+    filter: blur(6px);
   }
 }
 
@@ -496,14 +629,23 @@ button {
   animation: enter-left var(--dur-view) var(--ease-out);
 }
 
+.ability-rail {
+  animation: enter-rail var(--dur-view) var(--ease-out);
+}
+
 .rail,
 .meta-card,
 .wave-card {
   animation: enter-right var(--dur-view) var(--ease-out);
 }
 
+/*
+ * Die Ressourcenzeile faehrt genau **einmal** ein: beim Start des Spiels. Sie geht bei
+ * keinem Bereichswechsel weg und kommt bei keinem wieder - deshalb steht hier ihr Auftritt,
+ * aber kein Abgang, und sie wandert auch nicht (`--flip: 0` weiter unten).
+ */
 .resource-bar {
-  animation: enter-down var(--dur-view) var(--ease-out);
+  animation: enter-head var(--dur-view) var(--ease-out);
 }
 
 .speed-control {
@@ -554,7 +696,7 @@ button {
   animation: leave-right 150ms var(--ease-out) forwards;
 }
 
-.resource-bar[data-leaving],
+/* Die Ressourcenzeile taucht hier nicht auf: Sie tritt nie ab. */
 .speed-control[data-leaving] {
   animation: leave-down 150ms var(--ease-out) forwards;
 }
@@ -597,45 +739,40 @@ button {
  * wird nicht weiter gestaffelt: Sonst warteten die letzten Eintraege einer langen Liste
  * spuerbar lange.
  */
-.upgrade-grid > *,
-ul.inventory > *,
-.cat-tabs > * {
+.up-grid > *,
+ul.inventory > * {
   animation: card-rise var(--dur-card) var(--ease-out) backwards;
 }
 
-.upgrade-grid > *:nth-child(1),
-ul.inventory > *:nth-child(1),
-.cat-tabs > *:nth-child(1) {
+.up-grid > *:nth-child(1),
+ul.inventory > *:nth-child(1) {
   animation-delay: 0ms;
 }
-.upgrade-grid > *:nth-child(2),
-ul.inventory > *:nth-child(2),
-.cat-tabs > *:nth-child(2) {
+.up-grid > *:nth-child(2),
+ul.inventory > *:nth-child(2) {
   animation-delay: var(--stagger);
 }
-.upgrade-grid > *:nth-child(3),
-ul.inventory > *:nth-child(3),
-.cat-tabs > *:nth-child(3) {
+.up-grid > *:nth-child(3),
+ul.inventory > *:nth-child(3) {
   animation-delay: calc(2 * var(--stagger));
 }
-.upgrade-grid > *:nth-child(4),
-ul.inventory > *:nth-child(4),
-.cat-tabs > *:nth-child(4) {
+.up-grid > *:nth-child(4),
+ul.inventory > *:nth-child(4) {
   animation-delay: calc(3 * var(--stagger));
 }
-.upgrade-grid > *:nth-child(5),
+.up-grid > *:nth-child(5),
 ul.inventory > *:nth-child(5) {
   animation-delay: calc(4 * var(--stagger));
 }
-.upgrade-grid > *:nth-child(6),
+.up-grid > *:nth-child(6),
 ul.inventory > *:nth-child(6) {
   animation-delay: calc(5 * var(--stagger));
 }
-.upgrade-grid > *:nth-child(7),
+.up-grid > *:nth-child(7),
 ul.inventory > *:nth-child(7) {
   animation-delay: calc(6 * var(--stagger));
 }
-.upgrade-grid > *:nth-child(n + 8),
+.up-grid > *:nth-child(n + 8),
 ul.inventory > *:nth-child(n + 8) {
   animation-delay: calc(7 * var(--stagger));
 }
@@ -674,7 +811,10 @@ ul.inventory > *:nth-child(n + 8) {
    * Sekunde - also genau das Gegenteil dessen, was hier gewuenscht ist.
    */
   .bar i::after,
-  .outcome .caret {
+  .outcome .caret,
+  .boot.ready .boot-press,
+  .resource-bar .res.gold b.counting,
+  .choice-rings i {
     animation: none !important;
   }
 }
@@ -698,7 +838,10 @@ ul.inventory > *:nth-child(n + 8) {
 
 #app[data-motion='off']::after,
 #app[data-motion='off'] .bar i::after,
-#app[data-motion='off'] .outcome .caret {
+#app[data-motion='off'] .outcome .caret,
+#app[data-motion='off'] .boot.ready .boot-press,
+#app[data-motion='off'] .resource-bar .res.gold b.counting,
+#app[data-motion='off'] .choice-rings i {
   animation: none !important;
 }
 
@@ -825,7 +968,8 @@ ul.inventory > *:nth-child(n + 8) {
   mask: var(--icon) center / contain no-repeat;
 }
 
-/* Raritaetsrahmen mit Symbol darin. Pixelgenau skaliert, sonst franst der Rahmen aus. */
+/* Raritaetsrahmen mit Symbol darin. Der Rahmen ist gezeichnet und traegt seine Stufenfarbe
+   selbst - anders als das Symbol darin, das nur eine Maske ist. */
 .tile {
   display: inline-grid;
   place-items: center;
@@ -833,7 +977,6 @@ ul.inventory > *:nth-child(n + 8) {
   width: 32px;
   height: 32px;
   background: var(--frame) center / contain no-repeat;
-  image-rendering: pixelated;
 }
 
 /*
@@ -911,8 +1054,7 @@ ul.inventory > *:nth-child(n + 8) {
 .chip,
 .wave-controls button,
 .speed-control button,
-.wide-button,
-.cat-tab {
+.wide-button {
   overflow: hidden;
 }
 
@@ -987,7 +1129,7 @@ button:hover:not(:disabled) .slide::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: url('/ui/bar-hatch.png') left center / auto 100% repeat-x;
+  background: url('/ui/bar-hatch.svg') left center / auto 100% repeat-x;
   opacity: 0.35;
   mix-blend-mode: overlay;
   animation: hatch-flow 1.6s linear infinite;
@@ -1070,13 +1212,41 @@ button:hover:not(:disabled) .slide::after {
 
 /* --- Ueber dem Spielfeld ------------------------------------------------- */
 
+/*
+ * === Alles, was an eine Kante gehoert, sitzt AUF ihr ======================
+ *
+ * Vorher schwebte jedes Schild mit zehn Pixeln Abstand vom Rand. Das sah aus wie Karten,
+ * die man auf einen Tisch gelegt hat - und genau das ist die falsche Aussage: Diese
+ * Anzeigen sind keine Zettel auf dem Spielfeld, sie sind die **Instrumente der Maschine**,
+ * in der das Spielfeld laeuft. Instrumente sitzen im Rahmen.
+ *
+ * Daraus folgen drei Regeln, und sie gelten fuer jede Anzeige gleich:
+ *
+ *   1. **Kein Abstand zur eigenen Kante.** Wer oben links gehoert, steht auf 0/0.
+ *   2. **Aussen eckig, innen rund.** Die Ecken an der Bildschirmkante sind gekappt, nur die
+ *      zur Bildmitte hin bleiben rund. Ein rundes Eck am Rand liesse einen Zwickel stehen,
+ *      und der sieht aus wie ein Fehler beim Ausrichten.
+ *   3. **Keine eigene Kante am Rand.** Der Bildschirmrahmen (`#app::after`) ist dort schon
+ *      die Linie. Ein zweiter Strich einen Pixel daneben ergibt eine Doppelkante.
+ *
+ * Was **nicht** mitmacht, ist alles, was mittig steht - Wellenname, Bereichsueberschrift,
+ * Boss-Leiste, der Ausgang einer Welle. Sie gehoeren keiner Kante an, sondern der Mitte;
+ * sie an einen Rand zu ziehen waere keine Ordnung, sondern eine falsche Zuordnung.
+ */
+
+/*
+ * Die Bereichsueberschrift sitzt unter der Ressourcenzeile, nicht neben ihr: Beide gehoeren
+ * der Mitte, und die Zeile steht zuerst - sie gilt in jedem Bereich, die Ueberschrift nennt
+ * nur den einen. Sie ist dafuer eine Spur kleiner geworden; zwei gleich laute Sachen
+ * uebereinander waeren ein Kopf und kein Rahmen.
+ */
 .view-title {
   position: absolute;
-  top: 14px;
+  top: 39px;
   left: 50%;
   transform: translateX(-50%);
   margin: 0;
-  font-size: 24px;
+  font-size: 19px;
   font-weight: 800;
   letter-spacing: 0.24em;
   text-transform: uppercase;
@@ -1085,44 +1255,147 @@ button:hover:not(:disabled) .slide::after {
 }
 
 /*
- * Das Goldschild, oben links.
+ * === Die Ressourcenzeile, oben in der Mitte ===============================
  *
- * Gold ist die Waehrung, in der jede Entscheidung dieses Spiels bezahlt wird. Vorher stand
- * es als nackte Zahl ohne Rahmen da und war als Anzeige kaum zu erkennen; jetzt sitzt es
- * auf einem eigenen Schild und traegt das Muenzzeichen aus dem Anlagensatz.
+ * Eine Pille, drei Segmente, ein Ort - und zwar in **allen fuenf** Bereichen derselbe. Sie
+ * ist die einzige Anzeige des Spiels, die keiner Ansicht gehoert: Gold, Stufe und Prestige
+ * sind das, womit bezahlt wird, und man bezahlt in jedem Bereich.
+ *
+ * Sie ist deshalb die **Ausnahme von der Kantenregel** weiter oben: Sie sitzt nicht auf
+ * einer Kante, sondern mittig auf der Oberkante. Das ist Absicht und keine Nachlaessigkeit -
+ * die Mitte ist der einzige Ort, den kein Bereich fuer sich beansprucht. Links steht in der
+ * Basis das Lager, rechts die Wellenkarte; nur die Mitte oben ist in jedem Bereich frei.
+ *
+ * Warum sie pixelgleich stehen bleibt, obwohl die Bereiche verschieden hoch bauen: Sie
+ * haengt an der Oberkante von `#field`, und die liegt in jedem Bereich auf derselben Zeile.
+ * Was sich zwischen den Bereichen aendert, ist die Hoehe der unteren Leiste - also die
+ * **Unterkante** des Felds. Nach oben hin bewegt sich nichts, und `left: 50 %` bezieht sich
+ * auf eine Breite, die ebenfalls in jedem Bereich das ganze Fenster ist.
  */
 .resource-bar {
   position: absolute;
-  top: 10px;
-  left: 10px;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 14px 8px 10px;
-}
-
-.resource-bar .res {
+  top: 0;
+  /*
+   * Oben LINKS, nicht mittig.
+   *
+   * Mittig stand sie nach dem Vorbild von "Orc Incremental", und dort ist das richtig: Deren
+   * Bild ist eine breite Landschaft, die Mitte oben ist leer. Unseres ist radial - die
+   * Station steht in der Mitte, Gegner kommen von allen Seiten auf sie zu, und der Streifen
+   * ueber ihr ist genau die Bahn, auf der das Wichtigste anfliegt. Eine Zeile, die dort
+   * liegt, verdeckt jedes Mal etwas, worauf man gerade schaut.
+   *
+   * Die Ecke kostet nichts: Was in einer Ecke steht, findet das Auge ohne Suchen wieder,
+   * weil es nur vier davon gibt.
+   */
+  left: 0;
+  /*
+   * Ueber jedem Panel. Die Panels der Bereiche beginnen zwar unterhalb, aber die Zusage ist
+   * staerker als eine Rechnung: Was sich in einen Bereich legt, ersetzt die Flaeche darunter
+   * und nie die Kopfleiste. Eine Ueberlagerung, die kuenftig bis nach oben reicht, schiebt
+   * sich damit **unter** die Zeile statt ueber sie.
+   */
+  z-index: 6;
+  /*
+   * Sie wandert nicht (`ui/flip.ts`). Gemessen wuerde ohnehin kein Unterschied - aber die
+   * Zeile ist genau die Anzeige, die **nie** rucken darf, und das steht besser hier als in
+   * einer Messung, die zufaellig null ergibt.
+   */
+  --flip: 0;
+  /*
+   * Hier und nicht in der Sichtbarkeitsliste weiter oben: Die Zeile wird von keinem Bereich
+   * angeschaltet, also muss ihr Anzeigemodus bei ihr selbst stehen. `stretch` ist der Grund,
+   * warum der Trennstrich zwischen zwei Segmenten von oben nach unten durchlaeuft.
+   */
   display: flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--gold);
-  font-family: var(--font-pixel);
-  font-size: 30px;
-  line-height: 1;
-  text-shadow: 0 0 14px rgba(255, 204, 51, 0.55);
-}
-
-.resource-bar .res .pix {
-  filter: drop-shadow(0 0 6px rgba(255, 204, 51, 0.7));
-}
-
-.resource-bar .res.dim {
-  font-size: 18px;
-  opacity: 0.65;
+  align-items: stretch;
+  /* Die Polsterung gehoert den Segmenten: Nur so laeuft der Trennstrich von oben nach unten
+     durch, statt in der Luft zu enden. */
+  padding: 0;
+  border-top: 0;
+  /* In der Ecke: Nur die freie Innenkante wird rund. Eine Rundung an einer Kante, die am
+     Bildrand klebt, sieht aus wie ein Fehler im Ausschnitt. */
+  border-left: 0;
+  border-radius: 0 0 14px 0;
 }
 
 /*
- * Quittung fuer eingesammeltes Gold. Kurz und klein: Die Zahl laeuft ohnehin sichtbar hoch,
- * der Puls sagt nur, dass der Zuwachs gerade **jetzt** vom Feld kam.
+ * Ein Segment: Piktogramm, Zahl, sonst nichts.
+ *
+ * **Kein Wortlabel** - und das ist keine Sparsamkeit, sondern der Unterschied zwischen einem
+ * Instrument und einer Textzeile. Drei Woerter nebeneinander liest man; drei Zeichen erkennt
+ * man. Was die Zahl bedeutet, steht im Zeichen, in der Farbe und in der Beschreibung, die
+ * beim Darueberfahren aufgeht (`describe` in `ui/tooltip.ts`).
+ *
+ * Die Zeile faengt dabei den Zeiger - sie ist ein Kind von `#overlay` und bekommt damit aus
+ * der Regel weiter oben `pointer-events: auto`. Hier stand frueher das Gegenteil; das war
+ * schlicht falsch. Der Preis ist echt und klein: Wer eine Muenze genau unter der Zeile
+ * liegen hat, faehrt von unten heran. In der Ecke sind das dreissig Bildpunkte Hoehe - oben
+ * in der Mitte, wo die Zeile bis vor kurzem stand, waere derselbe Preis die Anflugbahn
+ * gewesen.
+ */
+.resource-bar .res {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 17px 7px;
+  color: var(--res);
+  font-family: var(--font-pixel);
+  font-size: 22px;
+  line-height: 1;
+  text-shadow: 0 0 13px color-mix(in srgb, var(--res) 55%, transparent);
+}
+
+/*
+ * Der Strich zwischen zwei Segmenten - genau ein Pixel, in der ruhigen Linienfarbe. Er
+ * trennt drei Zahlen, die sonst wie eine dreistellige Reihe zusammenliefen, und er darf
+ * dabei nichts behaupten: Ein kraeftiger Strich waere eine Grenze, dieser ist eine Fuge.
+ */
+.resource-bar .res + .res {
+  border-left: 1px solid var(--line-soft);
+}
+
+/* Das Zeichen traegt die Farbe seiner Ressource (`.pix` ist eine Maske, kein Bild). */
+.resource-bar .res .pix {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--res) 70%, transparent));
+}
+
+/*
+ * Eine Farbe je Ressource, und keine zwei teilen sich eine. Die Werte stehen als `--res-*`
+ * bei den Rollen ganz oben; hier steht nur, welches Segment welche bekommt.
+ */
+.resource-bar .res.level {
+  --res: var(--res-level);
+}
+
+.resource-bar .res.gold {
+  --res: var(--res-gold);
+}
+
+.resource-bar .res.prestige {
+  --res: var(--res-prestige);
+}
+
+/*
+ * Hier lag die Erfahrung als zwei Pixel hohe Linie unter der Stufe.
+ *
+ * Sie ist ins Kernfeld der unteren Leiste gewandert (`.core-gauge`, `ui/coregauge.ts`), und
+ * der Grund ist die Groesse: Als Strich unter einer Zahl war sie zwar am richtigen Ort -
+ * Erfahrung ist keine vierte Ressource, sondern der Weg zur naechsten Stufe -, aber zu
+ * klein, um im Augenwinkel gelesen zu werden. Der Aufstieg kam damit jedes Mal ohne
+ * Ankuendigung. Als Flaeche hinter dem Kern steigt sie sichtbar, ohne dass die Zeile oben
+ * dafuer hoeher wird.
+ */
+
+/*
+ * Quittung fuer eine **angekommene** Muenze. Kurz und klein: Die Zahl laeuft ohnehin
+ * sichtbar hoch, der Puls sagt nur, dass gerade **jetzt** etwas eingeschlagen ist. Er
+ * waechst aus der Mitte des Segments - aus der linken Kante heraus schoebe er die Zahl
+ * gegen ihren Nachbarn.
+ *
+ * Er haengt seit dem Umbau der Flugbahn am Einschlag und nicht mehr am Aufheben
+ * (`Hud.goldArrived`): Dazwischen liegen gut acht Zehntelsekunden Flug, und ein Puls, der
+ * vorher kommt, quittiert etwas, das noch unterwegs ist.
  */
 @keyframes gold-pulse {
   0% {
@@ -1130,7 +1403,6 @@ button:hover:not(:disabled) .slide::after {
   }
   35% {
     transform: scale(1.13);
-    text-shadow: 0 0 26px rgba(255, 204, 51, 0.85);
   }
   100% {
     transform: scale(1);
@@ -1139,8 +1411,163 @@ button:hover:not(:disabled) .slide::after {
 
 .resource-bar .res.pulse {
   animation: gold-pulse var(--dur-icon) var(--ease-out);
-  transform-origin: left center;
+  transform-origin: center;
 }
+
+/*
+ * === Die Goldzahl, waehrend sie hochlaeuft ==================================
+ *
+ * Die Zahl laeuft schon lange auf ihren neuen Stand zu, statt zu springen (`counter` in
+ * `ui/hud.ts`) - aber sie sah dabei aus wie eine Zahl, die dasteht. Wer nicht genau
+ * hinsieht, bemerkt einen Anstieg von 1.204 auf 1.337 im Augenwinkel ueberhaupt nicht: Man
+ * sieht **dass** sich etwas geaendert hat, sobald man hinschaut, nie aber, dass es gerade
+ * jetzt geschieht. Genau das ist der Augenblick, auf den die Muenzen zufliegen.
+ *
+ * Drei Zustaende, und jeder sagt etwas anderes:
+ *
+ *   - **ruhig** - die Zahl ist Auskunft. Farbe der Ressource, sonst nichts.
+ *   - **`counting`** - sie steigt. Sie wird heller als ihre eigene Farbe, und ein Glanz
+ *     wandert ueber die Ziffern. Der Glanz ist der Teil, der ohne Bewegung nicht ginge:
+ *     Eine hellere Zahl allein liesse sich fuer eine andere Zahl halten.
+ *   - **`settled`** - sie steht. Ein einziger Schlag, dann ist Ruhe. Ohne ihn hoert das
+ *     Laufen einfach auf, und ein Vorgang, der aufhoert, ist nicht dasselbe wie einer, der
+ *     fertig ist.
+ *
+ * Nur beim **Steigen**, nicht beim Fallen (`counter.climbing`): Ein Kauf zieht dieselbe
+ * Zahl nach unten, und ein Gleissen sagte dort das Gegenteil dessen, was geschieht.
+ */
+@keyframes gold-sheen {
+  from {
+    background-position: 190% 0;
+  }
+  to {
+    background-position: -90% 0;
+  }
+}
+
+/*
+ * Der Glanz laeuft ueber die Ziffern und nicht hinter ihnen: `background-clip: text`
+ * beschneidet den Verlauf auf die Form der Zahl.
+ *
+ * Der Preis dafuer ist `color: transparent`, und der ist geringer als er aussieht: Der
+ * Schein (`text-shadow`) wird **hinter** dem Text gezeichnet und bleibt deshalb stehen. Er
+ * zeichnet den Umriss der Ziffern weiter nach, waehrend der Verlauf ihre Flaeche fuellt -
+ * zusammen ergibt das eine gluehende Zahl und keine ausgestanzte.
+ */
+.resource-bar .res.gold b.counting {
+  background:
+    linear-gradient(
+      100deg,
+      var(--res) 34%,
+      #fffdf0 46%,
+      #ffffff 50%,
+      #fffdf0 54%,
+      var(--res) 66%
+    )
+    0 0 / 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  text-shadow:
+    0 0 8px color-mix(in srgb, var(--res) 85%, transparent),
+    0 0 20px color-mix(in srgb, var(--res) 45%, transparent);
+  animation: gold-sheen 700ms linear infinite;
+}
+
+/*
+ * Der Schlag, wenn die Zahl steht.
+ *
+ * Er sitzt an der Zahl und nicht am Segment: Das Segment hat mit `gold-pulse` schon eine
+ * eigene Bewegung fuer den Einschlag einer Muenze, und beide gleichzeitig auf demselben
+ * Knoten hiesse, dass die spaetere die fruehere abschneidet. So laeuft die eine im
+ * Segment und die andere darin - und weil die letzte Muenze und der Stillstand der Zahl
+ * ohnehin fast zusammenfallen, liest man beides als einen Vorgang.
+ *
+ * Dass die Zahl ein `transform` ueberhaupt annimmt, kommt vom Segment: `.res` ist ein
+ * Flexkasten, und ein Flexkind wird blockartig, was auch immer sein Zeichen sonst waere.
+ * Ein `display: inline-block` von Hand stand hier kurz und war eine Zeile, die nichts tut.
+ */
+@keyframes gold-settle {
+  0% {
+    transform: scale(1.18);
+    filter: brightness(1.7);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.resource-bar .res.gold b.settled {
+  animation: gold-settle var(--dur-icon) var(--ease-spring);
+}
+
+/*
+ * Die Muenzen im Anflug (`ui/coinflight.ts`).
+ *
+ * Die Ebene selbst nimmt keine Zeiger an - sie liegt ueber dem ganzen Feld, und ohne diese
+ * Zeile liesse sich waehrend eines Fluges nichts mehr anklicken. Die Regel aus einer Klasse
+ * heraus zu setzen ist Absicht: `:where(#overlay) > *` zaehlt null und laesst sich genau
+ * dafuer ueberschreiben (siehe die Erklaerung dort).
+ */
+.coin-flight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/*
+ * Eine einzelne Muenze - derselbe Bildstreifen wie auf dem Feld (`public/coins/coins.png`,
+ * 112 x 48: drei Wertstufen zu je sieben Bildern à 16 px). Genommen wird das ruhende Bild
+ * der goldenen Reihe: Der Glanzlauf gehoert den liegenden Muenzen, eine fliegende dreht
+ * sich ohnehin.
+ *
+ * Ort und Groesse setzt die Bewegung selbst; hier steht nur, wie sie aussieht.
+ */
+.coin-flight i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 20px;
+  height: 20px;
+  background: url('/coins/coins.png') 0 -40px / 140px 60px no-repeat;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 7px rgba(255, 204, 51, 0.75));
+  will-change: transform, opacity;
+}
+
+/*
+ * Der Einschlagsring (`flash` in `ui/coinflight.ts`).
+ *
+ * Er ist der Grund, warum man die Ankunft **sieht**: Die Muenze ist im letzten Bild nur noch
+ * halb so gross wie beim Absprung und liegt genau unter dem Symbol, das gerade zuckt - ohne
+ * den Ring bleibt vom ganzen Flug ein Verschwinden. Ein Ring dagegen ist die einzige Form,
+ * die aus einem Punkt heraus waechst, und genau das ist die Aussage: Hier ist etwas
+ * eingeschlagen.
+ *
+ * Nur Rand, keine Fuellung: Eine gefuellte Scheibe verdeckte fuer einen Wimpernschlag das
+ * Muenzsymbol - also ausgerechnet das, worauf sie zeigen soll.
+ *
+ * `<u>` und nicht `<i>` oder eine Klasse: In dieser Ebene ist `<i>` die fliegende Muenze,
+ * und zwei Dinge mit derselben Regel liessen sich nur ueber eine Klasse trennen, die dann
+ * an jedem der bis zu achtzig Knoten stuende. Das Zeichen selbst traegt hier die Rolle.
+ */
+.coin-flight u {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  border: 2px solid var(--res-gold, #f5dd49);
+  border-radius: 50%;
+  box-shadow:
+    0 0 12px rgba(245, 221, 73, 0.85),
+    inset 0 0 8px rgba(245, 221, 73, 0.55);
+  will-change: transform, opacity;
+}
+
 
 /*
  * Die Wellenkarte, oben rechts.
@@ -1152,12 +1579,15 @@ button:hover:not(:disabled) .slide::after {
  */
 .wave-card {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 0;
+  right: 0;
   width: 208px;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 10px;
+  padding: 9px 12px 10px;
+  border-top: 0;
+  border-right: 0;
+  border-radius: 0 0 0 14px;
 }
 
 .wave-card .head {
@@ -1167,7 +1597,97 @@ button:hover:not(:disabled) .slide::after {
   gap: 8px;
 }
 
+/*
+ * Die Ligazeile - die zweite Achse derselben Karte (`ui/hud.ts`, docs/liga-system.md).
+ *
+ * Sie sitzt **ueber** der Wellennummer und ist deutlich leiser als sie: kleiner, gesperrter
+ * Satz, kein Leuchten. Das ist Absicht. Die Liga wechselt man selten, die Welle staendig -
+ * die Zeile, die man oefter braucht, muss die lautere sein. Der Farbton der Liga traegt die
+ * Zeile stattdessen; er ist die eigentliche Auskunft und braucht keinen zweiten Reiz.
+ *
+ * Der Trennstrich darunter gehoert der Ligazeile und nicht der Karte: Ohne ihn stuenden vier
+ * Zeilen ohne Gliederung uebereinander, und die Liga saehe aus wie eine Ueberschrift der
+ * Wellenzahl statt wie eine eigene Achse.
+ */
+.league-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/*
+ * Ohne diese Zeile bliebe die Zeile stehen, obwohl `ui/hud.ts` sie versteckt.
+ *
+ * `[hidden]` ist eine Regel des Browsers, `display: flex` daneben eine des Stilblatts - und
+ * die des Stilblatts gewinnt. Jedes Element hier, das sein `display` selbst setzt und sich
+ * verstecken laesst, braucht deshalb sein eigenes `[hidden]`; `.boss-bar`, `.tooltip`,
+ * `.hint-card` und `.levelup-backdrop` machen es genauso.
+ */
+.league-row[hidden] {
+  display: none;
+}
+
+.league-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 800;
+  /*
+   * 0,10em und nicht 0,14: Bei 10 px Pixelschrift in einer 208 px breiten Karte kostet
+   * jedes Hundertstel em rund 1,4 px Namensbreite, und der laengste Name lag damit an der
+   * Kante. Gesperrt genug, um als Marke zu lesen, ist die Zeile auch so.
+   */
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--league-tint, var(--edge));
+}
+
+.league-rank {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--league-tint, var(--edge));
+  opacity: 0.72;
+}
+
+/*
+ * Die beiden Pfeile sind schmaler als die der Wellensteuerung.
+ *
+ * Sie stehen in derselben Karte und duerfen nicht gleich schwer wiegen: Wer die Wellenpfeile
+ * sucht, soll nicht erst pruefen, welches Paar er vor sich hat. Groesse ist hier die
+ * Rangordnung.
+ */
+.league-row button {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+}
+
+.league-row button:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+/*
+ * Die Wellennummer - und zugleich der Griff fuer den Sprung (`ui/hud.ts`).
+ *
+ * Sie ist eine Schaltflaeche, sieht aber keine Sekunde lang wie eine aus: kein Rahmen, keine
+ * Flaeche, nichts. Ein Knopfrahmen um die groesste Zahl der Karte machte aus einer Anzeige
+ * ein Bedienelement, und gelesen wird sie oefter als gedrueckt. Der gestrichelte Strich
+ * darunter ist alles, was sie verraet - und beim Beruehren geht sie auf.
+ */
 .wave-label {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
   font-size: 15px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -1175,6 +1695,121 @@ button:hover:not(:disabled) .slide::after {
   color: var(--edge);
   text-shadow: 0 0 12px rgba(127, 216, 255, 0.5);
   white-space: nowrap;
+  cursor: pointer;
+  text-decoration: underline dotted rgba(127, 216, 255, 0.4);
+  text-underline-offset: 4px;
+  transition: color var(--dur-tap) var(--ease-out),
+    text-decoration-color var(--dur-tap) var(--ease-out);
+}
+
+.wave-label:hover:not(:disabled) {
+  color: var(--text);
+  text-decoration-color: var(--edge);
+}
+
+/* Solange es kein Sprungziel gibt, ist sie wieder nur eine Zahl - ohne Strich, ohne Zeiger. */
+.wave-label:disabled {
+  cursor: default;
+  text-decoration: none;
+}
+
+/*
+ * Die Sprungzeile.
+ *
+ * Drei Dinge in einer Zeile: das Feld, die Spanne, die es annimmt, und der Knopf. Die Spanne
+ * steht **zwischen** beiden und nicht darunter - sie ist die Auskunft, die man genau in dem
+ * Augenblick braucht, in dem man tippt.
+ */
+.wave-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wave-jump-field {
+  width: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(4, 10, 28, 0.8);
+  color: var(--text);
+  font-family: var(--font-pixel);
+  font-size: 14px;
+  text-align: center;
+}
+
+.wave-jump-field:focus {
+  outline: none;
+  border-color: var(--edge);
+  box-shadow: var(--glow-soft);
+}
+
+/* Die Pfeilchen des Zahlenfeldes fallen weg - sie gehoeren zum Formular, nicht zum Geraet. */
+.wave-jump-field::-webkit-inner-spin-button,
+.wave-jump-field::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.wave-jump-range {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.wave-jump-go {
+  flex: none;
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(10, 20, 54, 0.65);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: color var(--dur-tap) var(--ease-out),
+    border-color var(--dur-tap) var(--ease-out), box-shadow var(--dur-tap) var(--ease-out);
+}
+
+.wave-jump-go:hover {
+  color: var(--lime);
+  border-color: var(--lime);
+  box-shadow: 0 0 12px rgba(127, 232, 63, 0.3);
+}
+
+/*
+ * Die Abfuhr: Die Zeile zuckt einmal und bleibt stehen.
+ *
+ * Sie ist die einzige Antwort auf eine Zahl ausserhalb der Spanne - und sie muss eine sein,
+ * die man nicht lesen muss. Eine Fehlermeldung in einer 208 px breiten Karte waere zwei
+ * Zeilen Kleinschrift fuer eine Auskunft, die das Feld daneben schon traegt.
+ */
+.wave-jump.refused {
+  animation: refuse 260ms var(--ease-out);
+}
+
+@keyframes refuse {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-5px);
+  }
+  55% {
+    transform: translateX(4px);
+  }
+  80% {
+    transform: translateX(-2px);
+  }
 }
 
 .scales {
@@ -1233,139 +1868,261 @@ button:hover:not(:disabled) .slide::after {
  * hier, gewaenne es gegen das `display: none` von dort (gleiche Spezifitaet, spaeter im
  * Blatt), und die Leiste haenge auch in der Basis herum.
  */
+/*
+ * Sie sitzt auf der Kante zwischen Feld und Bedienleiste und laeuft von Rand zu Rand.
+ *
+ * Aus drei losen Teilen mit Luft dazwischen ist damit **ein** Streifen geworden: Schaden
+ * links, Rumpf in der Mitte, Goldfaktor rechts, ohne Fuge. Das ist nicht nur Ausrichtung -
+ * die drei gehoeren zusammen, sie sind die Ablesung derselben Station. Nebeneinander mit
+ * Abstand sahen sie aus wie drei Anzeigen, die zufaellig in einer Zeile stehen.
+ */
 .hull-bar {
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 8px;
-  align-items: center;
-  gap: 10px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  align-items: stretch;
+  gap: 0;
 }
 
+/*
+ * Die Leiste nimmt die Hoehe ihrer Nachbarn an, statt eine eigene mitzubringen - sonst
+ * saesse in einem durchgehenden Streifen ein niedrigeres Stueck in der Mitte.
+ *
+ * Dafuer wird sie hier zum Flexkasten: Ihre Beschriftung stand vorher schlicht oben in
+ * einer 17 Pixel hohen Zeile, und in einer mitwachsenden Leiste haenge sie dann unter der
+ * Oberkante. Die Fuellung darin liegt absolut und merkt von der Umstellung nichts.
+ */
 .hull-bar .bar {
   flex: 1 1 auto;
-  height: 19px;
+  display: flex;
+  align-items: center;
+  height: auto;
+  border-radius: 0;
+  border-bottom: 0;
 }
 
 .hull-bar .fig {
   flex: none;
-  padding: 3px 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 11px;
   border: 1px solid var(--line-soft);
-  border-radius: 8px;
+  border-bottom: 0;
+  border-radius: 0;
   background: rgba(6, 12, 34, 0.7);
   backdrop-filter: blur(6px);
+}
+
+.hull-bar .fig:first-child {
+  border-left: 0;
+}
+
+.hull-bar .fig:last-child {
+  border-right: 0;
 }
 
 .hull-bar .fig b {
   font-size: 16px;
 }
 
-/* Ebenfalls ohne `display` - siehe `.hull-bar`. */
+/*
+ * Ebenfalls ohne `display` - siehe `.hull-bar`.
+ *
+ * Sie sitzt links auf der Kante, direkt ueber der Rumpfleiste. Der Abstand nach unten ist
+ * deren Hoehe: Beide gehoeren zur unteren Kante, und die eine soll die andere weder
+ * beruehren noch von ihr abheben.
+ */
 .speed-control {
   position: absolute;
-  left: 10px;
-  bottom: 38px;
+  left: 0;
+  bottom: 34px;
   align-items: center;
   gap: 6px;
 }
 
-/* --- Stufe und Erfahrung ------------------------------------------------- */
+/* Der erste Knopf stoesst an den Rand und kappt dort seine Ecken - dieselbe Regel wie bei
+   den Schildern oben. */
+.speed-control button:first-child {
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+}
 
 /*
- * Sie schliessen das Goldschild nach unten ab (GDD 13 Abschnitt 4). Die Leiste ist bewusst
- * duenn: Erfahrung laeuft von allein voll, sie ist Auskunft und keine Aufforderung - anders
- * als das Gold darueber, das man holen muss.
+ * Stufe und Erfahrung standen hier frueher als eigene Zeile unter dem Goldschild. Sie sind
+ * in die Ressourcenzeile gewandert (siehe dort): die Stufe als eines der drei Segmente, die
+ * Erfahrung als duenne Linie darunter.
  */
-.level-row {
+
+/* --- Faehigkeitenschiene (GDD 09 Teil B) --------------------------------- */
+
+/*
+ * Sie steht senkrecht an der linken Kante, mittig auf Stationshoehe - der Platz, an dem
+ * sonst nichts liegt, und der einzige, auf dem eine Spalte aus Plaetzen ueberhaupt Platz
+ * hat. Vorher war sie eine flache Reihe unten rechts und damit unsichtbar, solange nichts
+ * belegt war (siehe die Erklaerung in `ui/hud.ts`).
+ *
+ * Eine eigene Fassung statt `.plate`: Ein Schild traegt eine Zahl, das hier traegt
+ * Schaltflaechen. Der Rahmen ist deshalb links offen gedacht - er waechst aus der
+ * Bildschirmkante heraus statt frei im Feld zu schweben.
+ */
+.ability-rail {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  margin-top: 3px;
+  gap: 10px;
+  padding: 10px 9px 12px;
+  border: 1px solid var(--line-soft);
+  border-left: 0;
+  border-radius: 0 14px 14px 0;
+  background: linear-gradient(160deg, rgba(20, 42, 96, 0.72), rgba(7, 13, 36, 0.82));
+  box-shadow: var(--glow-soft), var(--shadow-panel);
+  backdrop-filter: blur(7px);
 }
-
-.level-label {
-  font-family: var(--font-pixel);
-  font-size: 15px;
-  line-height: 1;
-  color: var(--edge);
-  text-shadow: 0 0 10px rgba(127, 216, 255, 0.5);
-}
-
-.xp-bar {
-  position: relative;
-  flex: 1 1 auto;
-  min-width: 54px;
-  height: 5px;
-  border-radius: 3px;
-  background: rgba(3, 5, 13, 0.8);
-  overflow: hidden;
-}
-
-.xp-bar i {
-  position: absolute;
-  inset: 0 auto 0 0;
-  display: block;
-  background: var(--edge);
-  box-shadow: 0 0 8px var(--edge);
-  transition: width 220ms var(--ease-out);
-}
-
-/* --- Faehigkeitenleiste (GDD 09 Teil B) ---------------------------------- */
 
 /*
- * Sie sitzt unten rechts, gegenueber dem Tempo und ueber der Rumpfleiste - dort, wo der
- * Daumen hinkommt und wo sie nichts verdeckt, was man im Kampf lesen muss.
+ * Die leuchtende Kante an der Bildschirmseite. Sie ist der Grund fuer die eckigen Radien
+ * links: Der Streifen soll eine Anschlussschiene sein, kein Zierstreifen auf einer Karte.
  */
-.ability-bar {
+.ability-rail::before {
+  content: '';
   position: absolute;
-  right: 10px;
-  bottom: 38px;
-  display: flex;
-  gap: 8px;
+  inset: 8px auto 8px 0;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, transparent, var(--cyan), transparent);
+  box-shadow: 0 0 12px rgba(70, 200, 255, 0.7);
+  pointer-events: none;
 }
 
-#app:not([data-view='combat']) .ability-bar {
+/* Sie gehoert dorthin, wo das Feld zu sehen ist. In den Upgrades bleibt sie stehen - dort
+   wird belegt, und die Wirkung soll man sofort sehen statt erst nach dem Zurueckwechseln. */
+#app:not([data-view='combat']):not([data-view='upgrades']) .ability-rail {
   display: none;
 }
 
-.ability-button {
+/* Kopfzierde: Leiterbahnen und das Kuerzel. Sie ist Beschriftung genug - der volle Name
+   stuende hier hochkant oder gar nicht, und beides liest niemand im Kampf. */
+.rail-head {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  width: 100%;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--edge);
+}
+
+.rail-head .trace {
+  width: 44px;
+  height: 18px;
+  opacity: 0.75;
+}
+
+.rail-head b {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
+  color: var(--text-dim);
+}
+
+.rail-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/*
+ * Ein Platz. Belegt und frei sind **dieselbe** Form in zwei Zustaenden, nicht zwei Formen:
+ * Der Spieler soll sehen, dass dort etwas hingehoert, und nicht, dass dort etwas fehlt.
+ * Die Fassung ist die gezeichnete Achteckfassung der Navischaltflaechen - dieselbe Sprache
+ * fuer alles, was man anfasst.
+ */
+.ability-slot {
   position: relative;
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
+  width: 54px;
+  height: 54px;
   padding: 0;
-  border: 1px solid var(--accent, var(--cyan));
+  border: 0;
   border-radius: 12px;
-  background: rgba(8, 14, 38, 0.82);
-  backdrop-filter: blur(6px);
+  background: url('/ui/frame-slot.svg') center / 100% 100% no-repeat;
   color: var(--accent, var(--cyan));
   overflow: hidden;
   cursor: pointer;
   transition: transform var(--dur-tap) var(--ease-out),
-    box-shadow var(--dur-tap) var(--ease-out), opacity var(--dur-tap) var(--ease-out);
+    box-shadow var(--dur-tap) var(--ease-out), opacity var(--dur-tap) var(--ease-out),
+    filter var(--dur-tap) var(--ease-out);
 }
 
 /* Bereit heisst: Sie leuchtet. Vorher ist sie da, aber still. */
-.ability-button.ready {
+.ability-slot.ready {
   box-shadow: 0 0 18px -2px var(--accent), inset 0 0 14px -4px var(--accent);
 }
 
-.ability-button.ready:hover:not(:disabled) {
-  transform: translateY(-2px);
+.ability-slot.ready:hover:not(:disabled) {
+  transform: translateX(2px);
 }
 
-.ability-button:active:not(:disabled) {
+.ability-slot:active:not(:disabled) {
   transform: scale(0.93);
 }
 
-.ability-button:disabled {
+.ability-slot:disabled {
   cursor: default;
   opacity: 0.55;
 }
 
+/*
+ * Der freie Platz. Er traegt dieselbe Schraffur wie die Fuellung einer Leiste - das Zeichen
+ * dieses Spiels fuer "hier ist Raum vorgesehen". Darueber ein Kreuz, das ihn als Handlung
+ * ausweist: Ein Klick fuehrt zu den Upgrades, wo belegt wird.
+ */
+.ability-slot.empty {
+  color: var(--text-dim);
+}
+
+.ability-slot.empty::before {
+  content: '';
+  position: absolute;
+  inset: 10px;
+  border-radius: 7px;
+  background: url('/ui/bar-hatch.svg') left center / auto 100% repeat-x;
+  opacity: 0.14;
+}
+
+/*
+ * Das Kreuz. Zwei Verlaeufe in **einem** Kasten statt zweier Elemente: Ein Pseudoelement
+ * je Strich waere ein Knoten mehr fuer eine Linie, und `::before` ist schon die Schraffur.
+ */
+.ability-slot.empty::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  background: linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+.ability-slot.empty:hover {
+  color: var(--edge);
+  filter: drop-shadow(0 0 10px rgba(127, 216, 255, 0.5));
+}
+
+.ability-slot.empty:hover::before {
+  opacity: 0.24;
+}
+
 /* Der Schleier steht fuer die verbleibende Abklingzeit und laeuft von oben leer. */
-.ability-button .sweep {
+.ability-slot .sweep {
   position: absolute;
   inset: auto 0 0 0;
   display: block;
@@ -1374,16 +2131,16 @@ button:hover:not(:disabled) .slide::after {
   pointer-events: none;
 }
 
-.ability-button .symbol {
+.ability-slot .symbol {
   position: relative;
   display: grid;
   place-items: center;
 }
 
-.ability-button .left {
+.ability-slot .left {
   position: absolute;
-  right: 4px;
-  bottom: 2px;
+  right: 6px;
+  bottom: 3px;
   font-family: var(--font-pixel);
   font-size: 15px;
   line-height: 1;
@@ -1406,7 +2163,7 @@ button:hover:not(:disabled) .slide::after {
   }
 }
 
-.ability-button.fired {
+.ability-slot.fired {
   animation: ability-fired 420ms var(--ease-out);
 }
 
@@ -1654,10 +2411,12 @@ button:hover:not(:disabled) .slide::after {
  * Die Boss-Leiste faerbt sich nach ihrem Boss: `--boss` setzt das HUD aus den Gegnerdaten.
  * Solange keiner lebt, gilt Magenta - die Farbe der Bedrohung.
  */
+/* Der Boss steht unter der Ressourcenzeile - sie ist die oberste Zeile des Bildes, und
+   nichts schiebt sich vor sie. */
 .boss-bar {
   --boss: var(--magenta);
   position: absolute;
-  top: 12px;
+  top: 41px;
   left: 50%;
   transform: translateX(-50%);
   animation: boss-enter 460ms var(--ease-out);
@@ -1726,42 +2485,352 @@ button:hover:not(:disabled) .slide::after {
 
 /* --- Untere Leiste: Navigation und Upgrades ------------------------------ */
 
+/*
+ * Zwei Spalten - und **fest** ist jetzt die rechte.
+ *
+ * Vorher war es umgekehrt: Die Navileiste nahm ihre Eigenbreite, das Panel den ganzen Rest,
+ * und weil das Kachelraster darin bei 920 px gedeckelt war, standen auf einem 1920er Bild
+ * links und rechts davon je rund 280 px leere Panelflaeche. Der Deckel sass an der falschen
+ * Stelle: Er begrenzte das Raster **innerhalb** eines Kastens, der viel breiter war als sein
+ * Inhalt - und ein Kasten, der Luft umschliesst, sieht aus wie ein Fehler, nicht wie eine
+ * Entscheidung.
+ *
+ * Jetzt begrenzt der Deckel den Kasten selbst, und was uebrig bleibt, faellt der Navileiste
+ * zu: Sie waechst nach rechts, statt dass daneben nichts steht. Ist nichts uebrig - unter
+ * 1705 px Fensterbreite -, steht alles wie bisher: Die linke Spalte faellt auf ihre
+ * Mindestbreite (sechs Schaltflaechen zu 62 px), und das Panel bekommt, was es kriegen kann.
+ */
 .dock-row {
+  /*
+   * Der Deckel des Kachelpanels: 980 px Raster plus zweimal 10 px Polsterung.
+   *
+   * Er steht hier und nicht am Raster, weil er hier **beide** Spalten betrifft.
+   * `selftest/guards.ts` liest ihn an dieser Stelle.
+   *
+   * Diese eine Zahl bestimmt die **Hoehe der ganzen unteren Leiste**, und zwar mit dem
+   * Faktor ein Fuenftel: Zehn quadratische Kacheln in zwei Reihen sind (Breite - 74) / 5
+   * hoch. 1280 px Deckel ergaben ein 273 px hohes Dock und haben ein Viertel des Bildes
+   * verdeckt; 1000 px ergeben 215 px. Wer es noch flacher will, dreht hier - und bekommt
+   * kleinere Kacheln, nicht kleinere Reiter. Die haengen nicht mehr daran.
+   */
+  --panel-max: 1000px;
   display: grid;
-  grid-template-columns: auto 1fr;
+  /*
+   * Die Leiste nimmt ihr Eigenmass, das Panel seinen Deckel - und was uebrig bleibt, liegt
+   * **zwischen** ihnen. Beide sitzen damit auf ihrer Bildschirmkante, wie alle Schilde des
+   * Spiels; die Fuge dazwischen ist Dockflaeche und kein Kasten, der Leere umrahmt.
+   *
+   * Ein Rest muss irgendwo hin: Kachelwand und Reiterleiste ergeben zusammen nur bei einer
+   * einzigen Fensterbreite genau das Bild (1653 px). Waechst das Panel mit, waechst die
+   * Leistenhoehe mit ihm; waechst die Leiste mit, werden die Reiter riesig. Beides war schon
+   * da, beides war schlechter als eine Fuge.
+   */
+  grid-template-columns: min-content minmax(0, var(--panel-max));
+  justify-content: space-between;
   gap: 10px;
   align-items: stretch;
 }
 
+/*
+ * Navileiste und Upgrade-Panel sind **eine** Fassung in zwei Teilen, keine zwei Kaesten.
+ * Deshalb tragen beide denselben Rahmen, dieselbe Flaeche und dieselben Eckwinkel - was
+ * sie unterscheidet, ist nur, was darin steht.
+ */
+.nav,
+.upgrade-panel,
+.action-panel {
+  position: relative;
+  border: 1px solid var(--line-soft);
+  border-bottom: 0;
+  background: var(--fill-panel);
+  box-shadow: var(--glow-soft), var(--shadow-card);
+}
+
+/* Beide stossen unten an, die Navileiste zusaetzlich links und das Panel rechts. */
 .nav {
-  display: flex;
+  border-left: 0;
+  border-radius: 0 12px 0 0;
+}
+
+.upgrade-panel,
+.action-panel {
+  border-right: 0;
+  border-radius: 12px 0 0 0;
+}
+
+/*
+ * Beide liegen in **derselben** Rasterzelle - sie sind dasselbe Fach mit zwei Inhalten, und
+ * welcher zu sehen ist, entscheidet allein die Sichtbarkeitsregel oben. Nebeneinander waeren
+ * sie zwei Spalten, und die untere Leiste haette in der Basis eine dritte Saeule.
+ *
+ * Gezaehlt wird von **hinten** (`-2 / -1`, also die letzte Spalte) und nicht von vorn: Auf
+ * breiten Bildern schiebt sich das Kernfeld als mittlere Spalte dazwischen (siehe unten),
+ * und ein festes `1 / 2` haette das Panel dort unter das Feld gelegt. Die Aussage bleibt in
+ * beiden Faellen dieselbe - das Fach sitzt an der rechten Bildschirmkante.
+ */
+.upgrade-panel,
+.action-panel {
+  grid-area: 1 / -2 / 2 / -1;
+}
+
+/*
+ * Eckwinkel an den vier Ecken - dasselbe Zeichen wie innen an der Achteckfassung der
+ * Navischaltflaechen. Ein Rahmen mit Winkeln liest sich als Fassung eines Geraets, einer
+ * ohne als Umrandung eines Textfelds.
+ *
+ * Gezeichnet als vier Verlaeufe in **einer** Flaeche: Vier Pseudoelemente gibt es nicht,
+ * und vier zusaetzliche Knoten fuer vier Striche waeren Markup fuer Zierde.
+ */
+.nav::before,
+.core-gauge::before,
+.upgrade-panel::before,
+.action-panel::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 8px;
+  background:
+    linear-gradient(var(--edge), var(--edge)) 0 0 / 12px 1px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 0 0 / 1px 12px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 100% 0 / 12px 1px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 100% 0 / 1px 12px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 0 100% / 12px 1px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 0 100% / 1px 12px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 100% 100% / 12px 1px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 100% 100% / 1px 12px no-repeat;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* --- Das Kernfeld in der Fuge -------------------------------------------- */
+
+/*
+ * Der Hauptturm als Instrument, die Erfahrung als seine Flaeche (`ui/coregauge.ts`).
+ *
+ * Es steht in der **Fuge**, die das Raster zwischen Reiterleiste und Kachelwand laesst - und
+ * damit ist es die einzige Anzeige der unteren Leiste, die keinen Platz kostet: Die Leiste
+ * wird um keinen Pixel hoeher, sie fuellt nur eine Flaeche, die vorher leer war.
+ *
+ * Quadratisch, und zwar genau so hoch wie die Reiterleiste daneben (`--nav-rows` plus deren
+ * 12 px Polsterung und 1 px Rahmen). Drei Kaesten in einer Reihe, alle auf derselben
+ * Oberkante: Was daneben eine Handbreit hoeher oder tiefer saesse, laese sich als etwas
+ * Fremdes, das dort abgestellt wurde.
+ *
+ * Anders als Leiste und Kachelwand sitzt es auf **keiner** Bildschirmkante. Deshalb ist es
+ * das einzige der drei mit rundum geschlossenem Rahmen und vier runden Ecken - es schwebt,
+ * die anderen wachsen aus dem Rand.
+ */
+.core-gauge {
+  position: relative;
+  align-self: end;
+  /* Nur da, wo die Fuge auch breit genug ist - siehe die Medienabfrage unten. */
+  display: none;
+  width: calc(var(--nav-rows) + 13px);
+  height: calc(var(--nav-rows) + 13px);
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: linear-gradient(170deg, rgba(11, 22, 56, 0.92), var(--ink-deep));
+  box-shadow: var(--glow-soft), var(--shadow-card);
+  /* Dieselbe Auffahrt wie die Nachbarn. Sie laeuft genau einmal, beim Start des Spiels: Das
+     Feld gehoert keinem Bereich und wird bei keinem Wechsel neu gebaut. */
+  animation: enter-up var(--dur-view) var(--ease-out);
+}
+
+/* Die Eckwinkel liegen ueber dem Ladestand - sie sind die Fassung des Geraets, und eine
+   Fassung, die ab halbem Fuellstand verschwindet, waere keine. */
+.core-gauge::before {
+  z-index: 2;
+}
+
+/*
+ * Der Ladestand bis zur naechsten Stufe.
+ *
+ * Er waechst ueber die **Hoehe** und nicht ueber `scaleY`, obwohl das billiger waere: Seine
+ * Oberkante ist ein Strich, und ein gestauchter Strich waere bei niedrigem Stand ein
+ * dicker und bei hohem ein duenner - die Anzeige waere an ihrer auffaelligsten Stelle
+ * unruhig. Bei einem einzigen Kasten in der Leiste kostet die Hoehe nichts.
+ *
+ * Die Flaeche selbst bleibt blass. Sie liegt hinter dem Kern, und der ist das hellste Ding
+ * im Bild (GDD 13 Abschnitt 7) - eine kraeftig gefuellte Wanne haette ihn ausgeloescht.
+ * Ablesbar ist der Stand an der Kante, nicht an der Deckkraft.
+ */
+.core-gauge .charge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--xp, 0) * 100%);
+  border-top: 2px solid var(--res-level);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--res-level) 26%, transparent),
+    color-mix(in srgb, var(--res-level) 7%, transparent)
+  );
+  box-shadow: 0 0 16px color-mix(in srgb, var(--res-level) 40%, transparent);
+  transition: height 260ms var(--ease-out);
+}
+
+/* Der Kern liegt darueber und traegt keine eigene Flaeche - gezeichnet wird auf
+   durchsichtigem Grund, damit der Ladestand hinter ihm durchsteht. */
+.core-gauge .core-view {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * Ab hier gibt es die Fuge - und erst ab hier gibt es das Kernfeld.
+ *
+ * Die Rechnung ist die Fortsetzung der 1641 px weiter oben, nur mit einem Kasten mehr:
+ *
+ *   631 px  Reiterleiste in der grossen Fassung (6 x 98 + 5 x 6 Abstand + 12 Polsterung + 1)
+ *    10 px  Fuge
+ *   208 px  das Kernfeld, so hoch wie die Leiste und damit so breit
+ *    10 px  Fuge
+ *  1000 px  Kachelwand an ihrem Deckel (`--panel-max`)
+ *  ------
+ *  1859 px
+ *
+ * Darunter faellt das Feld weg, statt sich zu verkleinern oder der Kachelwand Breite zu
+ * nehmen. Beides waere schlechter: Ein Instrument, das je nach Fenster eine andere Groesse
+ * hat, liest sich nicht als dasselbe Ding, und ein Bildmenue, dem fuer eine Anzeige die
+ * Kacheln schrumpfen, verliert genau das, wofuer es da ist (`selftest/guards.ts` rechnet die
+ * Untergrenze Pixel fuer Pixel nach - sie darf hier nicht angetastet werden).
+ *
+ * Wandert die Erfahrung damit auf schmalen Bildern aus dem Bild? Nein: Ihr genauer Stand
+ * steht dort wie hier im Hinweis der Stufe (`ui/hud.ts`), und die Stufe selbst steht in der
+ * Ressourcenzeile, die in jedem Bereich und bei jeder Breite dieselbe ist.
+ */
+@media (min-width: 1860px) {
+  .dock-row {
+    grid-template-columns: min-content min-content minmax(0, var(--panel-max));
+  }
+
+  .core-gauge {
+    display: block;
+  }
+}
+
+/*
+ * Ein Raster und keine Reihe - wie viele Spalten und wie hoch die Reihen sind, sagt der
+ * Bereich (`--nav-cols`, `--nav-rows`, siehe "Sichtbarkeit je Bereich").
+ *
+ * Damit ist **eine** Regel fuer beide Formen zustaendig: die schmale Reihe zu sechs Quadraten
+ * und die zweireihige Leiste mit Namen. Vorher war es ein Flex-Kasten, und die zweite Form
+ * haette eine zweite gebraucht.
+ */
+.nav {
+  /*
+   * Der Kasten ist so hoch wie seine Reiter und sitzt unten auf.
+   *
+   * Bei 1920 px ist das genau die Hoehe der Kachelwand daneben, die beiden stehen also
+   * buendig. Auf schmaleren Bildern sind die Reiter kleiner als die Kachelwand hoch ist -
+   * dann wird die Leiste **kuerzer**, statt sich zu strecken und ihre Reiter oben in eine
+   * halbleere Fassung zu haengen.
+   */
+  align-self: end;
+  display: grid;
+  grid-template-columns: var(--nav-cols);
+  grid-auto-rows: var(--nav-rows);
   gap: 6px;
   padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--fill-panel);
-  box-shadow: var(--glow-soft);
+  justify-content: space-between;
 }
 
 /*
  * Die Navischaltflaechen.
  *
  * Bewusst gross: Zwischen Basis und Kampf wird staendig gewechselt, das ist der haeufigste
- * Griff im ganzen Spiel. Der Rahmen kommt als Bild aus dem Anlagensatz - eine gezeichnete
- * Achteckfassung mit Eckwinkeln, die ein CSS-Rahmen nicht hinbekommt.
+ * Griff im ganzen Spiel. Ihre Groesse steht deshalb **nicht** hier, sondern in der Zelle, in
+ * der sie liegen (`--nav-cols`, `--nav-rows`): 62 px im Quadrat, wo die Leiste schmal ist,
+ * und rund 202 x 122 px, wo sie zweireihig die Ecke fuellt.
+ *
+ * Die Achteckfassung kam frueher als Bild aus dem Anlagensatz (`/ui/frame-slot.svg`). Das
+ * ging, solange die Schaltflaeche quadratisch war - ein Bild auf 100 % x 100 % zieht sich
+ * mit. Bei 202 x 122 px waeren aus den gekappten Ecken schiefe Facetten geworden und aus dem
+ * 2-px-Strich oben ein anderer als an der Seite. Jetzt ist die Fassung **gerechnet**:
+ *
+ *   `clip-path`  kappt die vier Ecken um `--cut`. Eine feste Pixelzahl, keine anteilige -
+ *                die Kappung soll bei jeder Kantenlaenge gleich aussehen.
+ *   zwei Lagen   Der Rahmen liegt im Randkasten, die Flaeche im Polsterkasten. Ein `border`
+ *                mit Farbe ginge nicht: `clip-path` schneidet ihn an den Diagonalen weg.
  */
 .nav-button {
+  /* Gestellt, damit die Eckwinkel der Fassung hinter den Schaltflaechen bleiben: Ein
+     positionierter Knoten malt sich ueber ein positioniertes Pseudoelement davor. */
+  position: relative;
+  --cut: 11px;
   display: grid;
   place-items: center;
-  width: 62px;
-  height: 62px;
+  min-width: 46px;
   padding: 0;
-  border: 0;
-  background: url('/ui/frame-slot.png') center / 100% 100% no-repeat;
+  border: 2px solid transparent;
+  /*
+   * Drei Lagen: das Bild des Reiters, die Flaeche darunter, der Rahmen aussen.
+   *
+   * `--art` setzt `ui/shell.ts` je Reiter (`/nav/<kennung>.png`, Format 1:2). Fehlt die
+   * Datei, faellt die Lage auf `none` und darunter steht die gezeichnete Fassung mit ihrem
+   * Zeichen - das Bild ist eine Verbesserung, keine Voraussetzung.
+   */
+  background:
+    var(--art, none) center / cover no-repeat padding-box,
+    linear-gradient(180deg, rgba(22, 48, 110, 0.95), rgba(8, 20, 54, 0.95)) padding-box,
+    linear-gradient(#2f5da8, #2f5da8) border-box;
+  clip-path: polygon(
+    0 var(--cut),
+    var(--cut) 0,
+    calc(100% - var(--cut)) 0,
+    100% var(--cut),
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    var(--cut) 100%,
+    0 calc(100% - var(--cut))
+  );
   color: var(--text-dim);
   cursor: pointer;
   transition: color var(--dur-tap) var(--ease-out), filter var(--dur-tap) var(--ease-out),
     transform var(--dur-tap) var(--ease-out);
+}
+
+/*
+ * Die Eckwinkel - dieselbe Sprache wie an der Fassung der Leiste und am Spielfeldrand.
+ *
+ * Vier Winkel als acht Verlaeufe in **einer** Flaeche, genau wie bei `.nav::before`. Sie
+ * bleiben 9 px lang, egal wie gross die Schaltflaeche wird: Ein Eckwinkel, der mitwaechst,
+ * ist irgendwann kein Winkel mehr, sondern ein zweiter Rahmen.
+ */
+.nav-button::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  background:
+    linear-gradient(var(--edge), var(--edge)) 0 0 / 9px 2px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 0 0 / 2px 9px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 100% 0 / 9px 2px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 100% 0 / 2px 9px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 0 100% / 9px 2px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 0 100% / 2px 9px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 100% 100% / 9px 2px no-repeat,
+    linear-gradient(var(--edge), var(--edge)) 100% 100% / 2px 9px no-repeat;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/*
+ * Das Zeichen waechst mit der Schaltflaeche.
+ *
+ * `ui/shell.ts` gibt ihm 30 px mit, und das steht als Inline-Wert am Knoten; eine Regel auf
+ * `--pix-size` kaeme dagegen nicht an. Ueberschrieben wird deshalb die Groesse selbst, und
+ * zwar als Anteil der **Breite**: Die ist die einzige, die hier definit ist - an der Hoehe
+ * gemessen faellt das Zeichen auf null, weil die Hoehe des Rasters dann von ihm selbst
+ * abhinge. 48 % sind beim 62-px-Quadrat die 30 px von vorher, beim 100er-Reiter 48 px.
+ */
+.nav-button .pix {
+  width: 48%;
+  height: auto;
+  aspect-ratio: 1;
 }
 
 .nav-button:hover {
@@ -1783,209 +2852,385 @@ button:hover:not(:disabled) .slide::after {
 }
 
 /*
+ * Ein Reiter fuer ein Fenster, das noch verschlossen ist.
+ *
+ * Er bleibt **sichtbar** und wird nicht ausgeblendet: Was man noch nicht hat, muss man sehen
+ * koennen, sonst ist das Tor keine Belohnung, sondern eine Ueberraschung. Das Schloss ist
+ * ein Schraegstrich ueber dem Zeichen - er sagt "gesperrt", ohne ein zweites Bild zu
+ * brauchen.
+ */
+.nav-button.sealed {
+  color: rgba(150, 170, 200, 0.3);
+  cursor: default;
+}
+
+.nav-button.sealed:hover {
+  filter: none;
+}
+
+.nav-button.sealed::after {
+  content: '';
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  top: 50%;
+  /* Der Strich waechst mit der Schaltflaeche. 2 px quer ueber eine 155-px-Fassung waeren ein
+     Haar - und ein Schloss, das man fuer einen Kratzer haelt, sperrt nichts. */
+  height: max(2px, 3%);
+  background: rgba(190, 210, 235, 0.45);
+  transform: rotate(-38deg);
+  pointer-events: none;
+}
+
+/* Das Zahnrad am rechten Ende der Ressourcenzeile (`ui/hud.ts`). */
+.res-settings {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color var(--dur-tap) var(--ease-out);
+}
+
+.res-settings:hover {
+  color: var(--text);
+}
+
+/*
  * Das Upgrade-Panel.
  *
- * Feste Hoehe statt eines Anteils der Bildhoehe: Vorher durfte es 32 vh hoch werden und
- * verdeckte auf einem hohen Fenster ein Drittel des Spielfelds. Vier Kategorien mit je drei
- * Pfaden passen in zwei Reihen - mehr Hoehe braucht es nicht, und was nicht passt, rollt.
+ * **Keine feste Hoehe mehr.** Sie folgt jetzt aus dem Raster: zwei Reihen quadratischer
+ * Kacheln, und wie hoch die sind, haengt an der Breite. Eine gesetzte Hoehe waere eine
+ * zweite Wahrheit daneben - und die eine von beiden muesste falsch sein.
+ *
+ * Was stattdessen begrenzt wird, ist die **Breite des Panels** (`--panel-max` in
+ * `.dock-row`): Ohne sie waeren die Kacheln auf einem breiten Fenster 130 px gross, das
+ * Panel 280 px hoch, und es verdeckte genau das, was man beim Kaufen im Auge behalten will -
+ * das Spielfeld.
+ *
+ * Der Deckel sass frueher am Raster und nicht am Panel. Das war dieselbe Zahl an der
+ * falschen Stelle: Das Panel blieb breit, das Raster stand mittig darin, und links und
+ * rechts davon lag leere Flaeche in einem Kasten, der sie umrahmte.
  */
 .upgrade-panel {
   flex-direction: column;
   gap: 0;
-  max-height: 164px;
   padding: 0;
   overflow: hidden;
 }
 
-.cat-tabs {
-  display: flex;
-  gap: 5px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--line-soft);
+/*
+ * === Das Kachelraster ========================================================
+ *
+ * **Zwei Reihen zu zehn, und niemals eine Rollleiste** (`docs/upgrade-umbau.md` §8.4).
+ *
+ * Die vorherige Fassung rollte: Sie stellte Gruppen nebeneinander, deren Zahl vom Inhalt
+ * abhing, und was nicht passte, fuhr nach unten weg. Ein Menue, in dem man scrollen muss,
+ * um zu sehen, was es gibt, ist aber kein Ladenregal, sondern eine Liste - und die Frage
+ * "was kann ich mir gerade leisten?" beantwortet man nur mit einem Blick auf alles.
+ *
+ * Die Spaltenzahl steht deshalb **fest**. Was mitgeht, ist die Kachelgroesse: `1fr` teilt
+ * die Breite in zehn gleiche Teile, `aspect-ratio: 1` macht daraus Quadrate. Damit haengt
+ * die Hoehe des Panels an seiner Breite, und das ist die Zusage, gegen die `guards.ts`
+ * rechnet: 44 px Kante als Untergrenze.
+ */
+.upgrade-panel {
+  padding: 8px 10px;
 }
 
-.cat-tab {
-  padding: 3px 10px;
-  border: 1px solid var(--line-soft);
+/*
+ * === Das Handlungsfach ========================================================
+ *
+ * Dieselbe Polsterung wie die Kachelwand, damit der Knopf darin genau die Flaeche einnimmt,
+ * die im Kampf die Kacheln haben. Er ist bewusst **so gross**: In der Basis und im Prestige
+ * gibt es genau eine Handlung, und sie ist der Grund, aus dem man in den Bereich geht.
+ */
+.action-panel {
+  padding: 8px 10px;
+  gap: 8px;
+}
+
+.action-button {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  min-height: 0;
+  font-size: 18px;
+  letter-spacing: 0.14em;
+}
+
+/* Der Preis unter der Beschriftung statt dahinter - auf dieser Flaeche waere eine Zeile aus
+   zwei Teilen eine Zeile mit einer Luecke. */
+.action-button b {
+  font-family: var(--font-pixel);
+  font-size: 26px;
+  font-weight: 400;
+}
+
+/* Warum der Knopf nicht geht - direkt darunter, nicht drei Panels weiter. */
+.action-note {
+  flex: none;
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+}
+
+.up-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 6px;
+  /*
+   * `width: 100%` **muss** dastehen.
+   *
+   * Das Panel ist ein Flex-Kasten, und ein Flex-Kind nimmt sich von selbst nur seine
+   * Inhaltsbreite. Bei einem Raster aus lauter `1fr` ist die **null** - die Spalten haben
+   * keine eigene Groesse, sie teilen nur auf, was da ist. Ohne diese Zeile fiel das ganze
+   * Raster auf die Summe seiner neun Luecken zusammen: 54 px breit, Kacheln unsichtbar.
+   */
+  width: 100%;
+}
+
+/*
+ * Eine Kachel.
+ *
+ * Quadratisch, und darin nichts als das Bild. Der Rahmen ist ein eigener Auftrag
+ * (`::before`) statt einer `border`: Er soll leuchten koennen, ohne die Flaeche zu
+ * verschieben, und er traegt zusaetzlich die Fortschrittskerbe.
+ */
+.up-tile {
+  position: relative;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
   border-radius: 7px;
-  background: rgba(10, 20, 54, 0.6);
-  color: var(--text-dim);
-  font: inherit;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  background: rgba(8, 14, 32, 0.72);
   cursor: pointer;
-  transition: color var(--dur-tap) var(--ease-out),
-    border-color var(--dur-tap) var(--ease-out), box-shadow var(--dur-tap) var(--ease-out);
+  transition: transform var(--dur-tap) var(--ease-out), filter var(--dur-tap) var(--ease-out);
 }
 
-.cat-tab:hover {
-  color: var(--text);
-  border-color: var(--line);
-}
-
-.cat-tab.active {
-  border-color: var(--accent);
-  color: var(--accent);
-  box-shadow: 0 0 14px rgba(70, 200, 255, 0.3), inset 0 0 10px rgba(70, 200, 255, 0.12);
-  text-shadow: 0 0 8px currentColor;
-}
-
-/* In der vollen Ansicht steht jede Kategorie untereinander - die Reiter entfallen. */
-.upgrade-panel.wide {
-  max-height: 42vh;
-}
-
-.upgrade-panel.wide .cat-tabs {
-  display: none;
-}
-
-.cat-body {
-  overflow-y: auto;
-}
-
-.upgrade-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
-  padding: 8px;
-}
-
-.upgrade-card {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 9px;
-  padding: 7px 9px;
-  border: 1px solid var(--line-soft);
-  border-radius: 9px;
-  background: var(--fill-card);
-  box-shadow: var(--shadow-card);
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: transform var(--dur-tap) var(--ease-out),
-    box-shadow var(--dur-tap) var(--ease-out), border-color var(--dur-tap) var(--ease-out);
-}
-
-.upgrade-card.affordable {
-  border-color: var(--line);
-  box-shadow: var(--glow-soft), var(--shadow-card);
-}
-
-/* Bezahlbar und unter dem Zeiger: die Kachel hebt sich aus dem Panel heraus. */
-.upgrade-card:hover.affordable {
-  transform: translateY(-2px);
-  border-color: var(--accent);
-  box-shadow: var(--glow), var(--shadow-lift);
-}
-
-.upgrade-card:active.affordable {
-  transform: translateY(0) scale(0.98);
-  box-shadow: var(--shadow-card);
-}
-
-.upgrade-card:disabled {
-  opacity: 0.42;
-  box-shadow: none;
+/* Ein leerer Platz ist sichtbar leer - er sagt, dass das Fenster noch Raum hat. */
+.up-empty {
+  background: rgba(8, 14, 32, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   cursor: default;
 }
 
 /*
- * Quittung fuer einen Kauf. Die Klasse setzt `ui/upgrades.ts`, weg nimmt sie das Ende der
- * Bewegung selbst - so braucht die Quittung keine Uhr.
+ * Das Bild.
+ *
+ * Als **Maske** und nicht als Bild, wie jedes Zeichen im Spiel (`ui/icons.ts`): Die Datei
+ * liefert die Form, die Farbe kommt von hier. Damit traegt eine gesperrte Kachel dieselbe
+ * Zeichnung wie eine kaufbare, nur in Grau - und man erkennt sie wieder, sobald sie aufgeht.
  */
-@keyframes bought {
-  0% {
-    border-color: var(--lime);
-    box-shadow: 0 0 0 rgba(127, 232, 63, 0.6);
-    transform: scale(1);
-  }
-  30% {
-    border-color: var(--lime);
-    box-shadow: 0 0 26px rgba(127, 232, 63, 0.7), inset 0 0 18px rgba(127, 232, 63, 0.25);
-    transform: scale(1.04);
-  }
-  100% {
-    box-shadow: var(--shadow-card);
-    transform: scale(1);
-  }
-}
-
-.upgrade-card.bought {
-  animation: bought 440ms var(--ease-out);
-}
-
-.upgrade-card .label {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-  color: var(--accent);
-}
-
-.upgrade-card .label span {
-  color: var(--text);
-}
-
-.upgrade-card .value-box {
-  display: grid;
-  min-width: 72px;
-  border: 1px solid var(--line-soft);
-  border-radius: 6px;
-  overflow: hidden;
-  text-align: center;
-}
-
-.upgrade-card .value {
-  padding: 1px 6px;
-  font-family: var(--font-pixel);
-  font-size: 17px;
-  color: var(--text);
-}
-
-.upgrade-card .cost {
-  padding: 1px 6px;
-  border-top: 1px solid var(--line-soft);
-  background: rgba(3, 5, 13, 0.5);
-  font-family: var(--font-pixel);
-  font-size: 15px;
-  color: var(--cyan);
+.up-art {
+  position: absolute;
+  inset: 18%;
+  background: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
 }
 
 /*
- * Jede Kategorie faerbt Reiter und Kachelsymbole in der Farbe, in der ihr Turm auf dem
- * Feld leuchtet. Den Wert setzt `ui/upgrades.ts` als `--accent` am Reiter und am Abschnitt;
- * hier steht nur, was gilt, solange keiner gesetzt ist.
+ * Der Rahmen - und mit ihm der ganze Zustand der Kachel.
+ *
+ * Die Farbe ist die **Art** des Upgrades (`data-kind`) und nicht sein Ziel. Beim
+ * Ueberfliegen eines Fensters sucht man nicht "was trifft meine Tuerme", sondern "wo liegen
+ * die vier teuren Entscheidungen" - und genau das sagt die Farbe.
  */
-.cat-tab,
-.cat-section {
-  --accent: var(--cyan);
+.up-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 2px var(--frame);
+  pointer-events: none;
+  transition: box-shadow var(--dur-tap) var(--ease-out);
 }
 
-/* --- Basis --------------------------------------------------------------- */
+.up-tile[data-kind='endless'] {
+  --frame: #46c8ff;
+}
+.up-tile[data-kind='extension'] {
+  --frame: #2ee0c0;
+}
+.up-tile[data-kind='charge'] {
+  --frame: #ff9a3c;
+}
+.up-tile[data-kind='directive'] {
+  --frame: #b45cff;
+}
+
+/* --- Die fuenf Zustaende -------------------------------------------------- */
+
+/*
+ * Gesperrt: die Zeichnung als Schattenriss.
+ *
+ * Sie bleibt sichtbar und wird nicht ausgeblendet - wer spaeter kauft, soll das Bild
+ * wiedererkennen, das er vorher als Umriss gesehen hat.
+ */
+.up-tile[data-state='locked'] {
+  color: rgba(150, 170, 200, 0.28);
+  cursor: default;
+}
+.up-tile[data-state='locked']::before {
+  box-shadow: inset 0 0 0 1px rgba(150, 170, 200, 0.22);
+}
+
+/* Kaufbar, aber zu teuer: gedaempft, der Rahmen bleibt in seiner Farbe. */
+.up-tile[data-state='unaffordable'] {
+  color: rgba(190, 210, 235, 0.5);
+  cursor: default;
+}
+.up-tile[data-state='unaffordable']::before {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--frame) 45%, transparent);
+}
+
+/* Leistbar: volles Bild, leuchtender Rahmen. Das ist der Zustand, den man sucht. */
+.up-tile[data-state='ready'] {
+  color: #eaf4ff;
+}
+.up-tile[data-state='ready']::before {
+  box-shadow:
+    inset 0 0 0 2px var(--frame),
+    0 0 10px color-mix(in srgb, var(--frame) 55%, transparent);
+}
+
+/*
+ * Ausgekauft: **golden** und geschlossen.
+ *
+ * Die einzige Farbe, die nicht von der Art kommt - und genau deshalb funktioniert sie: Ein
+ * fertiger Pfad ist keine Art mehr, er ist erledigt. Gold sagt das in jedem Fenster gleich.
+ */
+.up-tile[data-state='maxed'] {
+  color: #ffe6a8;
+  cursor: default;
+}
+.up-tile[data-state='maxed']::before {
+  box-shadow:
+    inset 0 0 0 2px var(--gold),
+    0 0 12px color-mix(in srgb, var(--gold) 60%, transparent);
+}
+
+/*
+ * Der Fortschritt als Balken am unteren Rand.
+ *
+ * `--fill` setzt `ui/upgrades.ts` als Anteil. Endlose Pfade bekommen 0 und damit keinen
+ * Balken: Ein Anteil an Unendlich ist keine Auskunft, und ein Balken, der nie voll wird,
+ * waere ein Versprechen, das niemand einloest.
+ */
+.up-tile::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(
+    to right,
+    var(--frame) calc(var(--fill, 0) * 100%),
+    transparent calc(var(--fill, 0) * 100%)
+  );
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.up-tile[data-state='maxed']::after,
+.up-empty::after {
+  content: none;
+}
+
+/* Nur die kaufbare Kachel reagiert - sonst verspricht die Bewegung etwas, was nicht geht. */
+.up-tile[data-state='ready']:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.15);
+}
+
+.up-tile[data-state='ready']:active {
+  transform: scale(0.94);
+}
+
+/* Die Quittung des Kaufs. */
+@keyframes upBought {
+  0% {
+    transform: scale(1);
+    filter: brightness(2.2);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.up-tile.bought {
+  animation: upBought var(--dur-slow) var(--ease-out);
+}
+
+/* Die Zeilen im Hinweis - Beschriftung links, Wert rechts. */
+.tip-rows {
+  margin-top: 6px;
+  border-collapse: collapse;
+}
+
+.tip-rows th {
+  padding: 1px 10px 1px 0;
+  color: var(--text-dim);
+  font-weight: 400;
+  text-align: left;
+}
+
+.tip-rows td {
+  padding: 1px 0;
+  color: var(--text);
+  text-align: right;
+}
 
 .inventory-panel {
   position: absolute;
-  top: 54px;
-  left: 10px;
-  bottom: 10px;
-  width: 228px;
+  top: 68px;
+  left: 0;
+  bottom: 0;
+  width: 232px;
   flex-direction: column;
+  border-left: 0;
+  border-bottom: 0;
+  border-radius: 0 14px 0 0;
 }
 
+/*
+ * Die rechte Spalte der Basis.
+ *
+ * Sie faengt dort an, wo die Wellenkarte darueber aufhoert - deren Hoehe plus ein Finger
+ * Luft. Die Zahl haengt an `.meta-card`; wer dort eine Zeile hinzufuegt, muss sie hier
+ * nachziehen. Ein `top: 0` mit einem Platzhalter waere sauberer, kostete aber eine leere
+ * Flaeche quer durch das Bild.
+ *
+ * Zuletzt nachgezogen, als die Goldzeile aus der Karte verschwand: Das Gold steht jetzt in
+ * der Ressourcenzeile und damit in jedem Bereich - eine Zeile weniger, 32 px hoeher.
+ */
 .rail {
   position: absolute;
-  top: 138px;
-  right: 10px;
-  bottom: 10px;
-  width: 250px;
+  top: 96px;
+  right: 0;
+  bottom: 0;
+  width: 254px;
   flex-direction: column;
   gap: 10px;
+}
+
+/*
+ * In der Spalte docken die beiden Panels je an ihre Kante: Beide stossen rechts an den
+ * Rand, das untere ausserdem an die Unterkante.
+ */
+.rail > .panel {
+  border-right: 0;
+  border-radius: 14px 0 0 14px;
+}
+
+.rail > .panel:last-child {
+  border-bottom: 0;
+  border-radius: 14px 0 0 0;
 }
 
 .rail .detail-panel {
@@ -2000,12 +3245,15 @@ button:hover:not(:disabled) .slide::after {
 
 .meta-card {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 250px;
+  top: 0;
+  right: 0;
+  width: 254px;
   flex-direction: column;
   gap: 5px;
-  padding: 10px 12px;
+  border-top: 0;
+  border-right: 0;
+  border-radius: 0 0 0 14px;
+  padding: 11px 14px 12px;
 }
 
 .meta-row {
@@ -2279,10 +3527,17 @@ ul.sources li {
   }
 }
 
+/*
+ * Eine Breite fuer alle vier Auswahlfenster. Sie fasst drei Karten in voller Groesse samt
+ * ihren Abstaenden; wo weniger ausliegt, steht die Reihe mittig darin (`.choice-grid`).
+ * Vier verschiedene Breiten waren sinnvoll, solange jedes Fenster seine eigenen Kacheln
+ * hatte - jetzt zeigen alle dieselben Karten, und verschiedene Breiten hiessen nur, dass
+ * dasselbe Fenster je nach Anlass anders gross ist.
+ */
 .levelup-panel {
   position: relative;
   z-index: 1;
-  width: min(430px, calc(100% - 28px));
+  width: min(780px, calc(100% - 28px));
   padding: 16px 18px 18px;
   text-align: center;
   animation: levelup-enter 520ms var(--ease-out);
@@ -2324,93 +3579,696 @@ ul.sources li {
   display: none;
 }
 
-.perk-grid {
+/* --- Auswahlkarten (GDD 13 Abschnitt 6) ---------------------------------- */
+
+/*
+ * Die Karten, zwischen denen gewaehlt wird - beim Levelaufstieg und bei der Turmauswahl.
+ * Der Baum dazu steht in `ui/cards.ts`; hier steht, wie er sich bewegt.
+ *
+ * Eine Karte hat **zwei Seiten**. Vorn steht, was es ist, hinten, was es tut. Umgedreht
+ * wird durch Beruehren, und das braucht kein Skript: `:hover` dreht sie, `:focus-visible`
+ * ebenfalls - wer mit der Tastatur durch die Auswahl geht, bekommt dieselbe Auskunft wie
+ * wer mit der Maus daraufzeigt.
+ *
+ * Alles, was Farbe traegt, holt sie aus `--rarity`. Eine legendaere Karte leuchtet damit
+ * golden - Rahmen, Ringe, Lichtfleck, Streifen -, ohne dass hier eine zweite Regel je
+ * Stufe stuende.
+ */
+/*
+ * Die Groesse einer Karte - **eine** Zahl, aus der alles andere folgt.
+ *
+ * `--card-h` ist der einzige Knopf. Die Breite ist ihr festes Verhaeltnis (5:7, das einer
+ * echten Sammelkarte), und die Schrift darin ist ein Bruchteil davon: Jede Zeile auf der
+ * Karte steht in `em`, nicht in Pixeln. Eine Karte, die kleiner wird, nimmt ihren Inhalt
+ * mit - sonst waere sie beim Verkleinern nicht dieselbe Karte, sondern dieselbe Schrift in
+ * einem kleineren Rahmen, und der Text liefe ueber.
+ *
+ * Warum die Hoehe fuehrt und nicht die Breite: Sie ist die knappe Richtung. Neben dem
+ * Fenster ist Platz, darunter nicht - unter dem Feld sitzt die Leiste. `100vh - 340px` ist
+ * genau das, was nach Leiste, Ueberschrift und Rand uebrigbleibt; die Deckel bei 320 und
+ * 190 halten die Karte in der Spanne, in der ihr Inhalt lesbar bleibt.
+ */
+.choice-grid {
+  --card-h: clamp(200px, 100vh - 340px, 320px);
+  /*
+   * Die Breite deckelt zusaetzlich `27vw`. Das greift erst unter rund 850 px Fensterbreite
+   * und nur dort: Drei Karten im festen Verhaeltnis waeren sonst breiter als das Fenster,
+   * und lieber eine schmalere Karte als eine, die aus dem Bild laeuft.
+   */
+  --card-w: min(calc(var(--card-h) * 5 / 7), 27vw);
+  /*
+   * Die Spalten sind so breit wie eine Karte, und die Reihe steht mittig im Fenster - nicht
+   * umgekehrt. Teilten sich die Spalten die volle Breite, staenden zwei Ereignisoptionen an
+   * den beiden Enden eines fast leeren Fensters. Karten liegen nebeneinander aus, nicht in
+   * den Ecken.
+   */
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 9px;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, var(--card-w));
+  justify-content: center;
+  gap: 12px;
+}
+
+.tower-grid,
+.event-grid,
+.trade-grid {
+  margin-bottom: 12px;
 }
 
 /*
- * Eine Karte traegt die Farbe ihrer Seltenheit im Rahmen - dieselbe Sprache wie bei Tuermen
- * (GDD 13 Abschnitt 7). Ein legendaerer Perk ist damit zu erkennen, bevor man liest.
+ * Die Karte selbst zeichnet nichts. Sie ist der Knopf, spannt den Raum auf, in dem sich
+ * ihre Seiten drehen (`perspective`), und traegt die vier Werte, die das Skript am Zeiger
+ * abliest: `--tilt-x`/`--tilt-y` fuer die Neigung, `--px`/`--py` fuer den Lichtfleck.
+ *
+ * Ihre Schriftgroesse ist der Massstab fuer alles darauf. `--card-h / 27` trifft bei einer
+ * vollen Karte rund 11,8 px; die Grenzen fangen die Aussenlaender ab, wo aus Skalierung
+ * entweder Unleserlichkeit oder Grossdruck wuerde.
  */
-.perk-card {
+.choice {
   position: relative;
+  width: 100%;
+  height: var(--card-h, 212px);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: clamp(9px, calc(var(--card-h, 212px) / 27), 12.5px);
+  text-align: left;
+  cursor: pointer;
+  perspective: 1000px;
+  transition: opacity 220ms var(--ease-out), scale 220ms var(--ease-out);
+}
+
+/*
+ * Die uebrigen treten zurueck, solange eine Karte betrachtet wird.
+ *
+ * Das ist keine Zierde: Drei gleich helle Karten nebeneinander sind drei offene Fragen.
+ * Sobald eine davon angesehen wird, ist sie die einzige, um die es geht - und die beiden
+ * anderen sollen deshalb aus dem Weg gehen, ohne zu verschwinden.
+ */
+.choice-grid:has(.choice:hover) .choice:not(:hover),
+.choice-grid:has(.choice.flipped) .choice:not(.flipped) {
+  opacity: 0.5;
+  scale: 0.96;
+}
+
+/*
+ * Zwei Huellen, zwei Bewegungen - und sie sind absichtlich getrennt.
+ *
+ * Die Neigung folgt dem Zeiger und muss dabei fast sofort ankommen; der Umschlag legt eine
+ * halbe Drehung zurueck und braucht seine halbe Sekunde. Lagen beide auf derselben
+ * Transformation, muessten sie sich auf eine Dauer einigen: Entweder ruckt die Neigung
+ * hinterher, oder die Karte klappt um wie ein Schalter.
+ */
+.choice-tilt {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition: transform 240ms var(--ease-out);
+}
+
+.choice-turn {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 520ms cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/*
+ * Umgedreht wird nur dort, wo ein Zeiger schweben kann. Am Finger bleibt `:hover` nach dem
+ * Tippen haengen - die Karte staende dann verkehrt herum da, bis man woanders hintippt.
+ * Dort dreht das Zeichen in der Ecke (`.choice-badge`, Klasse `flipped`).
+ */
+@media (hover: hover) and (pointer: fine) {
+  .choice:hover .choice-turn {
+    transform: rotateY(180deg);
+  }
+}
+
+.choice:focus-visible .choice-turn,
+.choice.flipped .choice-turn {
+  transform: rotateY(180deg);
+}
+
+.choice-face {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 12px 8px;
   overflow: hidden;
+  backface-visibility: hidden;
   border: 1px solid var(--rarity, var(--line));
-  border-radius: 10px;
+  border-radius: 1.2em;
   background: var(--fill-card);
-  box-shadow: 0 0 14px -4px var(--rarity, transparent), var(--shadow-card);
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-  transition: transform var(--dur-tap) var(--ease-out),
-    box-shadow var(--dur-tap) var(--ease-out);
+  box-shadow: 0 0 18px -6px var(--rarity, transparent), var(--shadow-card);
+  transition: box-shadow 260ms var(--ease-out);
+  /*
+   * Die Folie (`.choice-foil`) mischt sich mit dem, was unter ihr liegt. Ohne diese Zeile
+   * suchte sie sich ihre Unterlage weiter unten - im Zweifel die Flaeche hinter dem ganzen
+   * Fenster -, und der Glanz laege dann nicht auf der Karte, sondern auf dem Bildschirm.
+   * Sie sagt: Gemischt wird **innerhalb dieser Seite**, nicht darueber hinaus.
+   */
+  isolation: isolate;
+}
+
+.choice:hover .choice-face,
+.choice:focus-visible .choice-face {
+  box-shadow: 0 0 32px -6px var(--rarity, var(--cyan)), var(--shadow-lift);
+}
+
+.choice-front {
+  align-items: center;
+  justify-content: center;
+  gap: 0.45em;
+  padding: 1.4em 0.9em 1.6em;
+  text-align: center;
+}
+
+.choice-back {
+  gap: 0.55em;
+  padding: 1.05em 1.05em 1.15em;
+  transform: rotateY(180deg);
+}
+
+/* Ein fester Schimmer aus der oberen Ecke - er gibt der Flaeche eine Lichtquelle. */
+.choice-face::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    120% 90% at 18% 10%,
+    color-mix(in srgb, var(--rarity, var(--cyan)) 13%, transparent),
+    transparent 66%
+  );
+  pointer-events: none;
 }
 
 /*
- * Der Streifen, der das Warten sichtbar macht.
+ * Der Lichtfleck, der dem Zeiger folgt.
  *
- * Wer auf einer Karte stehenbleibt, bekommt nach drei Sekunden die ausfuehrliche Auskunft
- * (`ui/dialogs.ts`). Drei Sekunden ohne jedes Zeichen waeren von "hier passiert nichts"
- * nicht zu unterscheiden - der Streifen laeuft in genau dieser Zeit an der Unterkante voll
- * und kuendigt sie an. Die Dauer kommt als `--probe` von dort, damit Zeichen und Wartezeit
- * nicht auseinanderlaufen koennen.
+ * Er sitzt auf einem eigenen Knoten und nicht auf einem Pseudoelement, weil die Vorderseite
+ * ihre beiden schon vergeben hat (fester Schimmer und Wischer). Seine Mitte kommt als
+ * `--px`/`--py` von der Karte - ohne Skript stuende er in der Mitte und bewegte sich nie.
  */
-.perk-card::after {
+.choice-glow {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(
+    circle at var(--px, 50%) var(--py, 50%),
+    color-mix(in srgb, var(--rarity, var(--cyan)) 30%, transparent),
+    transparent 58%
+  );
+  transition: opacity 260ms var(--ease-out);
+  pointer-events: none;
+}
+
+.choice:hover .choice-glow,
+.choice:focus-visible .choice-glow {
+  opacity: 1;
+}
+
+/*
+ * --- Folienglanz seltener Karten ----------------------------------------
+ *
+ * Was eine Sammelkarte teuer aussehen laesst, ist nicht ihre Farbe, sondern dass sie das
+ * Licht **anders** zurueckwirft als Papier: Sie hat eine Praegung, und die schillert, wenn
+ * man die Karte kippt. Genau das steht hier, und zwar in vier Lagen uebereinander:
+ *
+ *   Sprenkel     das Muster aus `public/ui/foil.svg` - die Koernung der Praegung
+ *   Regenbogen   die Farbfolge, die beim Kippen durchwandert
+ *   Diagonale    ein harter Hell-Dunkel-Wechsel quer dazu - er macht aus Farbe Metall
+ *   Schein       ein weicher Fleck unter dem Zeiger, der alles darunter aufhellt
+ *
+ * Die Lagen werden **miteinander** verrechnet (`background-blend-mode`) und das Ergebnis
+ * dann mit der Karte darunter (`mix-blend-mode`). Erst diese zwei Stufen ergeben Metall:
+ * Eine einzelne durchsichtige Farbschicht sieht immer nach Folie im Wortsinn aus - nach
+ * einem Blatt, das obendrauf liegt.
+ *
+ * **Bewegt wird nichts von selbst.** Der ganze Glanz haengt an `--px`/`--py`, und die setzt
+ * `ui/cards.ts` nur, solange ein Zeiger auf der Karte liegt - und nur, wenn Bewegung
+ * ueberhaupt eingeschaltet ist (E18). Wer sie abgestellt hat, bekommt eine Karte mit
+ * ruhigem Schimmer statt einer, die von allein blinkt.
+ */
+.choice {
+  --foil: 0;
+}
+
+/*
+ * Die Staffelung. Sie steht hier und nicht im Code, weil sie eine Frage der Gestaltung ist:
+ * Der Abstand zwischen zwei Stufen soll spuerbar sein, ohne dass die unterste schon
+ * aufdringlich waere. Common fehlt - dort entsteht der Knoten gar nicht erst.
+ */
+.choice[data-rarity='rare'] {
+  --foil: 0.42;
+}
+
+.choice[data-rarity='epic'] {
+  --foil: 0.62;
+}
+
+.choice[data-rarity='legendary'] {
+  --foil: 0.82;
+}
+
+.choice[data-rarity='mythic'] {
+  --foil: 1;
+}
+
+.choice-foil {
+  /*
+   * Wo die Farbfolgen stehen. Die Zeigerstelle wandert von 0 bis 100 Prozent, die Folie
+   * darf davon nur einen Bruchteil mitgehen - sonst rutschte das ganze Muster ueber die
+   * Karte hinaus, statt in ihr zu schillern. Die Konstanten davor halten die Ruhelage
+   * mittig: Bei `--px: 50%` kommt genau 50 % heraus.
+   */
+  --bg-x: calc(37.5% + var(--px, 50%) / 4);
+  --bg-y: calc(33.34% + var(--py, 50%) / 3);
+  --step: 5%;
+  --foil-size: 100%;
+
+  --foil-pattern: url('/ui/foil.svg') center / 100% no-repeat;
+  --foil-rainbow: repeating-linear-gradient(
+      0deg,
+      rgb(255, 119, 115) calc(var(--step) * 1),
+      rgb(255, 237, 95) calc(var(--step) * 2),
+      rgb(168, 255, 95) calc(var(--step) * 3),
+      rgb(131, 255, 247) calc(var(--step) * 4),
+      rgb(120, 148, 255) calc(var(--step) * 5),
+      rgb(216, 117, 255) calc(var(--step) * 6),
+      rgb(255, 119, 115) calc(var(--step) * 7)
+    )
+    0% var(--bg-y) / 200% 700% no-repeat;
+  --foil-diagonal: repeating-linear-gradient(
+      128deg,
+      #0e152e 0%,
+      hsl(180, 10%, 60%) 3.8%,
+      hsl(180, 10%, 60%) 4.5%,
+      hsl(180, 10%, 60%) 5.2%,
+      #0e152e 10%,
+      #0e152e 12%
+    )
+    var(--bg-x) var(--bg-y) / 300% no-repeat;
+  --foil-shade: radial-gradient(
+      farthest-corner circle at var(--px, 50%) var(--py, 50%),
+      rgba(255, 255, 255, 0.1) 12%,
+      rgba(255, 255, 255, 0.15) 20%,
+      rgba(255, 255, 255, 0.25) 120%
+    )
+    var(--bg-x) var(--bg-y) / 300% no-repeat;
+
+  position: absolute;
+  inset: 0;
+  background: var(--foil-pattern), var(--foil-rainbow), var(--foil-diagonal),
+    var(--foil-shade);
+  background-blend-mode: hue, hue, hue, overlay;
+  mix-blend-mode: color-dodge;
+  /* Im Ruhezustand ein Hauch - genug, dass man eine sagenhafte Karte von einer seltenen
+     unterscheidet, ohne sie anzufassen. */
+  opacity: calc(var(--foil) * 0.24);
+  transition: opacity 260ms var(--ease-out);
+  pointer-events: none;
+}
+
+/*
+ * Die zweite Lage, seitenverkehrt gerechnet.
+ *
+ * Sie nimmt dieselben vier Bilder (`background: inherit`), legt sie aber anders an und
+ * mischt sie anders - unter anderem die Diagonale mit umgekehrtem Vorzeichen. Dadurch
+ * laufen zwei Glanzkanten **gegeneinander**, wenn der Zeiger wandert. Genau das ist der
+ * Unterschied zwischen einem Farbverlauf, der mitzieht, und einer Oberflaeche, die kippt.
+ */
+.choice-foil::after {
   content: '';
+  position: absolute;
+  inset: 0;
+  background: inherit;
+  background-size: var(--foil-size), 200% 400%, 800%, 200%;
+  background-position: center, 0% var(--bg-y), calc(var(--bg-x) * -1) calc(var(--bg-y) * -1),
+    var(--bg-x) var(--bg-y);
+  background-blend-mode: soft-light, hue, hard-light;
+  mix-blend-mode: exclusion;
+}
+
+/*
+ * Unter dem Zeiger geht die Folie auf - aber die beiden Seiten vertragen nicht dasselbe
+ * Mass, und das ist keine Feinabstimmung, sondern eine Frage der Aufgabe:
+ *
+ * Die **Vorderseite** ist ein Bild. Sie darf voll aufglaenzen, und sie tut es genau dann,
+ * wenn sie wegkippt - waehrend der halben Drehung liegt sie schraeg im Licht, und das ist
+ * der Augenblick, in dem eine Folie ueberhaupt etwas zeigt.
+ *
+ * Die **Rueckseite** ist ein Text mit Zahlen. Auf ihr ist derselbe Glanz kein Schmuck mehr,
+ * sondern Streulicht vor dem, was man lesen will. Sie bekommt gut die Haelfte - genug, dass
+ * die Karte auch umgedreht nicht wie Pappe aussieht, und wenig genug, dass die Betraege
+ * darunter nicht verschwimmen.
+ */
+.choice:hover .choice-front .choice-foil,
+.choice:focus-visible .choice-front .choice-foil {
+  opacity: calc(var(--foil) * 0.72);
+}
+
+.choice:hover .choice-back .choice-foil,
+.choice:focus-visible .choice-back .choice-foil {
+  opacity: calc(var(--foil) * 0.34);
+}
+
+/* Der Wischer: ein schraeges Licht, das beim Beruehren einmal ueber die Vorderseite geht. */
+.choice-front::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 55%;
+  transform: translateX(-160%) skewX(-12deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.09), transparent);
+  transition: transform 760ms var(--ease-out);
+  pointer-events: none;
+}
+
+.choice:hover .choice-front::after,
+.choice:focus-visible .choice-front::after {
+  transform: translateX(300%) skewX(-12deg);
+}
+
+/* Der Streifen an der Unterkante laeuft beim Beruehren von links nach rechts voll. */
+.choice-line {
   position: absolute;
   left: 0;
   bottom: 0;
   width: 0;
   height: 2px;
-  background: var(--rarity, var(--cyan));
-  box-shadow: 0 0 8px var(--rarity, var(--cyan));
-  opacity: 0.75;
+  background: linear-gradient(90deg, var(--rarity, var(--cyan)), transparent);
+  box-shadow: 0 0 10px var(--rarity, var(--cyan));
+  transition: width 520ms var(--ease-out);
+  pointer-events: none;
 }
 
-.perk-card.probing::after {
-  animation: perk-probe var(--probe, 3000ms) linear forwards;
+.choice:hover .choice-line,
+.choice:focus-visible .choice-line {
+  width: 100%;
 }
 
-@keyframes perk-probe {
-  to {
-    width: 100%;
+/* --- Vorderseite --- */
+
+/*
+ * Der Kopf der Vorderseite: Zeichen im Raritaetsrahmen, dahinter der Puls.
+ *
+ * Alle drei Groessen sind Bruchteile der Kartenhoehe, nicht Pixel. Ein Zeichen, das beim
+ * Verkleinern der Karte gleich gross bliebe, sprengte sie - und der Rahmen darum kaeme mit
+ * dem Namen darunter ins Gedraenge.
+ */
+.choice-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: calc(var(--card-h, 212px) * 0.32);
+}
+
+.choice-tile {
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * Rahmen und Zeichen ueberschreiben ihre eigenen Masse. Der Rahmen bringt aus `.tile` feste
+ * 32 px mit, das Zeichen sogar eine Pixelzahl aus dem Baum (`icon()` setzt `--pix-size`
+ * am Knoten). Beides ist fuer eine Zeile in einer Liste gedacht; auf einer Karte, die mit
+ * dem Fenster waechst, muss es mitwachsen - und gegen einen Wert im `style`-Attribut hilft
+ * nur, die Breite direkt zu setzen statt ueber seine Eigenschaft.
+ */
+.choice-art .tile {
+  width: calc(var(--card-h, 212px) * 0.21);
+  height: calc(var(--card-h, 212px) * 0.21);
+}
+
+.choice-art .pix {
+  width: calc(var(--card-h, 212px) * 0.115);
+  height: calc(var(--card-h, 212px) * 0.115);
+}
+
+/*
+ * Die Ringe hinter dem Zeichen.
+ *
+ * Jeder faehrt gross und unsichtbar los, wird auf halbem Weg klein und hell und verglimmt
+ * nach unten - dasselbe Bild wie bei den Funken des Aufstiegsfensters, nur ruhiger und in
+ * der Farbe der Seltenheit. Ihr Versatz kommt als `--delay` vom Knoten; beim Beruehren
+ * laufen sie schneller, und die Karte wirkt, als reagiere sie.
+ */
+.choice-rings {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.choice-rings i {
+  position: absolute;
+  width: calc(var(--card-h, 212px) * 0.24);
+  height: calc(var(--card-h, 212px) * 0.24);
+  border-radius: 42%;
+  opacity: 0;
+  animation: choice-pulse 3s linear var(--delay, 0s) infinite;
+  will-change: transform, opacity;
+}
+
+.choice:hover .choice-rings i {
+  animation-duration: 2s;
+}
+
+@keyframes choice-pulse {
+  0% {
+    transform: scale(1.9);
+    opacity: 0;
+    box-shadow: 0 0 40px 0 var(--rarity, var(--cyan));
+  }
+  50% {
+    transform: translateY(-4px) scale(1);
+    opacity: 0.5;
+    box-shadow: 0 6px 18px 0 var(--rarity, var(--cyan));
+  }
+  100% {
+    transform: translateY(5px) scale(0.1);
+    opacity: 0;
+    box-shadow: 0 8px 18px 0 transparent;
   }
 }
 
-.perk-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 0 26px -3px var(--rarity, var(--cyan)), var(--shadow-lift);
-}
-
-.perk-card:active {
-  transform: translateY(0) scale(0.98);
-}
-
-.perk-name {
-  font-size: 12px;
+.choice-name {
+  position: relative;
+  font-size: 1.16em;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.22;
 }
 
-.perk-rarity {
-  font-size: 10px;
+.choice-rank {
+  position: relative;
+  font-size: 0.82em;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--rarity, var(--text-dim));
   text-shadow: 0 0 10px currentColor;
 }
 
-.perk-taken {
-  font-size: 10px;
+.choice-note {
+  position: relative;
+  margin-top: 0.2em;
+  font-size: 0.88em;
   letter-spacing: 0.06em;
   color: var(--text-dim);
+}
+
+/*
+ * Das Zeichen in der Ecke sagt: hier ist noch etwas.
+ *
+ * Am Rechner ist es reine Auskunft und laesst den Klick durch sich hindurch - dort dreht
+ * ohnehin der Zeiger die Karte, und ein Loch in der Klickflaeche waere ein Aergernis. Am
+ * Finger ist es die einzige Stelle, die nicht waehlt, sondern umdreht.
+ */
+.choice-badge {
+  position: absolute;
+  top: 0.75em;
+  right: 0.75em;
+  display: grid;
+  place-items: center;
+  width: 1.85em;
+  height: 1.85em;
+  border-radius: 0.6em;
+  background: color-mix(in srgb, var(--rarity, var(--cyan)) 16%, transparent);
+  color: var(--rarity, var(--cyan));
+  opacity: 0.7;
+  pointer-events: none;
+  transition: transform 320ms var(--ease-out), opacity 320ms var(--ease-out);
+}
+
+.choice-badge .pix {
+  width: 1.05em;
+  height: 1.05em;
+}
+
+.choice:hover .choice-badge,
+.choice:focus-visible .choice-badge {
+  opacity: 1;
+  transform: rotate(-16deg) scale(1.12);
+}
+
+@media (hover: none) {
+  .choice-badge {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* --- Rueckseite --- */
+
+.choice-title {
+  font-size: 1.08em;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--rarity, var(--text));
+  text-shadow: 0 0 12px color-mix(in srgb, var(--rarity, var(--cyan)) 60%, transparent);
+}
+
+.choice-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
+ * Was hinten steht, faehrt gestaffelt ein, waehrend sich die Karte dreht.
+ *
+ * Der Grund ist nicht Schmuck: Eine Rueckseite, die schon fertig dasteht, wenn sie
+ * ankommt, hat man waehrend der Drehung halb gelesen und liest sie danach noch einmal. So
+ * ist die Karte zuerst still, und der Text kommt, wenn sie liegt.
+ */
+.choice-body > * {
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out);
+}
+
+.choice:hover .choice-body > *,
+.choice:focus-visible .choice-body > *,
+.choice.flipped .choice-body > * {
+  opacity: 1;
+  transform: none;
+}
+
+.choice-body > *:nth-child(1) {
+  transition-delay: 240ms;
+}
+
+.choice-body > *:nth-child(2) {
+  transition-delay: 300ms;
+}
+
+.choice-body > *:nth-child(n + 3) {
+  transition-delay: 360ms;
+}
+
+.choice-text {
+  margin: 0;
+  font-size: 0.93em;
+  line-height: 1.42;
+  color: var(--text-dim);
+}
+
+/* Zwei Zeilen, Frage links, Zahl rechts - dieselbe Form wie im Abwesenheitsbericht. */
+.choice-rows {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.1em 0.7em;
+  margin: 0;
+  padding-top: 0.55em;
+  border-top: 1px solid var(--line-soft);
+  font-size: 0.93em;
+}
+
+.choice-rows dt {
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.choice-rows dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Der Stand nach dieser Karte - das ist die Zahl, wegen der man sie umgedreht hat. */
+.choice-rows dd.up {
+  color: var(--ok);
+  text-shadow: 0 0 10px currentColor;
+}
+
+.choice-traits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.93em;
+}
+
+.choice-traits li {
+  padding: 0.1em 0;
+  color: var(--rarity, var(--text-dim));
+}
+
+.choice-traits li.muted {
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+/*
+ * Die Handlungszeile am unteren Rand.
+ *
+ * Sie sieht aus wie ein Knopf und ist keiner - die ganze Karte ist der Knopf. Sie steht
+ * da, damit die Rueckseite nicht in einer Sackgasse endet: Wer sie zu Ende gelesen hat,
+ * sieht als Letztes, dass ein Klick sie nimmt.
+ */
+.choice-act {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7em;
+  margin-top: auto;
+  padding: 0.6em 0.85em;
+  border-radius: 0.8em;
+  background: color-mix(in srgb, var(--rarity, var(--cyan)) 14%, rgba(255, 255, 255, 0.03));
+  font-size: 0.88em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rarity, var(--edge));
+  transition: background 260ms var(--ease-out);
+}
+
+.choice-act .pix {
+  width: 1.15em;
+  height: 1.15em;
+  transition: transform 260ms var(--ease-out);
+}
+
+.choice:hover .choice-act .pix,
+.choice:focus-visible .choice-act .pix {
+  transform: translateX(3px);
+}
+
+.choice:active .choice-tilt {
+  scale: 0.98;
 }
 
 /* --- Faehigkeitenverwaltung im Upgrades-Bereich -------------------------- */
@@ -2505,88 +4363,27 @@ ul.sources li {
  * Grosse Auswahlkarten - "der Spieler entscheidet bewusst" (GDD 13 Abschnitt 6). Deshalb
  * steht auf der Karte alles, was den Turm ausmacht: Art, Raritaet und die gewuerfelten
  * Eigenschaften. Eine Karte, die nur den Namen zeigt, waere ein Blindkauf.
+ *
+ * Das Fenster selbst braucht dafuer keine eigene Regel mehr: Breite und Karten kommen aus
+ * `.levelup-panel` und `.choice-grid`. `.offer-panel` bleibt als Griff im Baum stehen -
+ * die Turmauswahl soll sich spaeter faerben lassen wie Ereignis und Drohne.
  */
-.offer-panel {
-  width: min(560px, calc(100% - 28px));
-}
-
-.offer-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.offer-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 12px 14px;
-  border: 1px solid var(--rarity, var(--line));
-  border-radius: 12px;
-  background: var(--fill-card);
-  box-shadow: 0 0 18px -5px var(--rarity, transparent), var(--shadow-card);
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: transform var(--dur-tap) var(--ease-out),
-    box-shadow var(--dur-tap) var(--ease-out);
-}
-
-.offer-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 0 30px -4px var(--rarity, var(--cyan)), var(--shadow-lift);
-}
-
-.offer-card:active {
-  transform: translateY(0) scale(0.99);
-}
-
-.offer-head {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.offer-head b {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.offer-text {
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--text-dim);
-}
-
-.offer-traits {
-  margin: 2px 0 0;
-  padding: 0;
-  list-style: none;
-  font-size: 11px;
-}
-
-.offer-traits li {
-  padding: 1px 0;
-  color: var(--rarity, var(--text-dim));
-}
-
-.offer-traits li.muted {
-  color: var(--text-dim);
-  opacity: 0.6;
-}
 
 /*
  * Das Ereignisfenster (GDD 11 Abschnitt 3).
  *
- * Dieselben grossen Karten wie beim Turmangebot - es ist dieselbe Handlung: Der Spieler
- * bekommt etwas vorgelegt und waehlt. Nur der Rahmen traegt eine andere Farbe, damit man
- * die beiden Fenster nicht verwechselt: Ein Turmangebot ist ein Kauf, ein Ereignis eine
+ * Dieselben Karten wie beim Turmangebot - es ist dieselbe Handlung: Der Spieler bekommt
+ * etwas vorgelegt und waehlt. Nur der Rahmen des Fensters traegt eine andere Farbe, damit
+ * man die beiden nicht verwechselt: Ein Turmangebot ist ein Kauf, ein Ereignis eine
  * Entscheidung mit Folgen.
+ *
+ * Die Karten darin tragen **nicht** dieselbe Farbe wie das Fenster. Sie faerbt ihre Folge
+ * (`ui/dialogs.ts`): Gold fuer eine Auszahlung, Tuerkis fuer einen Bonus, Magenta fuer
+ * Gefahr, Violett fuer den Hinterhalt. Ein Fenster, in dem drei violette Karten stehen,
+ * sagt dreimal dasselbe - und die eine sichere Option daraus zu erkennen, kostete dann
+ * genauso viel Lesen wie ohne jede Farbe.
  */
 .event-panel {
-  width: min(620px, calc(100% - 28px));
   border-color: color-mix(in srgb, var(--violet) 55%, var(--line));
   box-shadow: 0 0 34px -8px var(--violet), var(--shadow-card);
 }
@@ -2596,9 +4393,6 @@ ul.sources li {
   text-shadow: 0 0 26px rgba(180, 92, 255, 0.6), 0 0 8px rgba(180, 92, 255, 0.9);
 }
 
-.event-panel .offer-card {
-  --rarity: var(--violet);
-}
 
 /*
  * Die Haendler-Drohne (GDD 11 Abschnitt 7).
@@ -2608,7 +4402,6 @@ ul.sources li {
  * bevor er die Ueberschrift gelesen hat.
  */
 .trader-panel {
-  width: min(660px, calc(100% - 28px));
   border-color: color-mix(in srgb, var(--gold) 55%, var(--line));
   box-shadow: 0 0 34px -8px var(--gold), var(--shadow-card);
 }
@@ -2618,37 +4411,59 @@ ul.sources li {
   text-shadow: 0 0 26px rgba(255, 204, 51, 0.6), 0 0 8px rgba(255, 204, 51, 0.9);
 }
 
-/* Der Preis steht unten und traegt die Ziffernschrift - er ist eine Zahl, kein Wort. */
+
+/*
+ * Der Preis steht vorn unter dem Rang und traegt die Ziffernschrift - er ist eine Zahl,
+ * kein Wort. Vorn deshalb, weil man drei Preise nebeneinander **vergleicht**: Stuende er
+ * nur auf der Rueckseite, muesste man jede Karte einzeln umdrehen, um zu sehen, was man
+ * sich leisten kann.
+ */
 .trade-price {
-  margin-top: auto;
-  padding-top: 6px;
-  font-family: var(--font-number);
-  font-size: 13px;
+  font-family: var(--font-pixel);
+  /* Die Ziffernschrift zerfaellt unter 14 px (siehe `--font-pixel`). Sie waechst mit der
+     Karte, aber sie schrumpft nicht unter diese Grenze mit. */
+  font-size: max(14px, 1.3em);
+  line-height: 1;
   color: var(--gold);
 }
 
 /*
  * Ein Posten, den man sich nicht leisten kann, wird **blass statt unsichtbar**: Er bleibt
- * die Auskunft "dafuer fehlt dir Gold" und ist damit ein Ziel, auf das man hinspart.
+ * die Auskunft "dafuer fehlt dir Gold" und ist damit ein Ziel, auf das man hinspart. Er
+ * dreht sich weiterhin um - was man sich noch nicht leisten kann, will man erst recht
+ * genau ansehen.
  */
-.trade-card:disabled {
-  opacity: 0.45;
+.choice.locked,
+.choice.spent {
   cursor: default;
 }
 
-.trade-card:disabled:hover {
-  transform: none;
-  box-shadow: 0 0 18px -5px var(--rarity, transparent), var(--shadow-card);
+.choice.locked .choice-face,
+.choice.spent .choice-face {
+  opacity: 0.55;
 }
 
 /* Gekauft: Der Rahmen tritt zurueck, die Karte bleibt als Quittung stehen. */
-.trade-card.sold {
+.choice.spent .choice-face {
   border-color: var(--line);
-  box-shadow: none;
+  box-shadow: var(--shadow-card);
 }
 
-.trade-card.sold .trade-price {
+/* Eine Quittung glaenzt nicht mehr: Der Puls steht still, die Folie ist erloschen. */
+.choice.spent .choice-rings i,
+.choice.spent .choice-foil {
+  animation: none;
+  opacity: 0;
+}
+
+.choice.spent .trade-price {
   color: var(--text-dim);
+}
+
+/* Ein gesperrter Posten quittiert auch nichts mehr - der Druck beim Klicken faellt weg. */
+.choice.locked:active .choice-tilt,
+.choice.spent:active .choice-tilt {
+  scale: 1;
 }
 
 /*
@@ -2660,6 +4475,37 @@ ul.sources li {
  */
 .return-panel {
   width: min(400px, calc(100% - 28px));
+}
+
+/*
+ * Das Aufstiegsfenster (`ui/dialogs.ts`, docs/liga-system.md Abschnitt 6.2).
+ *
+ * Schmaler als der Rueckkehrbericht, weil es weniger zu sagen hat: einen Namen, einen Satz,
+ * zwei Antworten. Der Farbton der neuen Liga traegt den Namen und den Rahmen - er ist das
+ * Versprechen, um das es geht, und der Spieler soll ihn kennen, bevor er dort ankommt.
+ *
+ * **Keine der beiden Antworten ist hervorgehoben ausser durch die Reihenfolge.** Wer bleibt,
+ * verliert nichts; ein grauer Nebenknopf neben einem leuchtenden behauptete das Gegenteil.
+ */
+.league-panel {
+  width: min(340px, calc(100% - 28px));
+  border-color: var(--league-tint, var(--edge));
+}
+
+.league-panel-name {
+  margin: 2px 0 6px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--league-tint, var(--edge));
+}
+
+.league-panel-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .return-list {
@@ -2825,12 +4671,20 @@ ul.sources.traits li {
  * nie im Weg. Auf schmalen Geraeten gibt es diese Spalte nicht, dort rutscht er wieder unter
  * die Punkte - siehe die Regel weiter unten.
  */
+/*
+ * Der Baum fuellt den Bereich unter der Ueberschrift und stoesst an drei Kanten - links,
+ * rechts und unten. Nur oben bleibt Luft, weil dort die Ueberschrift steht und kein Rand.
+ */
 .prestige-panel {
   position: absolute;
-  top: 54px;
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
+  top: 68px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
   overflow-y: auto;
   grid-template-columns: minmax(0, 1fr) 260px;
   grid-template-areas:
@@ -3085,77 +4939,10 @@ ul.sources.traits li {
 }
 
 /*
- * Die ausfuehrliche Auskunft zu einer Perk-Karte.
- *
- * Breiter als der gewoehnliche Hinweis, weil sie einen Satz und eine kleine Rechnung
- * traegt statt einer Zeile - und mit Absatz zwischen beidem: Der Satz sagt, *was* der Perk
- * tut, die zwei Zeilen darunter sagen, *wie viel* das bei diesem Spielstand ist.
+ * Die ausfuehrliche Auskunft zu einer Perk-Karte stand frueher hier als eigene Spielart des
+ * Hinweisfensters. Sie steht jetzt auf der Rueckseite der Karte selbst (`.choice-back`) -
+ * dort, wo der Blick ohnehin ist, statt nach drei Sekunden Stehenbleiben daneben.
  */
-.tooltip.perk-info {
-  max-width: 300px;
-  padding: 10px 12px 9px;
-  text-align: left;
-  animation: enter-fade 160ms var(--ease-out);
-}
-
-.tooltip .tip-name {
-  display: block;
-  font-size: 13px;
-  font-weight: 800;
-  text-shadow: 0 0 12px currentColor;
-}
-
-.tooltip .tip-rarity {
-  display: block;
-  margin-top: 1px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-.tooltip .tip-text {
-  margin: 7px 0 0;
-  color: var(--text-dim);
-}
-
-/* Zwei Zeilen, Beschriftung links, Zahl rechts - dieselbe Form wie im Abwesenheitsbericht. */
-.tooltip .tip-rows {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 1px 10px;
-  margin: 8px 0 0;
-  padding-top: 7px;
-  border-top: 1px solid var(--line-soft);
-  font-size: 11px;
-}
-
-.tooltip .tip-rows dt {
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-.tooltip .tip-rows dd {
-  margin: 0;
-  font-weight: 700;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Der Stand nach dieser Karte - das ist die Zahl, wegen der man stehengeblieben ist. */
-.tooltip .tip-rows dd.up {
-  color: var(--ok);
-  text-shadow: 0 0 10px currentColor;
-}
-
-.tooltip .tip-foot {
-  margin: 7px 0 0;
-  font-size: 11px;
-  color: var(--text-dim);
-  opacity: 0.85;
-}
 
 /* Nur mit ?debug sichtbar - im normalen Bild hat sie nichts verloren. */
 .devbar {
@@ -3258,13 +5045,47 @@ ul.sources.traits li {
 /* --- Breite Fenster ------------------------------------------------------ */
 
 /*
- * Ab hier ist Platz fuer vier Kacheln nebeneinander - so steht es im Entwurf der unteren
- * Leiste. Darunter bleibt es bei zwei: Eine Kachel unter 150 Pixeln Breite kann ihren
- * Namen und ihren Preis nicht mehr nebeneinander zeigen.
+ * Die Breitenzusage des Kachelrasters.
+ *
+ * Sie ist mit dem Umbau des Panels (E5) **einfacher geworden**, und das ist die eigentliche
+ * Verbesserung. Vorher stellte das Raster Gruppen nebeneinander, deren Zahl vom Inhalt
+ * abhing; die Kachelbreite hing damit an der groessten Gruppe, an der Zahl der Spalten, an
+ * der Polsterung jeder Gruppe und daran, ob die Navileiste daneben oder darunter stand. Die
+ * Rechnung dazu ist **zweimal** danebengegangen, beide Male an einer Annahme ueber etwas,
+ * das woanders steht.
+ *
+ * Jetzt sind es immer zehn Spalten:
+ *
+ *   Kachelkante  K = (P - 2 * 10 Polsterung - 9 * 6 Abstand) / 10
+ *
+ * Damit haengt K nur noch an der Panelbreite P - keine Gruppen, keine Umbruchpunkte, keine
+ * Kachelzahl aus einer anderen Datei. Die Untergrenze ist **44 px**: Darunter ist die
+ * Zeichnung in der Kachel nicht mehr als Zeichnung zu erkennen, und dann ist ein Menue aus
+ * Bildern sinnlos.
+ *
+ * Erreicht wird sie bei rund 620 px Panelbreite. Weil die Navileiste bei schmalen Fenstern
+ * ohnehin unter das Panel rutscht (siehe "Schmale Fenster"), bleibt das Panel bis hinunter
+ * zu etwa 660 px Fensterbreite darueber. Nachgerechnet wird es nicht hier, sondern Pixel
+ * fuer Pixel in `selftest/guards.ts`.
  */
-@media (min-width: 900px) {
-  .upgrade-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+
+/*
+ * Fuenf Spalten statt zehn - vier Reihen statt zwei.
+ *
+ * Die Vorgabe "zwei Reihen" ist eine Aussage ueber den Schreibtisch: Zwanzig Kacheln in zwei
+ * Reihen brauchen bei erkennbarer Groesse rund 530 px Panelbreite, und mit der Navileiste
+ * daneben hat die ein Fenster erst ab rund 1000 px. Was **nicht** verhandelbar ist, bleibt
+ * trotzdem stehen: Alle zwanzig sind gleichzeitig zu sehen, es wird nirgends gerollt. Nur
+ * die Form des Blocks aendert sich - und ein Bild, das man erkennt, ist mehr wert als eine
+ * Reihe, die man zaehlen kann.
+ *
+ * Die Schwelle liegt bewusst **ueber** dem Umbruchpunkt der Navileiste (780 px): Zwischen
+ * beiden steht die Leiste noch daneben und nimmt dem Panel rund 470 px weg. Genau diese
+ * Luecke hat `selftest/guards.ts` gemeldet, bevor sie jemand gesehen hat.
+ */
+@media (max-width: 1000px) {
+  .up-grid {
+    grid-template-columns: repeat(5, 1fr);
   }
 }
 
@@ -3303,15 +5124,38 @@ ul.sources.traits li {
  * ganz nach unten, wie die Reiterleiste eines Telefonspiels. Bliebe sie in der Zeile,
  * schrumpfte das Upgrade-Panel auf eine Spalte Restbreite, und genau die Kacheln sind das,
  * was der Spieler waehrend einer Welle braucht.
+ *
+ * Der Punkt liegt bei 780 px und nicht mehr bei 720, und die Zahl ist gerechnet: Neben der
+ * Leiste bleiben dem Panel innen W - 390 px (Herleitung unten in diesem Abschnitt). Die
+ * Gruppe mit vier Kacheln braucht 387 px, also W >= 777. Zwischen 721 und 776 px stand die
+ * Leiste bisher daneben, und die Stationskachel fiel dort auf bis zu 76 px - die Luecke,
+ * die diese Zahl schliesst. Ab 781 px sind es 91.0 px.
+ *
+ * Untereinander faellt die Leiste weg und die seitlichen Rahmen auch: innen bleiben
+ * W - 32 px (20 Polsterung der Kachelwand + 12 Rollspur). Vier Kacheln passen damit bis
+ * hinunter zu W = 419 px; darunter greift die Regel danach.
  */
-@media (max-width: 720px) {
+@media (max-width: 780px) {
   #dock {
-    padding: 7px 10px 8px;
+    padding: 7px 0 0;
   }
+
 
   .dock-row {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  /*
+   * Untereinander liegen beide ueber die volle Breite und stossen deshalb an **beide**
+   * Seitenkanten - die Navileiste zusaetzlich an die Unterkante. Von den gekappten Ecken
+   * bleibt damit nichts mehr uebrig, das noch rund sein duerfte.
+   */
+  .nav,
+  .upgrade-panel {
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
   }
 
   .nav {
@@ -3331,22 +5175,525 @@ ul.sources.traits li {
     max-height: 128px;
   }
 
-  .upgrade-card {
-    padding: 5px 8px;
-    gap: 7px;
-  }
-
-  .nav-button {
-    width: 58px;
-    height: 58px;
+  /*
+   * Untereinander waechst die Leiste **nicht** mit.
+   *
+   * Sie liegt hier ueber die volle Fensterbreite, und sechs Reiter, die sich das teilen,
+   * waeren auf einem 780er Bild 123 px breit und im Format 1:2 damit 246 px hoch - eine
+   * Reiterleiste, die doppelt so hoch waere wie die Kachelwand darueber. Deshalb steht hier
+   * ein festes Mass; die Fuge zwischen den Reitern nimmt den Rest (`space-between`).
+   */
+  #app {
+    --nav-cols: repeat(6, 40px);
+    --nav-rows: 80px;
   }
 
   .wave-card {
     width: 176px;
-    padding: 7px 8px;
+    padding: 8px 10px 9px;
   }
 
-  .resource-bar .res {
-    font-size: 25px;
+  /*
+   * Die Faehigkeitenschiene wird schmaler - an der Kante sitzt sie ohnehin schon. Sie ganz
+   * wegzunehmen waere falsch: Auf einem schmalen Bild ist der Kampf dieselbe Handlung, und
+   * die Abklingzeiten sind dort genauso die Auskunft, wegen der man hinsieht.
+   */
+  .ability-rail {
+    gap: 7px;
+    padding: 8px 6px 9px;
+    border-radius: 0 12px 12px 0;
   }
+
+  .rail-head {
+    padding-bottom: 5px;
+  }
+
+  .rail-head .trace {
+    width: 34px;
+    height: 14px;
+  }
+
+  .ability-slot {
+    width: 44px;
+    height: 44px;
+  }
+
+  /*
+   * Die Ressourcenzeile bleibt in der Mitte und bleibt vollstaendig - sie wird nur schmaler.
+   * Eine Ressource wegzulassen waere hier besonders falsch: Auf einem schmalen Bild sieht
+   * man ohnehin weniger, und der Kontostand ist das Letzte, worauf man verzichten kann.
+   */
+  .resource-bar .res {
+    gap: 6px;
+    padding: 5px 11px 6px;
+    font-size: 18px;
+  }
+}
+
+/*
+ * Ganz schmal stellt sich die Gruppe hochkant: eine Kachel je Zeile.
+ *
+ * Die Regel schliesst die letzte Luecke der Breitenrechnung. Untereinander bleiben dem
+ * Panel innen W - 32 px; vier Kacheln nebeneinander brauchen davon 387 px, also W >= 419.
+ * Ein Telefon hochkant hat 360 bis 414 px - genau dort waere die Stationskachel wieder zu
+ * schmal, und genau dort faellt es niemandem auf, der am Rechner entwickelt.
+ *
+ * Der Punkt liegt bei 480 px und damit mit Abstand ueber den 419: Direkt darueber ist die
+ * Kachel 105.5 px breit, direkt darunter - hochkant - so breit wie die Gruppe.
+ *
+ * Hochkant und nicht zweispaltig: Zwei Spalten liessen bei drei Kacheln eine halbe Zeile
+ * offen, und das haben elf der zwoelf Gruppen. Eine Spalte ist auf einem Telefon ohnehin
+ * die Form, in der man liest.
+ */
+/* --- Punktmatrix unter dem Zeiger (`ui/reveal.ts`) ------------------------ */
+
+/*
+ * Das eine Canvas, das reihum in die Kachel unter dem Zeiger gehaengt wird.
+ *
+ * Es liegt als **erstes** Kind darin und damit unter Stufe, Zeichen und Preis - die
+ * Reihenfolge im Baum entscheidet, und deshalb braucht keine der drei eine Stapelordnung.
+ *
+ * Der weiche Rand ist keine Zierde: Ein Punktraster, das an der Kachelkante hart abbricht,
+ * sieht aus wie ein Fehler in der Kachel. Die radiale Maske laesst es zur Kante hin
+ * ausgehen, so wie es in der Mitte am dichtesten steht.
+ */
+.reveal {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(115% 115% at 50% 50%, #000 30%, transparent 76%);
+  mask-image: radial-gradient(115% 115% at 50% 50%, #000 30%, transparent 76%);
+  animation: reveal-in 160ms var(--ease-out);
+}
+
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* --- Startbildschirm (`ui/boot.ts`) --------------------------------------- */
+
+/*
+ * Der Vorhang vor dem Spiel: Ladebalken, Plakataufbau, "PRESS TO START".
+ *
+ * Die ganze Bewegung steht hier, nicht im Skript. Von dort kommen je Bildebene genau zwei
+ * Werte - `--from` (Start-Zoom) und `--delay` (wann sie einblendet); alles andere sind die
+ * vier Werte unten. Wer den Aufbau anders haben will, aendert ihn an dieser Stelle und
+ * braucht `ui/boot.ts` dafuer nicht anzufassen.
+ *
+ * Der Bildschirm liegt **unter** dem Wanderlicht (`#app::after`, z-index 30) und ueber allem
+ * anderen. Das ist Absicht: Der leuchtende Ring ist die Fassung der Maschine, in der das
+ * Spiel laeuft, und die fasst auch den Startbildschirm ein.
+ */
+.boot {
+  /* Wie lange die Kamera faehrt - und damit auch, wie lange die Ebenen unterwegs sind. */
+  --boot-reveal: 3200ms;
+  /* Wie weit die Kamera anfangs vorn steht. Knapp ueber 1: ein Zurueckweichen, kein Zoom. */
+  --boot-camera: 1.12;
+  /* Ebenen: schneller Antritt, langes weiches Auslaufen. */
+  --boot-ease-layer: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Kamera: traeger Antritt. Sie soll unter den Ebenen liegen, nicht mit ihnen ziehen. */
+  --boot-ease-camera: cubic-bezier(0.33, 0, 0.2, 1);
+  /*
+   * Wo die Buehne endet und der Schriftzug anfaengt.
+   *
+   * Die eine Kante, an der die Station und der Schriftzug zugleich haengen (siehe
+   * `canvas.boot-station` und `.boot-title`). Sie hier zu aendern verschiebt beide - und
+   * zwar so, dass sie sich nicht ueberholen koennen.
+   */
+  --boot-stage: 54%;
+
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--ink-deep);
+  /* Die ganze Flaeche ist die Schaltflaeche - der Zeiger sagt es. */
+  cursor: pointer;
+}
+
+/*
+ * Die Kamera.
+ *
+ * Sie traegt alle Ebenen und faehrt waehrend des ganzen Aufbaus ein Stueck zurueck. Weil
+ * ihre Skalierung sich mit der jeder Ebene **multipliziert**, entsteht die Fahrt genau
+ * einmal und wirkt trotzdem auf jede - ohne dass irgendwo zwei Werte zusammengerechnet
+ * werden muessten.
+ */
+.boot-poster {
+  position: absolute;
+  inset: 0;
+  transform: scale(var(--boot-camera));
+  transform-origin: center;
+  transition: transform var(--boot-reveal) var(--boot-ease-camera);
+}
+
+/*
+ * Eine Bildebene.
+ *
+ * Alle liegen deckungsgleich und formatfuellend uebereinander. Der Start-Zoom kommt aus
+ * `--from`: Die vorderen Ebenen fangen weiter aussen an und ziehen deshalb schneller durchs
+ * Bild als die hinteren - das ist die ganze Tiefenwirkung.
+ *
+ * Zwei getrennte Uebergaenge, und das ist der Kern des Effekts: Die **Fahrt** laeuft bei
+ * allen gleichzeitig ueber die volle Dauer, das **Einblenden** gestaffelt und kurz. Liefe
+ * beides gestaffelt, setzte sich das Bild nicht zusammen, sondern ruckelte sich hoch.
+ */
+.boot-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(var(--from, 1));
+  transform-origin: center;
+  transition:
+    opacity 700ms var(--ease-out) var(--delay, 0ms),
+    transform var(--boot-reveal) var(--boot-ease-layer);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Alles, was nicht angeschnitten werden darf - siehe `contain` in `ui/boot.ts`. */
+.boot-layer.fit {
+  object-fit: contain;
+}
+
+/*
+ * Die lebende Ebene: die echte Station (`ui/bootstation.ts`).
+ *
+ * `object-fit` gilt fuer sie nicht - eine Leinwand malt selbst, was in ihr steht, und ihre
+ * Aufloesung wird dort an ihre Groesse angepasst. `display: block` nimmt ihr die Zeile,
+ * die ein Ersatzelement sonst unter sich frei laesst.
+ */
+canvas.boot-station {
+  display: block;
+  /*
+   * Die Buehne endet dort, wo der Schriftzug anfaengt - und diese Kante steht **einmal**,
+   * als `--boot-stage` bei `.boot`. Leinwand und Schriftzug haengen beide daran, und
+   * deshalb koennen sie sich nicht ueberlappen: Es gibt keine zweite Zahl, die falsch
+   * werden koennte.
+   *
+   * Die Leinwand passt ihren Ausschnitt selbst an diese Hoehe an (`fitTo` in
+   * `ui/bootstation.ts`) - die Station wird also kleiner, statt beschnitten zu werden.
+   */
+  bottom: auto;
+  height: var(--boot-stage);
+  object-fit: fill;
+}
+
+/*
+ * Der Schriftzug.
+ *
+ * Er ist eine Ebene wie die Bilder und bekommt deshalb Parallaxe und Wischer geschenkt -
+ * hier steht nur, **wo** er sitzt und wie er aussieht.
+ *
+ * Er sitzt unten, nicht mittig. Vorher lag er als formatfuellendes Bild deckungsgleich
+ * ueber der Station und schnitt damit quer durch sie hindurch; jetzt hat er ein eigenes
+ * Drittel, aus dem die Station herausgerueckt ist (`STAGE_SHARE` in `ui/bootstation.ts`).
+ *
+ * Und er traegt die Pixelschrift des Spiels. Als SVG in einem `<img>` konnte er das nicht:
+ * Ein solches Bild laedt keine Schriftdateien nach, es blieb bei einer Systemschrift - und
+ * die einzige Zeile in einer Schrift, die sonst nirgends vorkommt, sieht immer geliehen aus.
+ */
+.boot-title {
+  top: var(--boot-stage);
+  bottom: 0;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /*
+   * Der Fuss (Ladebalken und Aufforderung) steht unten in derselben Flaeche. Der Schriftzug
+   * mittet sich deshalb nicht im Ganzen, sondern in dem, was ueber dem Fuss frei bleibt -
+   * die Polsterung ist genau dessen Platzbedarf, dieselben Werte wie bei `.boot-foot`.
+   */
+  padding-bottom: calc(clamp(44px, 11vh, 130px) + 60px);
+  text-align: center;
+}
+
+/*
+ * Die Wortmarke.
+ *
+ * Sie ist kein Text mehr, sondern eine Zeichnung, die sich selbst schreibt
+ * (`ui/stroketext.ts`) - Schriftschnitt, Groesse und Sperrung stehen deshalb **dort**, im
+ * Aufruf, und nicht hier. Was hier steht, ist nur noch, wie breit sie sein darf.
+ *
+ * Und das ist der eigentliche Gewinn gegenueber der abgeloesten Fassung: Eine Zeichnung
+ * bringt ihr Seitenverhaeltnis mit. Sie braucht kein `clamp` ueber die Schriftgroesse mehr,
+ * das auf jedem Fenster neu geraten werden muss - sie bekommt eine Breite und findet ihre
+ * Hoehe selbst.
+ */
+.boot-title .stroke-text {
+  display: block;
+  width: min(78%, 880px);
+}
+
+/*
+ * Das Leuchten.
+ *
+ * Bei Text war das ein `text-shadow`; eine Zeichnung braucht `drop-shadow`, und zwar
+ * denselben Dreiklang wie ueberall im Spiel: eine enge helle Aura, ein weiter cyanfarbener
+ * Schein, ein violetter Nachlauf. Weil der Schatten der **Form** folgt und nicht dem
+ * Kaestchen, umfliesst er waehrend des Schreibens den halbfertigen Buchstaben - das Licht
+ * entsteht mit dem Strich.
+ */
+.boot-title .stroke-text-svg {
+  filter:
+    drop-shadow(0 0 10px rgba(127, 216, 255, 0.85))
+    drop-shadow(0 0 34px rgba(70, 200, 255, 0.5))
+    drop-shadow(0 0 72px rgba(180, 92, 255, 0.32));
+}
+
+/*
+ * Die Linie unter dem Schriftzug. Sie laeuft nach beiden Seiten ins Nichts aus - eine Linie
+ * mit Enden waere ein Strich, diese ist ein Lichtspalt.
+ *
+ * Sie kommt zusammen mit der Zeile darunter, nicht mit der Wortmarke: Waehrend sich darueber
+ * noch etwas schreibt, waere ein fertiger Abschluss darunter eine Behauptung.
+ */
+.boot-title .stroke-text::after {
+  content: '';
+  display: block;
+  width: min(70%, 720px);
+  height: 1px;
+  margin: 0.5em auto 0;
+  background: linear-gradient(90deg, transparent, var(--edge), transparent);
+  box-shadow: 0 0 14px rgba(127, 216, 255, 0.6);
+  opacity: 0;
+  transition: opacity 600ms var(--ease-out) var(--sub-delay, 0s);
+}
+
+.boot-title .boot-tagline {
+  margin-top: 1.1em;
+  font-size: clamp(10px, 1.15vw, 15px);
+  font-weight: 700;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  color: var(--text-dim);
+  text-shadow: 0 0 14px rgba(70, 200, 255, 0.35);
+  opacity: 0;
+  transition: opacity 600ms var(--ease-out) var(--sub-delay, 0s);
+}
+
+/*
+ * Beide kommen erst, wenn die Wortmarke steht. Die Klasse setzt `ui/boot.ts` im selben
+ * Augenblick, in dem der Schriftzug ansetzt - die Verzoegerung selbst (`--sub-delay`) rechnet
+ * es aus seiner eigenen Folge aus. So gibt es keine zweite Zeitangabe, die stillschweigend
+ * falsch werden koennte, wenn jemand die Schreibdauer aendert.
+ */
+.boot-title.written .stroke-text::after,
+.boot-title.written .boot-tagline {
+  opacity: 1;
+}
+
+/*
+ * Der Schriftzug.
+ *
+ * Er blendet nicht ein, sondern **wischt von oben auf** und legt dabei seine Unschaerfe ab.
+ * Der Unterschied ist gross: Eine Ueberblendung ist eine Ebene mehr, ein Wischer ist ein
+ * Auftritt. Die Feder darunter (`--ease-spring`) laesst ihn am Ende ein Stueck ueberschiessen
+ * und zurueckkommen - deshalb sitzt er, statt anzuhalten.
+ */
+/*
+ * Die Schriftzugebene blendet nicht ein.
+ *
+ * Sie ist von Anfang an da und trotzdem unsichtbar - es ist ja noch nichts gezeichnet. Ein
+ * Aufblenden davor waere die Ueberblendung von nichts auf nichts; das Schreiben ist der
+ * Auftritt (`ui/stroketext.ts`). Die Parallaxe der Ebene bleibt davon unberuehrt.
+ */
+.boot-layer.text {
+  opacity: 1;
+}
+
+.boot-layer.hero {
+  opacity: 1;
+  clip-path: inset(0 0 100% 0);
+  filter: blur(8px);
+  transition:
+    clip-path 1100ms var(--ease-spring) var(--delay, 0ms),
+    filter 1100ms var(--ease-spring) var(--delay, 0ms),
+    transform var(--boot-reveal) var(--boot-ease-layer);
+}
+
+.boot.on .boot-poster {
+  transform: scale(1);
+}
+
+.boot.on .boot-layer {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.boot.on .boot-layer.hero {
+  clip-path: inset(0 0 0 0);
+  filter: blur(0);
+}
+
+/*
+ * Ladebalken und Aufforderung liegen in **derselben** Rasterzelle.
+ *
+ * Sie loesen einander ab, und ein Wechsel, bei dem der Nachfolger woanders steht, ist ein
+ * Sprung. So blendet der eine weg, waehrend der andere an genau derselben Stelle auftaucht.
+ */
+.boot-foot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  align-items: center;
+  margin-bottom: clamp(44px, 11vh, 130px);
+}
+
+.boot-load,
+.boot-press {
+  grid-area: 1 / 1;
+}
+
+.boot-load {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  transition: opacity var(--dur-card) var(--ease-out);
+}
+
+/* Der Balken geht, sobald sich das Bild aufbaut - nicht erst mit der Aufforderung. */
+.boot.on .boot-load {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boot-label {
+  font-family: var(--font-pixel);
+  font-size: 22px;
+  letter-spacing: 0.34em;
+  /* Sperrsatz schiebt das letzte Zeichen nach rechts - der Ausgleich haelt die Mitte. */
+  text-indent: 0.34em;
+  color: var(--text-dim);
+}
+
+.boot-bar {
+  position: relative;
+  width: clamp(180px, 26vw, 300px);
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(127, 216, 255, 0.16);
+  overflow: hidden;
+}
+
+/*
+ * Der Fortschritt ist **gemessen**, nicht gespielt: `--fill` zaehlt die geladenen
+ * Bildebenen. Der Uebergang glaettet die Stufen dazwischen - bei fuenf Dateien waeren es
+ * sonst fuenf Spruenge.
+ */
+.boot-bar i {
+  display: block;
+  width: var(--fill, 0%);
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan), var(--edge));
+  box-shadow: 0 0 12px rgba(70, 200, 255, 0.7);
+  transition: width 240ms var(--ease-out);
+}
+
+.boot-press {
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-pixel);
+  font-size: 34px;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  text-shadow: 0 0 18px rgba(70, 200, 255, 0.55);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity var(--dur-card) var(--ease-out),
+    transform var(--dur-card) var(--ease-out);
+  pointer-events: none;
+}
+
+.boot.ready .boot-press {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  animation: boot-breathe 2.6s ease-in-out infinite;
+}
+
+.boot-press:focus-visible {
+  outline: 1px solid var(--edge);
+  outline-offset: 4px;
+}
+
+/*
+ * Das Atmen der Aufforderung.
+ *
+ * Kein Blinken: Ein Text, der ganz verschwindet, liest sich als Warnung. Dieser hier wird
+ * nur dunkler und wieder hell - er wartet, er mahnt nicht.
+ */
+@keyframes boot-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/*
+ * Der Abgang.
+ *
+ * Das Bild geht **nach vorn** weg, nicht einfach fort: Die Kamera schiebt noch ein Stueck
+ * durch, waehrend die Flaeche ausblendet. Damit endet der Startbildschirm in derselben
+ * Richtung, in der er begonnen hat, und der Uebergang ins Spiel liest sich als ein
+ * Durchschreiten statt als ein Schnitt.
+ *
+ * Steht **nach** den `.on`-Regeln: gleiche Staerke, und dann entscheidet die Reihenfolge.
+ */
+.boot.out {
+  opacity: 0;
+  transition: opacity 620ms var(--ease-out);
+}
+
+.boot.out .boot-poster {
+  transform: scale(1.07);
+  transition: transform 620ms var(--ease-out);
+}
+
+/* --- Schrift, die sich selbst zeichnet (`ui/stroketext.ts`) --------------- */
+
+/*
+ * Der Baustein bringt **keine** Groesse und keine Farbe mit - beides steht beim Aufrufer.
+ * Hier steht nur, was in jedem Fall gilt: Der Schriftzug ist ein Block (sonst laege er auf
+ * einer Textzeile und truege deren Zeilenabstand mit sich herum), und die Zeichnung darin
+ * fuellt ihn und findet ihre Hoehe ueber das Seitenverhaeltnis ihres Ausschnitts.
+ *
+ * `overflow: visible` ist kein Beiwerk: Ein Schein um die Buchstaben (`drop-shadow`) steht
+ * ueber den Ausschnitt hinaus, und an dessen Kante abgeschnitten saehe er aus wie ein Fehler.
+ */
+.stroke-text {
+  display: block;
+}
+
+.stroke-text-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
 }

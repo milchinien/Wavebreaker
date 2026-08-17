@@ -126,8 +126,18 @@ export function renderShop(
   root: HTMLElement,
   melting: MeltSelection,
   onChange: () => void,
+  /**
+   * Das Fach in der unteren Leiste, an dem im Kampf die Kachelwand steht (`ui/shell.ts`).
+   *
+   * Der Kaufknopf steht **dort** und nicht mehr hier im Panel. Er ist die eine Handlung, um
+   * die sich die Basis dreht, und als schmale Zeile zwischen Ueberschrift und Schmelzknopf
+   * sah er aus wie eine von dreien. Der Rest der Verwaltung bleibt, wo er war: Schmelzen ist
+   * eine Aufraeumarbeit, kein Kauf.
+   */
+  action: HTMLElement,
 ): void {
   root.replaceChildren()
+  action.replaceChildren()
 
   const header = document.createElement('header')
   header.innerHTML = `<h2>${t('shop.title')}</h2>`
@@ -138,7 +148,7 @@ export function renderShop(
 
   const buy = document.createElement('button')
   buy.type = 'button'
-  buy.className = 'wide-button'
+  buy.className = 'wide-button action-button'
   // Nur die Beschriftung rollt, der Preis bleibt stehen: Eine Zahl, die unter dem Zeiger
   // wegfaehrt, liest sich wie eine Aenderung des Preises.
   const tag = document.createElement('b')
@@ -149,13 +159,13 @@ export function renderShop(
     if (!buyTowerSlot(state)) return
     onChange()
   })
-  root.appendChild(buy)
+  action.appendChild(buy)
 
   if (!affordable && !melting.active) {
     const poor = document.createElement('p')
-    poor.className = 'muted'
+    poor.className = 'muted action-note'
     poor.textContent = t('shop.tooPoor')
-    root.appendChild(poor)
+    action.appendChild(poor)
   }
 
   // --- Schmelzen ---

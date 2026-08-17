@@ -19,29 +19,34 @@
 import { emit } from '../core/events.ts'
 import type { Rng } from '../core/rng.ts'
 import {
+  GOLD_SCALE,
   MELT_COST,
   TOWER_BASE_COST,
   TOWER_COST_FACTOR,
   TOWER_OFFER_SIZE,
 } from '../data/balance.ts'
 import { rarityRank, rarityWeights, TRAIT_SLOTS } from '../data/rarities.ts'
-import { isKnownTower, TOWERS } from '../data/towers.ts'
+import { isKnownTower, towerById, TOWERS } from '../data/towers.ts'
 import { traitsFor, type TraitDef } from '../data/traits.ts'
 import { isRarity, type Category, type Rarity } from '../data/types.ts'
 import { markDirty, type GameState, type TowerOffer } from '../app/state.ts'
 import { spendGold } from '../app/rewards.ts'
 import { isUnlocked, unlockedRarity, unlockedTraitTier } from './prestige.ts'
-import { newModule } from './station.ts'
+import { fittingShapes, newModule, notchShapes } from './station.ts'
 
 /**
  * Preis des naechsten Turms: `Grundpreis x 1,5^(bereits gekaufte)` (GDD 06 Abschnitt 2).
  *
  * Er steigt nach **jedem** Kauf, nicht je Turmart. Daraus entsteht die Kernentscheidung des
  * Spiels: noch ein Turm - oder das Gold in die vorhandenen stecken?
+ *
+ * Der Goldmassstab (`GOLD_SCALE`) kommt hier dazu und nicht schon in `TOWER_BASE_COST`,
+ * damit die Konstante der Wert bleibt, den das GDD nennt.
  */
 export function towerCost(state: GameState): number {
   const bought = Math.max(0, Math.floor(state.run.towersBought))
-  return Math.round(TOWER_BASE_COST * Math.pow(TOWER_COST_FACTOR, bought))
+  const base = TOWER_BASE_COST * GOLD_SCALE
+  return Math.max(1, Math.round(base * Math.pow(TOWER_COST_FACTOR, bought)))
 }
 
 /**
@@ -130,6 +135,22 @@ function rollRarity(state: GameState, defId: string, rng: Rng, floor?: Rarity): 
  *
  * Turmarten, fuer die bei diesem Freischaltstand gar keine Raritaet moeglich ist, fallen
  * heraus - ein Angebot, das man nicht annehmen kann, waere schlimmer als eines weniger.
+ *
+ * **Die letzte Karte passt in die Luecke.** Eine Station wird beim Wachsen eckig, und dann
+ * entstehen Keile, in die genau eine Form geht - der 60-Grad-Zwickel zwischen zwei Quadraten
+ * etwa nimmt nur ein Dreieck (Herleitung bei `FootprintSides` in `data/types.ts`). Wuerfelte
+ * das Angebot frei, zeigte es irgendwann zweimal die Form, die genau dort nicht hineingeht,
+ * waehrend der Keil offen bleibt. Das Gold ist beim Wurf schon weg (GDD 06 Abschnitt 1), die
+ * Karten sind also nicht zurueckzugeben.
+ *
+ * Deshalb: Erst frei wuerfeln, und wenn dabei keine Karte in eine offene Luecke passt, wird
+ * die letzte auf eine Form beschraenkt, die es tut. Hat die Station gar keine Luecke, tritt
+ * `fittingShapes` an die Stelle - dann geht es nur noch darum, dass die Karte ueberhaupt
+ * irgendwohin kann.
+ *
+ * Es ist ausdruecklich **keine** Garantie auf einen guten Turm, nur auf einen setzbaren.
+ * Deshalb greift die Regel auch nur, wenn sie wirklich noetig ist: Passt schon die erste
+ * Karte, bleibt das Angebot unberuehrt und wuerfelt so frei wie vorher.
  */
 export function rollTowerOffer(
   state: GameState,
@@ -140,9 +161,20 @@ export function rollTowerOffer(
   const towers = availableTowers(state)
   if (towers.length === 0) return []
 
+  const notches = notchShapes(state.run.station)
+  const wanted = notches.size > 0 ? notches : fittingShapes(state.run.station)
+  const fits = (defId: string): boolean => wanted.has(towerById(defId).sides)
+
   const offer: TowerOffer[] = []
   for (let i = 0; i < size; i++) {
-    const defId = towers[rng.int(0, towers.length - 1)] as string
+    // Bei der letzten Karte einspringen, falls bis dahin keine passt. `pool` faellt auf
+    // alle Turmarten zurueck, wenn keine einzige eine passende Form hat - ein leeres
+    // Angebot waere schlimmer als ein unsetzbarer Turm, der wenigstens Schmelzgut ist.
+    const rescue = i === size - 1 && offer.length > 0 && !offer.some((card) => fits(card.defId))
+    const pool = rescue ? towers.filter(fits) : towers
+    const from = pool.length > 0 ? pool : towers
+
+    const defId = from[rng.int(0, from.length - 1)] as string
     const rarity = rollRarity(state, defId, rng, floor)
     if (rarity === null) continue
     offer.push({ defId, rarity, traits: rollTraits(state, defId, rarity, rng) })

@@ -23,15 +23,18 @@
  */
 
 import { t } from '../data/strings.ts'
-import { setView } from '../app/actions.ts'
+import { windowOpen, type UpgradeWindow } from '../data/upgrades.ts'
+import { ensureOpenWindow, setUpgradeWindow, setView } from '../app/actions.ts'
 import type { GameState, View } from '../app/state.ts'
 import { mountAbilityPanel, type AbilityPanel } from './abilities.ts'
 import { createMeltSelection, renderInventory, renderModuleDetail, renderShop } from './base.ts'
 import { mountDialogs, type Dialogs } from './dialogs.ts'
+import { mountCoreGauge } from './coregauge.ts'
 import { createFlip } from './flip.ts'
 import { icon, type IconName } from './icons.ts'
 import { mountPrestigePanel, type PrestigePanel } from './prestige.ts'
 import { mountSettings, type SettingsControls } from './settings.ts'
+import { describe } from './tooltip.ts'
 import { createTypewriter } from './typewriter.ts'
 import { mountUpgradeMenu, type UpgradeMenu } from './upgrades.ts'
 
@@ -47,21 +50,56 @@ export type ShellTargets = {
 export type Shell = {
   /** Panels neu aufbauen. Nach jeder Handlung aufrufen, nicht pro Bild. */
   refresh(): void
-  /** Pro Bild aufrufen - aktualisiert nur, was sich staendig aendert. */
-  update(): void
+  /**
+   * Pro Bild aufrufen - aktualisiert nur, was sich staendig aendert.
+   *
+   * `viewTime` ist die Zeit, mit der auch das Feld gezeichnet wird (`main.ts`): echte Zeit,
+   * keine Simulationszeit. Nur das Kernfeld braucht sie, und es braucht **genau** diese -
+   * sein Kern und der auf dem Feld sollen im selben Takt atmen.
+   */
+  update(viewTime: number): void
+  /**
+   * In einen Bereich wechseln - derselbe Weg wie ueber die Navileiste, samt Wanderung.
+   *
+   * Herausgereicht, weil auch **ausserhalb** der Navileiste Wege in einen Bereich fuehren:
+   * Der freie Platz in der Faehigkeitenschiene fuehrt zu den Upgrades. Wer stattdessen
+   * `setView` aufriefe, saesse mit gesetztem Zustand vor unveraendertem Bild - `data-view`
+   * und die Panels haengen an `refresh`, nicht am Zustand.
+   */
+  goTo(view: View): void
   detach(): void
 }
 
-const NAV: readonly {
-  id: View
-  icon: IconName
-  label: 'view.combat' | 'view.base' | 'view.upgrades' | 'view.prestige' | 'view.settings'
-}[] = [
-  { id: 'base', icon: 'base', label: 'view.base' },
-  { id: 'combat', icon: 'combat', label: 'view.combat' },
-  { id: 'upgrades', icon: 'upgrade', label: 'view.upgrades' },
-  { id: 'prestige', icon: 'crosshair', label: 'view.prestige' },
-  { id: 'settings', icon: 'gear', label: 'view.settings' },
+/**
+ * Die Navileiste (`docs/upgrade-umbau.md` Abschnitt 8.5).
+ *
+ * Sechs Reiter, und sie sind **nicht alle dasselbe**: Zwei fuehren in einen Bereich, vier
+ * tauschen die Kacheln unter dem Spielfeld aus. Das ist der Grund fuer die zwei Sorten
+ * Eintrag - ein Fensterwechsel ist kein Bereichswechsel und bekommt deshalb auch nicht die
+ * Bereichsbewegung (`ui/flip.ts`).
+ *
+ * Der eigene Knopf fuer den Kampf ist entfallen: Jeder der vier Upgrade-Reiter **ist** die
+ * Kampfansicht, nur mit anderen Kacheln darunter. Ein sechster Knopf "Kampfansicht ohne
+ * Upgrades" waere ein Reiter fuer nichts. Die Einstellungen sind aus demselben Grund
+ * gewandert - als Zahnrad in die Ressourcenzeile (`ui/hud.ts`), weil man sie waehrend des
+ * Spiels nie braucht.
+ */
+type NavEntry =
+  | { kind: 'view'; id: View; icon: IconName; label: 'view.base' | 'view.prestige' }
+  | {
+      kind: 'window'
+      window: UpgradeWindow
+      icon: IconName
+      label: 'upgrades.window1' | 'upgrades.window2' | 'upgrades.window3' | 'upgrades.window4'
+    }
+
+const NAV: readonly NavEntry[] = [
+  { kind: 'view', id: 'base', icon: 'base', label: 'view.base' },
+  { kind: 'window', window: 1, icon: 'upgrade', label: 'upgrades.window1' },
+  { kind: 'window', window: 2, icon: 'modules', label: 'upgrades.window2' },
+  { kind: 'window', window: 3, icon: 'combat', label: 'upgrades.window3' },
+  { kind: 'window', window: 4, icon: 'gear', label: 'upgrades.window4' },
+  { kind: 'view', id: 'prestige', icon: 'crosshair', label: 'view.prestige' },
 ]
 
 /**
@@ -74,13 +112,19 @@ const NAV: readonly {
  * Wellenname, der Ausgang einer Welle, die Faehigkeitenleiste. Sie kommen und gehen nach
  * ihren eigenen Regeln, nicht nach dem Bereich - eine Wanderung an ihnen waere eine Aussage
  * ueber einen Wechsel, den es fuer sie nicht gibt.
+ *
+ * Ebenfalls nicht dabei, und aus dem umgekehrten Grund: die **Ressourcenzeile** und das
+ * **Kernfeld**. Beide stehen in allen fuenf Bereichen an derselben Stelle und haben damit
+ * nichts, wohin sie wandern koennten. Sie sind die Fixpunkte, gegen die man die Bewegung
+ * der anderen sieht - eine Kopfleiste, die beim Wechsel mitzuckt, waere kein Fixpunkt mehr,
+ * und ein Kern, der bei jedem Reiterdruck einmal huepft, waere kein Instrument.
  */
 const MOVING = [
-  '.resource-bar',
   '.wave-card',
   '.hull-bar',
   '.speed-control',
   '.upgrade-panel',
+  '.action-panel',
   '.nav',
   '.meta-card',
   '.inventory-panel',
@@ -112,32 +156,91 @@ export function mountShell(
   overlay.append(title, inventory, rail, settings, prestige)
 
   // --- Untere Leiste ---
-  // Sie traegt nur noch, was man anfasst. Alle Zahlen stehen ueber dem Feld (siehe
-  // `ui/hud.ts`) - vorher lagen sie hier und machten die Leiste doppelt so hoch.
+  // Sie traegt, was man anfasst. Alle Zahlen stehen ueber dem Feld (siehe `ui/hud.ts`) -
+  // vorher lagen sie hier und machten die Leiste doppelt so hoch.
   const dockRow = element('div', 'dock-row')
   const nav = element('nav', 'nav')
   const upgrades = element('section', 'panel', 'upgrade-panel')
 
-  dockRow.append(nav, upgrades)
+  /*
+   * Das Kernfeld in der Fuge zwischen Reiterleiste und Kachelwand (`ui/coregauge.ts`).
+   *
+   * Es ist die eine Ausnahme von der Regel oben, und es ist eine echte: Es traegt keine
+   * Zahl, sondern eine Flaeche, die steigt - und es macht die Leiste um keinen Pixel hoeher,
+   * weil es den Platz nimmt, den das Raster zwischen den beiden ohnehin frei laesst. Wo es
+   * den nicht gibt, gibt es auch das Feld nicht; das entscheidet allein das Stilblatt.
+   */
+  const coreGauge = element('div', 'core-gauge')
+
+  /*
+   * Derselbe Platz wie die Kachelwand - fuer die Bereiche, die keine haben.
+   *
+   * Basis und Prestige haben je **eine** Handlung, um die sich alles dreht: einen Turm kaufen
+   * und den Run zuruecksetzen. Beide standen bisher als schmaler Knopf in einem Panel am
+   * rechten Rand, zwischen Ueberschriften und Hinweiszeilen - und die halbe untere Leiste
+   * stand daneben leer. Jetzt steht die Handlung dort, wo im Kampf gekauft wird: Der Platz
+   * unten rechts heisst in jedem Bereich "hier gibst du etwas aus".
+   *
+   * Zwei Faecher statt eines, je Bereich eines. Ein gemeinsames muesste beim Wechsel geleert
+   * und neu gefuellt werden, und wer es versaeumt, hat den Kaufknopf im Prestige stehen.
+   */
+  const action = element('section', 'panel', 'action-panel')
+  const buySlot = element('div', 'action-slot', 'action-buy')
+  const prestigeSlot = element('div', 'action-slot', 'action-prestige')
+  action.append(buySlot, prestigeSlot)
+
+  dockRow.append(nav, coreGauge, upgrades, action)
   dock.append(dockRow)
 
   // Die Faehigkeitenverwaltung haengt im Upgrades-Bereich (GDD 13 Abschnitt 6) und liegt
   // deshalb im selben Panel, unterhalb der Upgrade-Kacheln.
   const abilityBlock = element('div', 'ability-block')
 
-  const buttons = new Map<View, HTMLButtonElement>()
+  const navButtons: { entry: NavEntry; node: HTMLButtonElement }[] = []
   for (const entry of NAV) {
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = `nav-button nav-${entry.id}`
-    button.title = t(entry.label)
+    const slug = entry.kind === 'view' ? entry.id : `window${entry.window}`
+    button.className = `nav-button nav-${slug}`
     button.setAttribute('aria-label', t(entry.label))
+    // Name UND Aufgabe. Sechs Piktogramme ohne ein Wort sind fuer einen Neuling sechsmal
+    // dasselbe Raetsel - und hinter einem davon liegt die einzige Bauanleitung des Spiels.
+    describe(button, `<b>${t(entry.label)}</b><br>${t(`${entry.label}.about`)}`)
+    /*
+     * Das Bild des Reiters - eine hochkante Tafel im Format 1:2 (`public/nav/`).
+     *
+     * Es steht als Wert und nicht als Knoten, weil das Stilblatt es als **eine von drei
+     * Lagen** hinter der Fassung zeichnet (`.nav-button`). Fehlt die Datei, bleibt die Lage
+     * leer und darunter steht der gezeichnete Reiter mit seinem Zeichen: Ein fehlendes Bild
+     * darf nie einen leeren Reiter ergeben - dieselbe Regel wie im Upgrade-Raster.
+     */
+    button.style.setProperty('--art', `url('/nav/${slug}.png')`)
     button.innerHTML = icon(entry.icon, 30)
-    button.addEventListener('click', () => goTo(entry.id))
-    buttons.set(entry.id, button)
+    button.addEventListener('click', () => {
+      if (entry.kind === 'view') {
+        goTo(entry.id)
+        return
+      }
+      /*
+       * Ein Fensterwechsel ist **kein** Bereichswechsel: Er tauscht die Kacheln und sonst
+       * nichts. Deshalb laeuft er nicht durch `goTo` - und deshalb ruckt weder die Kamera
+       * noch wandert ein Panel, wenn man zwischen zwei Fenstern blaettert.
+       *
+       * Steht der Spieler gerade woanders, bringt der Reiter ihn allerdings zurueck: Er
+       * zeigt Kacheln, und Kacheln gibt es nur unter dem Spielfeld.
+       */
+      if (!setUpgradeWindow(state, entry.window)) return
+      if (state.runtime.view !== 'combat' && state.runtime.view !== 'upgrades') {
+        goTo('combat')
+        return
+      }
+      refresh()
+    })
+    navButtons.push({ entry, node: button })
     nav.appendChild(button)
   }
 
+  const gauge = mountCoreGauge(coreGauge, state)
   const settingsPanel = mountSettings(settings, controls)
   const dialogs: Dialogs = mountDialogs(state, overlay, () => refresh())
   const melting = createMeltSelection()
@@ -208,6 +311,9 @@ export function mountShell(
   function refresh(): void {
     const view = state.runtime.view
     app.dataset['view'] = view
+    // Ein Prestige nimmt die Tore zurueck - dann darf der Reiter nicht auf einem Fenster
+    // stehen bleiben, das dieser Run erst wieder freischalten muss.
+    ensureOpenWindow(state)
 
     const heading = t(titleKey(view))
     if (heading !== shownTitle) {
@@ -218,15 +324,31 @@ export function mountShell(
       titleWriter.write({ node: title, text: heading })
     }
 
-    for (const [id, button] of buttons) button.classList.toggle('active', view === id)
+    /*
+     * Welcher Reiter leuchtet - und welcher ein Schloss traegt.
+     *
+     * Gesperrte Fenster stehen **sichtbar** in der Leiste. Was man noch nicht hat, muss man
+     * sehen koennen, sonst ist das Tor keine Belohnung, sondern eine Ueberraschung.
+     */
+    const fighting = view === 'combat' || view === 'upgrades'
+    for (const { entry, node } of navButtons) {
+      if (entry.kind === 'view') {
+        node.classList.toggle('active', view === entry.id)
+        continue
+      }
+      const open = windowOpen(state.run.upgrades, entry.window)
+      node.classList.toggle('active', fighting && state.runtime.upgradeWindow === entry.window)
+      node.classList.toggle('sealed', !open)
+      node.setAttribute('aria-disabled', String(!open))
+    }
 
     // Nur der sichtbare Bereich wird aufgebaut - alles zugleich waere Arbeit fuer nichts.
     if (view === 'base') {
       renderInventory(state, inventory, melting, refresh)
       renderModuleDetail(state, detail)
-      renderShop(state, shop, melting, refresh)
+      renderShop(state, shop, melting, refresh, buySlot)
     } else if (view === 'prestige') {
-      if (!prestigePanel) prestigePanel = mountPrestigePanel(prestige, state, refresh)
+      if (!prestigePanel) prestigePanel = mountPrestigePanel(prestige, state, refresh, prestigeSlot)
       prestigePanel.update()
     } else if (view === 'combat' || view === 'upgrades') {
       if (!menu) menu = mountUpgradeMenu(state, upgrades, refresh)
@@ -253,9 +375,13 @@ export function mountShell(
 
   return {
     refresh,
-    update() {
+    goTo,
+    update(viewTime) {
       const view = state.runtime.view
       if (view === 'combat' || view === 'upgrades') menu?.update()
+      // Das Kernfeld laeuft in **jedem** Bereich mit: Die Stufe steigt auch, waehrend man
+      // baut oder im Prestige-Baum liest, und der Kern atmet dort wie im Kampf.
+      gauge.update(viewTime)
       // Der Punktestand aendert sich nur durch Handlungen - der Baum darf trotzdem
       // mitlaufen, weil `update` selbst prueft, ob sich etwas geaendert hat.
       if (view === 'prestige') prestigePanel?.update()
@@ -265,6 +391,7 @@ export function mountShell(
     },
     detach() {
       dialogs.detach()
+      gauge.detach()
       titleWriter.reset()
       for (const node of [title, inventory, rail, settings, prestige, dockRow]) node.remove()
     },

@@ -24,6 +24,7 @@ import {
   enemyById,
 } from '../../data/enemies.ts'
 import { RARITY_RANGE } from '../../data/rarities.ts'
+import { THEME } from '../../render/theme.ts'
 import { TOWERS, towerById } from '../../data/towers.ts'
 import { PRESTIGE_NODES } from '../../data/prestige.ts'
 import { createInitialState, type GameState } from '../../app/state.ts'
@@ -498,4 +499,59 @@ export function contentSuite(): void {
     assertEqual(second.elite.length, 0, 'kein geerbter Modifikator')
     assertEqual(enemyById(second.defId).id, 'drone')
   })
+
+  /*
+   * Kein Gegner traegt die Farbe des Lebensbalkens.
+   *
+   * Der Balken ist eine Auskunft UEBER den Gegner, keine Zeichnung AN ihm. Faellt seine
+   * Farbe mit der des Traegers zusammen, verschwindet er in ihm - und im Pulk liest man
+   * statt einer Reihe von Balken nur mehr Gegnerfarbe. Genau so war es, solange
+   * `THEME.hpBar` auf `MAGENTA` stand: byteidentisch mit `drone` und dem Boss `overlord`,
+   * und mit Abstand 91 dicht an `swarm` - der Art, die den Pulk stellt.
+   *
+   * Die Regel steht hier und nicht als Kommentar, weil sie nicht beim Zeichnen bricht,
+   * sondern beim **Dazulegen eines Gegners**. Wer kuenftig einen roten Gegner eintraegt,
+   * nimmt dem Balken lautlos seine Lesbarkeit - im Bild sieht dann alles normal aus, nur
+   * der Balken dieses einen Gegners ist weg. Hier faellt es sofort auf.
+   *
+   * Der Schwellwert ist gemessen, nicht gewuenscht: Das Gegnerfeld belegt den warmen Teil
+   * des RGB-Wuerfels bereits dicht (`heavy` #c8215c, `berserker` #a01340), und der beste
+   * ueberhaupt erreichbare Abstand eines gesaettigten Warmrots betraegt 112 von 441
+   * Einheiten - den erreicht `#ff0000`. 100 laesst diesem Optimum 12 Einheiten Luft und
+   * schlaegt trotzdem bei allem an, was in dieselbe Ecke des Wuerfels wandert.
+   */
+  check('kein Gegner traegt die Farbe des Lebensbalkens', () => {
+    const bar = rgbOf(THEME.hpBar)
+    assert(bar !== null, `THEME.hpBar ist kein #rrggbb: ${THEME.hpBar}`)
+
+    const tooClose: string[] = []
+    for (const enemy of ENEMIES) {
+      const own = rgbOf(enemy.color)
+      assert(own !== null, `${enemy.id} traegt kein #rrggbb: ${enemy.color}`)
+
+      const distance = Math.hypot(bar[0] - own[0], bar[1] - own[1], bar[2] - own[2])
+      if (distance < HP_BAR_MIN_ENEMY_DISTANCE) {
+        tooClose.push(`${enemy.id} (${enemy.color}, Abstand ${distance.toFixed(0)})`)
+      }
+    }
+
+    assert(
+      tooClose.length === 0,
+      `Diese Gegner liegen der Balkenfarbe ${THEME.hpBar} zu nah - ihr Lebensbalken\n` +
+        `      verschwindet in ihnen: ${tooClose.join(', ')}.\n` +
+        '      Entweder bekommt der Gegner eine andere Farbe oder der Balken einen anderen Ton\n' +
+        '      (Herleitung bei `LIFE` in src/render/theme.ts).',
+    )
+  })
+}
+
+/** Mindestabstand zwischen Balkenfarbe und Gegnerfarbe, in RGB-Einheiten von hoechstens 441. */
+const HP_BAR_MIN_ENEMY_DISTANCE = 100
+
+/** `#rrggbb` zu einem Zahlentripel - `null`, wenn die Zeichenkette keine solche Farbe ist. */
+function rgbOf(hex: string): [number, number, number] | null {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex.trim())
+  if (match === null) return null
+  const value = Number.parseInt(match[1] as string, 16)
+  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff]
 }

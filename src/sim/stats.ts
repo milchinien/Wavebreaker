@@ -1,36 +1,72 @@
 /**
- * Endwerte aus Basis x Raritaet x Buffs.
+ * Endwerte aus Basis x Raritaet x Upgrades x Perks x Buffs.
  *
- * Die eine Stelle, an der Kampfwerte entstehen. Der Plan sieht diese Datei erst fuer E5
- * vor - sie kommt hier frueher, weil die Basisansicht in E3 bereits "Basis -> effektiv"
- * anzeigen muss. Was fehlt, kommt spaeter dazu, ohne dass sich hier etwas verschiebt:
- * Upgrades (E8), Perks (E10) und Prestige (E13) haengen sich als weitere Faktoren an
- * dieselbe Kette.
+ * Die eine Stelle, an der Kampfwerte entstehen. Jede Quelle haengt sich an dieselbe Kette,
+ * und die Reihenfolge folgt der **Dauer**: Je kurzfristiger eine Quelle wirkt, desto spaeter
+ * setzt sie auf.
  *
- *   Basis x Raritaet  ->  [ + Upgrades ]  ->  [ + Perks ]  ->  [ + Faehigkeiten ]  ->  x (1 + Buffs)
+ *   Grundwert x Raritaet x Eigenschaften
+ *     + flache Upgrades
+ *     x (1 + prozentuale Upgrades + Perks + Prestige)
+ *     x (1 + Faehigkeiten) x (1 + Ereignisse)
+ *     x (1 + Buffs)
  *
- * Prestige haengt sich in E13 zwischen Perks und Faehigkeiten - die Reihenfolge folgt der
- * Dauer: Je kurzfristiger eine Quelle wirkt, desto spaeter setzt sie auf.
+ * **Flach vor Prozent** ist die wichtigste Zeile dieser Datei. Andernfalls waeren die
+ * endlosen Ein-Punkt-Upgrades des Katalogs im Spaetspiel wertlos; so sind sie die Grundlage,
+ * die alles andere vervielfacht. Ein Spieler, der zwanzig Stufen `Hammerfall` gekauft hat,
+ * bekommt von `Overclock` mehr als einer, der es nicht hat - und genau diese Verzahnung ueber
+ * die Fenster hinweg ist der Zweck des Katalogs (`docs/upgrade-umbau.md`).
  *
- * Perks haengen seit E10 in dieser Kette - nicht als Sonderfall im Kampfcode. Das ist die
- * Abnahmebedingung der Etappe: Ein Perk-Effekt muss in `effectiveTowerStats` auftauchen,
- * sonst muesste jede Stelle, die Schaden rechnet, ihn kennen.
+ * **Ein flacher Zuschlag trifft nie einen Wert, der null ist.** Ein Schildgenerator und ein
+ * Verstaerker haben `NO_STATS`; ohne diese Regel machte `Vanguard` aus ihnen Geschuetze, weil
+ * es auf **alle** Turrets wirkt. Null mal einem Aufschlag bleibt null - null **plus** einem
+ * Aufschlag nicht, und darin liegt der Unterschied zur vorherigen Fassung.
+ *
+ * Gelesen werden nur die **gekauften** Pfade (`state.run.upgrades`), nicht der ganze Katalog:
+ * Diese Funktionen laufen je Turm und Takt, und frueh im Run stehen dort drei Eintraege statt
+ * sechzig. Unbekannte Pfade aus alten Spielstaenden fallen dabei von selbst heraus.
  */
 
-import { BASE_STATION_HP, RARITY_MULT } from '../data/balance.ts'
+import {
+  BASE_STATION_HP,
+  GLOBAL_DAMAGE_SCALE,
+  GLOBAL_RATE_SCALE,
+  RARITY_MULT,
+} from '../data/balance.ts'
 import { coreById } from '../data/cores.ts'
 import { towerById } from '../data/towers.ts'
 import type { PerkGlobal } from '../data/perks.ts'
 import { isKnownTrait, traitById } from '../data/traits.ts'
-import { isKnownUpgrade, upgradeById } from '../data/upgrades.ts'
+import {
+  globalSum,
+  isKnownUpgrade,
+  levelOf,
+  ruleActive,
+  specialSum,
+  upgradeById,
+  type GlobalKey,
+  type RuleId,
+  type SpecialKey,
+  type UpgradeTarget,
+} from '../data/upgrades.ts'
 import { STAT_KEYS, type CombatStats, type Rarity, type StatKey } from '../data/types.ts'
 import type { GameState } from '../app/state.ts'
 import type { BuffResult } from './buffs.ts'
+import { overdriveBonus } from './overdrive.ts'
 import { prestigeGlobalBonus } from './prestige.ts'
 import { perkGlobalBonus, perkStatBonus } from './progression.ts'
 import { CORE_UID, type PlacedModule } from './station.ts'
 
-/** Grundwerte eines Moduls samt Seltenheitsfaktor. */
+/**
+ * Grundwerte eines Moduls samt Seltenheitsfaktor.
+ *
+ * Hier greifen auch die beiden globalen Faktoren auf Schaden und Feuerrate
+ * (`data/balance.ts`). Sie sitzen bewusst **hier** und nicht in `data/towers.ts`: Diese
+ * Funktion ist die eine Stelle, durch die jedes Modul laeuft - Kern wie Turm, und jeder
+ * Turm, der noch dazukommt. Wer stattdessen die Grundwerte in der Turmtabelle senkt,
+ * verschiebt das Verhaeltnis der Tuerme zueinander und muss es bei jedem neuen Turm von
+ * Hand wieder treffen.
+ */
 export function baseStats(defId: string, kind: 'core' | 'tower', rarity: Rarity | null): CombatStats {
   const stats = kind === 'core' ? coreById(defId).stats : towerById(defId).stats
   // Der Hauptturm hat keine Raritaet (GDD 04 Abschnitt 2), also auch keinen Faktor.
@@ -38,35 +74,191 @@ export function baseStats(defId: string, kind: 'core' | 'tower', rarity: Rarity 
 
   const result = {} as CombatStats
   for (const key of STAT_KEYS) result[key] = stats[key] * multiplier
+  result.damage *= GLOBAL_DAMAGE_SCALE
+  result.attackSpeed *= GLOBAL_RATE_SCALE
   return result
-}
-
-/** Stand eines Upgrade-Pfads. Unbekannte Pfade zaehlen als Stufe 0. */
-export function upgradeLevel(upgrades: UpgradeLevels, path: string): number {
-  const level = upgrades[path]
-  return typeof level === 'number' && Number.isFinite(level) && level > 0 ? Math.floor(level) : 0
 }
 
 export type UpgradeLevels = Record<string, number>
 
 /**
- * Gekaufte Upgrades anwenden. Sie gelten **pro Turmtyp**, nicht pro Einzelturm
- * (GDD 08 Abschnitt 5.2) - der Pfad haengt deshalb an `defId`, nicht an `uid`.
+ * Stand eines Upgrade-Pfads. Unbekannte Pfade zaehlen als Stufe 0.
+ *
+ * Die Rechnung selbst steht in `data/upgrades.ts` - dort, wo auch der Katalog liegt. Hier
+ * steht nur der Name, unter dem sie seit E8 im ganzen Spiel bekannt ist.
+ */
+export { levelOf as upgradeLevel } from '../data/upgrades.ts'
+
+// ---------------------------------------------------------------------------
+// Der Zugriff auf den Katalog
+// ---------------------------------------------------------------------------
+
+/*
+ * Drei duenne Huellen um `data/upgrades.ts`. Sie packen den Spielzustand aus und sonst
+ * nichts - die Rechnung liegt beim Katalog, damit auch `sim/prestige.ts` sie benutzen kann,
+ * ohne dass sich die beiden Dateien gegenseitig importieren.
+ */
+
+/**
+ * Gilt diese Regel? **Die** Abfrage fuer alle Directives.
+ *
+ * Im Kampfcode steht kein `if (upgradeLevel(state.run.upgrades, 'f1.twinbarrel') > 0)`,
+ * sondern `hasRule(state, 'twinBarrel')` - dieselbe Bauweise wie `isUnlocked` beim
+ * Prestige-Baum (GDD 16 Abschnitt 2). Wer ein Directive an einen anderen Platz legt oder
+ * umbenennt, aendert damit keine einzige Zeile im Kampf.
+ */
+export function hasRule(state: GameState, id: RuleId): boolean {
+  return ruleActive(state.run.upgrades, id)
+}
+
+/**
+ * Summe eines Sonderwerts ueber alle Pfade, die darauf einzahlen.
+ *
+ * Meist ist das genau einer. `overdrivePower` hat zwei - `Runaway` in Fenster 2 und
+ * `Warlord` in Fenster 3 -, und sie addieren sich. Das ist Absicht: Ein Wert, auf den zwei
+ * Fenster einzahlen, verbindet sie.
+ */
+export function specialValue(state: GameState, key: SpecialKey): number {
+  return specialSum(state.run.upgrades, key)
+}
+
+/** Summe einer Run-Groesse ueber alle Pfade, die darauf einzahlen. */
+export function globalValue(state: GameState, key: GlobalKey): number {
+  return globalSum(state.run.upgrades, key)
+}
+
+/** Die vier Groessen, an denen auch Perks und der Prestige-Baum drehen. */
+const PERK_GLOBALS: readonly PerkGlobal[] = ['stationHp', 'goldBonus', 'collectRadius', 'xpBonus']
+
+function isPerkGlobal(key: GlobalKey): key is PerkGlobal {
+  return (PERK_GLOBALS as readonly string[]).includes(key)
+}
+
+/**
+ * Wirkung auf eine Groesse des Runs als **Faktor** - 1 bedeutet "keine Wirkung".
+ *
+ * Hier laufen alle drei Quellen zusammen: gekaufte Upgrades, gewaehlte Perks und der
+ * Prestige-Baum. Perks und Baum kennen nur die vier Groessen aus `PERK_GLOBALS`; alles
+ * andere im Katalog ist ein Zaehlwert und laeuft ueber `globalValue`.
+ */
+export function globalMultiplier(state: GameState, key: GlobalKey): number {
+  const fromUpgrades = globalValue(state, key)
+  if (!isPerkGlobal(key)) return 1 + fromUpgrades
+  return 1 + fromUpgrades + perkGlobalBonus(state, key) + prestigeGlobalBonus(state, key)
+}
+
+// ---------------------------------------------------------------------------
+// Upgrades auf ein Modul anwenden
+// ---------------------------------------------------------------------------
+
+/** Trifft dieses Ziel dieses Modul? Der eine Ort, an dem ein Ziel entschieden wird. */
+function hits(target: UpgradeTarget, module: PlacedModule): boolean {
+  switch (target.kind) {
+    // Alles, was schiesst - das Ziel der Perks (GDD 09 Abschnitt 4).
+    case 'modules':
+      return true
+    case 'core':
+      return module.kind === 'core'
+    case 'turrets':
+      return module.kind === 'tower'
+    case 'class':
+      return module.kind === 'tower' && towerById(module.defId).class === target.class
+    case 'towers':
+      return module.kind === 'tower' && target.ids.includes(module.defId)
+    // Die Station ist kein Modul - ihre Groessen laufen ueber `globalValue`.
+    case 'station':
+      return false
+  }
+}
+
+type Sums = Partial<Record<StatKey, number>>
+
+function add(sums: Sums, key: StatKey, amount: number): void {
+  sums[key] = (sums[key] ?? 0) + amount
+}
+
+/**
+ * Die beiden Doktrinen aus Fenster 3 (`docs/upgrade-umbau.md` Abschnitt 5.3).
+ *
+ * Sie stehen hier und nicht bei den Prozent-Upgrades, weil sie **zwei** Klassen zugleich
+ * anfassen - die eine hoch, die andere herunter. Als Datensatz waeren das zwei Effekte an
+ * einem Upgrade, und die Union kennt bewusst nur einen: Ein Upgrade, das an zwei Stellen
+ * zieht, ist eine Regel und keine Zahl.
+ *
+ * Sie schliessen einander aus (`excludes` im Katalog), es kann also nie beides gelten.
+ */
+function doctrineBonus(state: GameState, module: PlacedModule): number {
+  if (module.kind !== 'tower') return 0
+  const towerClass = towerById(module.defId).class
+  if (towerClass === 'support') return 0
+
+  if (hasRule(state, 'ironDoctrine')) return towerClass === 'kinetic' ? 0.4 : -0.15
+  if (hasRule(state, 'stormDoctrine')) return towerClass === 'elemental' ? 0.4 : -0.15
+  return 0
+}
+
+/**
+ * Gekaufte Upgrades anwenden.
+ *
+ * Drei Dinge passieren hier, die frueher nicht noetig waren:
+ *
+ *   1. **Flach und prozentual werden getrennt gesammelt** und in dieser Reihenfolge
+ *      angewandt (siehe Kopf).
+ *   2. **`Vanguard`** gibt jedem Turret ein Viertel dessen, was der Kern an flachen
+ *      Zuschlaegen bekommen hat. Deshalb werden die Kern-Betraege auch dann mitgezaehlt,
+ *      wenn gerade ein Turret gerechnet wird.
+ *   3. **`Crown`** dreht die Richtung um: Jedes gebaute Turret gibt dem Kern Schaden. Das
+ *      ist der einzige Zuschlag, der von der Groesse der Station abhaengt.
  */
 export function applyUpgrades(
   base: CombatStats,
   module: PlacedModule,
-  upgrades: UpgradeLevels,
+  state: GameState,
 ): CombatStats {
-  const prefix = module.kind === 'core' ? 'core' : `tower.${module.defId}`
-  const result = { ...base }
+  const flat: Sums = {}
+  const percent: Sums = {}
+  /** Was der Kern an flachen Zuschlaegen bekommt - nur fuer `Vanguard`. */
+  const coreFlat: Sums = {}
+  const isTurret = module.kind === 'tower'
 
-  for (const key of STAT_KEYS) {
-    const level = upgradeLevel(upgrades, `${prefix}.${key}`)
+  for (const path of Object.keys(state.run.upgrades)) {
+    if (!isKnownUpgrade(path)) continue
+    const level = levelOf(state.run.upgrades, path)
     if (level === 0) continue
-    const def = isKnownUpgrade(`${prefix}.${key}`) ? upgradeById(`${prefix}.${key}`) : null
-    if (!def) continue
-    result[key] = base[key] * (1 + def.amount * level)
+
+    const effect = upgradeById(path).effect
+    if (effect.kind === 'flat') {
+      if (hits(effect.target, module)) add(flat, effect.stat, effect.amount * level)
+      if (isTurret && effect.target.kind === 'core') {
+        add(coreFlat, effect.stat, effect.amount * level)
+      }
+    } else if (effect.kind === 'percent' && hits(effect.target, module)) {
+      add(percent, effect.stat, effect.amount * level)
+    }
+  }
+
+  if (isTurret && hasRule(state, 'vanguard')) {
+    for (const key of STAT_KEYS) {
+      const shared = coreFlat[key]
+      if (shared !== undefined) add(flat, key, shared * 0.25)
+    }
+  }
+
+  if (module.kind === 'core') {
+    const perTurret = specialValue(state, 'coreDamagePerTurret')
+    if (perTurret > 0) add(flat, 'damage', perTurret * state.run.station.placed.length)
+  }
+
+  const doctrine = doctrineBonus(state, module)
+  if (doctrine !== 0) add(percent, 'damage', doctrine)
+
+  const result = { ...base }
+  for (const key of STAT_KEYS) {
+    // Ein flacher Zuschlag auf einen Wert, den das Modul gar nicht hat, machte aus einem
+    // Schildgenerator ein Geschuetz. Prozente haben das Problem nicht - null mal etwas
+    // bleibt null -, deshalb steht die Bedingung nur hier.
+    const bonus = base[key] > 0 ? (flat[key] ?? 0) : 0
+    result[key] = (base[key] + bonus) * (1 + (percent[key] ?? 0))
   }
   return result
 }
@@ -84,13 +276,13 @@ export function applyUpgrades(
 export function applyTraits(base: CombatStats, module: PlacedModule): CombatStats {
   if (module.traits.length === 0) return base
 
-  const bonus: Partial<Record<StatKey, number>> = {}
+  const bonus: Sums = {}
   for (const id of module.traits) {
     if (!isKnownTrait(id)) continue
     const effect = traitById(id).effect
     // Additiv wie ueberall sonst: Zwei Eigenschaften zu je zehn Prozent sind zwanzig,
     // nicht einundzwanzig.
-    if (effect.kind === 'stat') bonus[effect.stat] = (bonus[effect.stat] ?? 0) + effect.amount
+    if (effect.kind === 'stat') add(bonus, effect.stat, effect.amount)
   }
 
   const result = { ...base }
@@ -127,13 +319,8 @@ export function applyPerks(base: CombatStats, state: GameState): CombatStats {
  * nur ab; sonst entstuende ein Kreis zwischen Werten, Kampf, Faehigkeiten und Ereignissen.
  *
  * Die beiden Quellen setzen **nacheinander** auf, nicht in derselben Summe: Innerhalb einer
- * Quelle stapeln Boni additiv (zwei Faehigkeiten zu je zehn Prozent sind zwanzig), zwischen
- * zwei Quellen multiplikativ - so wie Buffs auf Upgrades aufsetzen. Getrennt gerechnet
- * bleibt auch getrennt geschrieben: Zwei Systeme, die dieselbe Zahl je Takt neu aufbauen,
- * ueberschrieben sich sonst gegenseitig.
- *
- * Sie stehen **nach** den Perks und vor den Buffs: Eine Faehigkeit ist die kurzfristigste
- * aller Quellen, und was zuletzt dazukommt, soll auf allem anderen aufsetzen.
+ * Quelle stapeln Boni additiv, zwischen zwei Quellen multiplikativ - so wie Buffs auf
+ * Upgrades aufsetzen.
  */
 export function applyTimed(base: CombatStats, state: GameState): CombatStats {
   const combat = state.runtime.combat
@@ -148,14 +335,23 @@ export function applyTimed(base: CombatStats, state: GameState): CombatStats {
   return result
 }
 
-/** Buffs anwenden: Endwert = Wert x (1 + gedeckelte Summe). */
+/**
+ * Buffs anwenden: Endwert = (Wert + fester Zuschlag) x (1 + gedeckelte Summe).
+ *
+ * Flach vor Prozent, wie in der ganzen Kette. Der feste Zuschlag kommt von `Relay` und
+ * trifft - wie jeder flache Zuschlag - keinen Wert, den das Modul gar nicht hat: Ein
+ * Support-Modul neben einem Support-Modul bekommt nichts, und ein Schildgenerator faengt
+ * durch einen Nachbarn nicht an zu schiessen.
+ */
 export function applyBuffs(base: CombatStats, buffs: BuffResult | undefined): CombatStats {
   const result = { ...base }
   if (!buffs) return result
 
+  if (buffs.flatDamage > 0 && base.damage > 0) result.damage = base.damage + buffs.flatDamage
+
   for (const key of STAT_KEYS) {
     const bonus = buffs.applied[key]
-    if (bonus !== undefined) result[key] = base[key] * (1 + bonus)
+    if (bonus !== undefined) result[key] = result[key] * (1 + bonus)
   }
   return result
 }
@@ -184,27 +380,37 @@ export function moduleStats(
   // Zustand, etwa im Vergleich zweier Bauvarianten.
   const base = applyTraits(baseStats(module.defId, module.kind, module.rarity), module)
   const upgraded = state
-    ? applyTimed(applyPerks(applyUpgrades(base, module, state.run.upgrades), state), state)
+    ? applyTimed(applyPerks(applyUpgrades(base, module, state), state), state)
     : base
-  return { base, upgraded, final: applyBuffs(upgraded, buffs) }
+  const buffed = applyBuffs(upgraded, buffs)
+  return { base, upgraded, final: state ? applyOverdrive(buffed, module, state) : buffed }
 }
 
 /**
- * Wirkung auf eine Groesse des Runs als Faktor - 1 bedeutet "keine Wirkung".
+ * Overdrive - die **letzte** Schicht der Kette (`sim/overdrive.ts`).
  *
- * Hier laufen **beide** Quellen zusammen: gekaufte globale Upgrades und gewaehlte Perks.
- * Deshalb nimmt die Funktion den ganzen Zustand statt nur der Upgrade-Liste - jede weitere
- * Quelle (Prestige in E13) haengt sich an genau dieser Stelle an und nirgends sonst.
+ * Sie sitzt ganz am Ende, und zwar aus derselben Regel, die diese Datei durchzieht: Je
+ * kurzfristiger eine Quelle wirkt, desto spaeter setzt sie auf. Vier Sekunden sind das
+ * Kuerzeste, was es im Spiel gibt.
  *
- * `xpBonus` gibt es nur als Perk und nicht als Upgrade; die Abfrage laeuft trotzdem durch
- * dieselbe Funktion, damit der Aufrufer den Unterschied nicht kennen muss.
+ * Sie steht **nicht** in `applyTimed` bei den Faehigkeiten und Ereignissen, obwohl sie
+ * ebenso zeitlich begrenzt ist: Die beiden liegen als fertige Zahl fuer die ganze Station in
+ * `runtime.combat`, Overdrive gilt je Modul. Nur hier ist bekannt, um welches es geht.
  */
-export function globalMultiplier(state: GameState, key: PerkGlobal): number {
-  const path = `global.${key}`
-  const fromUpgrades = isKnownUpgrade(path)
-    ? upgradeById(path).amount * upgradeLevel(state.run.upgrades, path)
-    : 0
-  return 1 + fromUpgrades + perkGlobalBonus(state, key) + prestigeGlobalBonus(state, key)
+function applyOverdrive(
+  base: CombatStats,
+  module: PlacedModule,
+  state: GameState,
+): CombatStats {
+  const bonus = overdriveBonus(state, module.uid)
+  if (bonus === 0) return base
+
+  // Auf Schaden **und** Feuerrate: Ein Turm im Overdrive soll anders klingen und anders
+  // aussehen, nicht nur haerter rechnen.
+  const result = { ...base }
+  result.damage = base.damage * (1 + bonus)
+  result.attackSpeed = base.attackSpeed * (1 + bonus)
+  return result
 }
 
 /**
@@ -239,28 +445,38 @@ export function coreRange(state: GameState): number {
 }
 
 /**
- * Die gemeinsame Lebensleiste der Station (GDD 03 Abschnitt 5). Support-Module,
- * Upgrades (E8), Perks (E10) und Prestige (E13) haengen sich hier an - es bleibt
- * eine einzige Leiste.
+ * Die gemeinsame Lebensleiste der Station (GDD 03 Abschnitt 5).
+ *
+ * Vier Quellen laufen hier zusammen, und die Reihenfolge ist dieselbe wie bei den
+ * Kampfwerten - erst alles Flache, dann der Faktor:
+ *
+ *   Grundwert + Schildgeneratoren + `Bulkhead` + `Pack Mule` je Turret,
+ *   das Ganze mal `Bastion`, Perks und Prestige.
+ *
+ * Dass die flachen Zuschlaege **vor** dem Faktor stehen, ist derselbe Gedanke wie oben: Ein
+ * spaeter gekaufter Faktor soll belohnen, was vorher aufgebaut wurde.
  */
 export function maxStationHp(state: GameState): number {
-  return Math.round(
-    (BASE_STATION_HP + hullFromModules(state)) * globalMultiplier(state, 'stationHp'),
-  )
+  const flat =
+    BASE_STATION_HP +
+    hullFromModules(state) +
+    globalValue(state, 'hullFlat') +
+    globalValue(state, 'hullPerTurret') * state.run.station.placed.length
+  return Math.round(flat * globalMultiplier(state, 'stationHp'))
 }
 
 /**
  * Zuschlag der Schildgeneratoren (GDD 05: Schildgenerator, GDD 03 Abschnitt 5).
  *
  * Sie sind der einzige Turm, der nicht schiesst: Ihr Beitrag ist die gemeinsame Huelle.
- * Er wird **vor** dem globalen Faktor addiert, damit ein Prestige-Bonus auf Stations-HP
- * auch auf ihn wirkt - sonst waere ein Schildgenerator im spaeten Spiel wertlos.
+ * `Aegis` aus Fenster 2 haengt sich hier an und nicht an den Faktor - es ist ein Zuschlag
+ * **je Generator**, gilt also nur, wenn auch einer gebaut ist.
  *
  * Gelesen wird aus dem Kampfzustand, weil dort die Geometrie dieses Takts liegt. Vor dem
- * ersten Takt gibt es keine Module und damit keinen Zuschlag - dann steht ohnehin nur der
- * Grundwert zur Debatte.
+ * ersten Takt gibt es keine Module und damit keinen Zuschlag.
  */
 function hullFromModules(state: GameState): number {
+  const perShield = specialValue(state, 'hullPerShield')
   let total = 0
   for (const module of state.runtime.combat.modules) {
     if (module.kind !== 'tower') continue
@@ -268,7 +484,7 @@ function hullFromModules(state: GameState): number {
     if (mechanic?.kind !== 'hull') continue
     // Die Raritaet wirkt auch hier - sonst waere sie bei diesem Turm das Einzige ohne
     // Wirkung, genau wie beim Verstaerker (siehe `sim/buffs.ts`).
-    total += mechanic.amount * (module.rarity ? RARITY_MULT[module.rarity] : 1)
+    total += (mechanic.amount + perShield) * (module.rarity ? RARITY_MULT[module.rarity] : 1)
   }
   return total
 }

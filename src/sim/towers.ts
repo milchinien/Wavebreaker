@@ -10,16 +10,25 @@
  */
 
 import { emit } from '../core/events.ts'
+import { circumradius } from '../core/geometry.ts'
 import { dist, type Vec2 } from '../core/vec.ts'
 import type { GameState } from '../app/state.ts'
 import { coreById } from '../data/cores.ts'
 import { towerById, type TowerMechanic } from '../data/towers.ts'
 import type { CombatStats } from '../data/types.ts'
 import { categoryOf } from './buffs.ts'
-import { applyDamage, fireFlash, spawnBeam } from './combat.ts'
+import { applyChain, applyDamage, fireFlash, spawnBeam } from './combat.ts'
+
+/**
+ * Wie stark ein `Conduit`-Sprung gegenueber dem Treffer ist.
+ *
+ * Deutlich schwaecher als ein Tesla-Sprung (0,6): Der Kettenblitz ist die Identitaet dieses
+ * Turms, und ein Directive soll sie nicht nebenbei an jede Energiewaffe verteilen.
+ */
+const CONDUIT_FALLOFF = 0.35
 import type { Enemy } from './enemies.ts'
 import { spawnProjectile } from './projectiles.ts'
-import { coreRange, moduleStats, fireInterval } from './stats.ts'
+import { coreRange, moduleStats, fireInterval, hasRule, specialValue } from './stats.ts'
 import { CORE_CENTER, type PlacedModule } from './station.ts'
 import { findTarget, type TargetMode } from './targeting.ts'
 
@@ -52,8 +61,10 @@ export function stepTowers(state: GameState, dt: number): void {
     const target = findTarget(combat.enemies, module.center, stats.range, targetModeOf(module))
     if (!target) {
       // Ohne Ziel bleibt der Turm geladen - er soll nicht bestraft werden, weil gerade
-      // niemand in Reichweite war.
+      // niemand in Reichweite war. Der Laser verliert dabei seinen Fokus: Was er aufgebaut
+      // hatte, gilt fuer **dieses** Ziel und nicht fuer das naechste.
       cooldowns.set(module.uid, 0)
+      combat.beamFocus.delete(module.uid)
       continue
     }
 
@@ -61,12 +72,13 @@ export function stepTowers(state: GameState, dt: number): void {
     const angle = Math.atan2(target.pos.y - module.center.y, target.pos.x - module.center.x)
 
     const mechanic = mechanicOf(module)
+    const ramp = beamRamp(state, module, target, dt)
 
     // Mehrere Schuesse pro Tick, falls das Angriffstempo hoeher ist als die Tickrate.
     let shots = 0
     while (remaining <= 0 && shots < 10) {
       const crit = state.runtime.rng.chance(stats.critChance)
-      fireOnce(state, module, target, stats, mechanic, crit, accent)
+      fireOnce(state, module, target, stats, mechanic, crit, accent, ramp)
       // Jeder Schuss wird gemeldet, auch wenn nur jeder n-te aufblitzt: Der Klang entscheidet
       // spaeter selbst, wie er sich ausduennt (GDD 13 Abschnitt 11).
       emit('tower.fired', { uid: module.uid, defId: module.defId, crit })
@@ -177,11 +189,41 @@ function mechanicOf(module: PlacedModule): TowerMechanic | null {
 }
 
 /**
+ * `Focal Lens`: Der Laserstrahl bohrt sich tiefer, je laenger er dasselbe Ziel haelt.
+ *
+ * Der einzige Katalogwert, der einen **eigenen Zustand** braucht - alle anderen sind Summen
+ * ueber gekaufte Stufen. Gemerkt wird deshalb nur das Noetigste: welches Ziel und wie lange.
+ * Ein Zielwechsel setzt beides zurueck, und genau darin liegt die Entscheidung, die das
+ * Upgrade stellt: Der Laser ist gegen einen Boss stark und gegen eine Traube schwach
+ * (GDD 05: "Best against bosses and tanks").
+ */
+function beamRamp(state: GameState, module: PlacedModule, target: Enemy, dt: number): number {
+  const perSecond = specialValue(state, 'beamRamp')
+  if (perSecond <= 0 || mechanicOf(module)?.kind !== 'beam') return 0
+
+  const focus = state.runtime.combat.beamFocus
+  const held = focus.get(module.uid)
+  if (!held || held.targetId !== target.id) {
+    focus.set(module.uid, { targetId: target.id, seconds: 0 })
+    return 0
+  }
+
+  held.seconds += dt
+  return perSecond * held.seconds
+}
+
+/**
  * Ein einzelner Schuss - hier faechert sich die Mechanik auf (GDD 05 Abschnitt 2).
  *
  * Jeder Zweig ist **eine Zeile Wirkung**: Die Mechaniken selbst liegen in `sim/combat.ts`
  * und kennen keinen Turm. Ein neuer Turm mit vorhandener Mechanik faellt deshalb in einen
  * bestehenden Zweig und beruehrt diese Funktion nicht - genau das ist die Abnahme von E14.
+ *
+ * **Seit dem Upgrade-Katalog holt jeder Zweig seinen Zuschlag hier** und nicht im Datensatz
+ * des Turms: `mechanic.radius` ist der Grundwert der Turmart, `specialValue(...)` das, was
+ * der Spieler dazugekauft hat. Der Datensatz bleibt damit die Beschreibung des Turms, und
+ * der Run bleibt der Run - ein Turm ist nicht deshalb anders, weil jemand ein Upgrade
+ * gekauft hat.
  */
 function fireOnce(
   state: GameState,
@@ -191,15 +233,55 @@ function fireOnce(
   mechanic: TowerMechanic | null,
   crit: boolean,
   accent: string,
+  /** Zuschlag des Laserstrahls, solange er dasselbe Ziel haelt (`Focal Lens`). */
+  ramp = 0,
 ): void {
-  const damage = stats.damage
+  // `Executioner`: Der Marksman schlaegt haerter zu, weil er ohnehin immer das staerkste
+  // Ziel nimmt (GDD 05 Abschnitt 4). Der Zuschlag haengt deshalb an der Zielwahl und nicht
+  // an der Turmart - ein zweiter Turm mit derselben Zielwahl bekommt ihn von selbst.
+  const focus =
+    targetModeOf(module) === 'strongest' ? 1 + specialValue(state, 'strongestBonus') : 1
+  const damage = (stats.damage + ramp) * focus
+
+  // Wie weit dieses Modul um seine Mitte herum reicht. Das Geschoss traegt es mit, damit
+  // sein Schweif vor dem Turm endet statt ueber ihn hinweg (siehe `Projectile.reach`).
+  const reach = circumradius(module.sides)
+  const common = {
+    damage,
+    speed: stats.projectileSpeed,
+    crit,
+    color: accent,
+    reach,
+    sourceUid: module.uid,
+  }
+
+  /*
+   * `Conduit`: Energiewaffen springen auf **einen** nahen Gegner ueber.
+   *
+   * Umgesetzt als Kettensprung, weil es genau das ist - und weil die Mechanik dafuer schon
+   * steht (`applyChain`). Ein Turm, der ohnehin springt (Tesla), bekommt einen Sprung mehr;
+   * einer, der es nicht tut, bekommt seinen ersten. Beides ist derselbe Satz.
+   */
+  const arcs =
+    module.kind === 'tower' &&
+    towerById(module.defId).class === 'elemental' &&
+    hasRule(state, 'conduit')
+      ? 1
+      : 0
+  const arc =
+    arcs > 0 ? { chain: { hops: arcs, falloff: CONDUIT_FALLOFF, range: stats.range } } : {}
 
   switch (mechanic?.kind) {
     case 'beam':
       // Der Laser trifft ohne Flugzeit. Der Strahl selbst ist reine Anzeige und wird in
       // `sim/combat.ts` als kurzlebige Linie abgelegt.
       spawnBeam(state, module.center, target, accent)
-      applyDamage(state, target, damage, { crit })
+      applyDamage(state, target, damage, { crit, sourceUid: module.uid })
+      // Er hat kein Geschoss, das eine Nutzlast tragen koennte - der Sprung muss deshalb
+      // hier von Hand angestossen werden.
+      if (arcs > 0) {
+        applyChain(state, target, arcs, CONDUIT_FALLOFF, damage, stats.range)
+      }
       return
 
     case 'explosive': {
@@ -207,52 +289,64 @@ function fireOnce(
       // **nicht** zusaetzlich - sonst waere ein Raketenturm auch gegen Einzelziele der
       // staerkste (GDD 05 Abschnitt 6).
       spawnProjectile(state, module.center, target, {
-        damage,
-        speed: stats.projectileSpeed,
-        crit,
-        color: accent,
-        explode: { radius: mechanic.radius, damage: damage * mechanic.share },
+        ...common,
+        ...arc,
+        explode: {
+          radius: mechanic.radius + specialValue(state, 'blastRadius'),
+          damage: damage * (mechanic.share + specialValue(state, 'blastShare')),
+        },
       })
       return
     }
 
     case 'chain':
       spawnProjectile(state, module.center, target, {
-        damage,
-        speed: stats.projectileSpeed,
-        crit,
-        color: accent,
-        chain: { hops: mechanic.hops, falloff: mechanic.falloff, range: stats.range },
+        ...common,
+        chain: {
+          hops: mechanic.hops + specialValue(state, 'chainHops') + arcs,
+          falloff: mechanic.falloff,
+          range: stats.range,
+        },
       })
       return
 
     case 'burn':
       spawnProjectile(state, module.center, target, {
-        damage,
-        speed: stats.projectileSpeed,
-        crit,
-        color: accent,
-        burn: { dps: mechanic.dps, duration: mechanic.duration },
+        ...common,
+        ...arc,
+        burn: {
+          dps: mechanic.dps,
+          duration: mechanic.duration + specialValue(state, 'burnDuration'),
+        },
       })
       return
 
     case 'chill':
       spawnProjectile(state, module.center, target, {
-        damage,
-        speed: stats.projectileSpeed,
-        crit,
-        color: accent,
-        chill: { factor: mechanic.factor, duration: mechanic.duration },
+        ...common,
+        ...arc,
+        chill: {
+          // Kleiner heisst langsamer: `Riftwalk` **senkt** den Faktor. Der Deckel liegt in
+          // `applyChill` - ein stehender Gegner waere kein Gegner mehr.
+          factor: mechanic.factor - specialValue(state, 'chillFactor'),
+          duration: mechanic.duration + specialValue(state, 'chillDuration'),
+        },
       })
       return
 
     default:
-      spawnProjectile(state, module.center, target, {
-        damage,
-        speed: stats.projectileSpeed,
-        crit,
-        color: accent,
-      })
+      spawnProjectile(state, module.center, target, { ...common, ...arc })
+      /*
+       * `Twin Barrel`: Der Kern verschiesst zwei Geschosse statt einem.
+       *
+       * Nur hier im gewoehnlichen Zweig, und das ist keine Auslassung: Der Kern hat gar
+       * keine Mechanik (`mechanicOf` gibt fuer ihn `null`), er faellt also immer hierher.
+       * Das zweite Geschoss ist ein volles - genau das macht es zu einem Directive und
+       * nicht zu einem Ausbau.
+       */
+      if (module.kind === 'core' && hasRule(state, 'twinBarrel')) {
+        spawnProjectile(state, module.center, target, common)
+      }
   }
 }
 

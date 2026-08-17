@@ -46,7 +46,7 @@ import {
   type PodDef,
 } from '../data/events.ts'
 import { eliteById } from '../data/enemies.ts'
-import { globalUpgrades } from '../data/upgrades.ts'
+import { giftableUpgrades } from '../data/upgrades.ts'
 import type { StatKey } from '../data/types.ts'
 import { grantReward } from '../app/rewards.ts'
 import { markDirty, type Boon, type GameState, type Pod } from '../app/state.ts'
@@ -439,16 +439,16 @@ function openPod(state: GameState, pod: Pod): void {
 }
 
 /**
- * Eine kostenlose Stufe auf einem globalen Upgrade-Pfad (GDD 11 Abschnitt 8:
- * "ein kostenloses Upgrade").
+ * Eine kostenlose Stufe auf einem Upgrade-Pfad (GDD 11 Abschnitt 8: "ein kostenloses
+ * Upgrade").
  *
- * Gewuerfelt wird unter den Pfaden, die noch nicht am Anschlag stehen. Sind alle voll, gibt
- * es Gold - eine Kapsel darf nie leer aufgehen.
+ * Gewuerfelt wird unter dem, was der Spieler gerade auch selbst kaufen koennte - die Auswahl
+ * trifft `giftableUpgrades` (`data/upgrades.ts`), damit Kapsel und Haendler nicht zwei
+ * verschiedene Vorstellungen davon haben. Sind alle voll, gibt es Gold: Eine Kapsel darf nie
+ * leer aufgehen.
  */
 function grantFreeUpgrade(state: GameState): void {
-  const open = globalUpgrades().filter(
-    (def) => upgradeLevel(state.run.upgrades, def.id) < def.maxLevel,
-  )
+  const open = giftableUpgrades(state.run.upgrades)
   if (open.length === 0) {
     grantReward(state, { gold: 3 * eventRewardFor(state.run.wave) }, 'pod')
     return

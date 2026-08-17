@@ -40,7 +40,7 @@ import {
   traderStockById,
   type TraderStockDef,
 } from '../data/trader.ts'
-import { globalUpgrades } from '../data/upgrades.ts'
+import { giftableUpgrades, isKnownUpgrade, upgradeById } from '../data/upgrades.ts'
 import { spendGold } from '../app/rewards.ts'
 import { markDirty, type GameState, type Trader, type TraderOffer } from '../app/state.ts'
 import { addEventBoon } from './events.ts'
@@ -89,10 +89,22 @@ function rollStock(state: GameState, rng: Rng): TraderOffer[] {
     const def = pool[index] as TraderStockDef
     pool.splice(index, 1)
 
+    /*
+     * Perk **und** Upgrade stehen schon jetzt fest - sonst waere die Karte eine Behauptung.
+     *
+     * Ist gerade kein Upgrade zu verschenken (alles ausgekauft, alles gesperrt), faellt der
+     * Posten aus dem Sortiment. Eine Karte, die "ein Upgrade" verspricht und beim Kauf
+     * nichts tut, waere schlimmer als ein Sortiment mit zwei Posten statt drei.
+     */
+    const open = giftableUpgrades(state.run.upgrades)
+    const upgradeId =
+      def.effect.kind === 'upgrade' ? (open.length > 0 ? rng.pick(open).id : null) : null
+    if (def.effect.kind === 'upgrade' && upgradeId === null) continue
+
     offers.push({
       defId: def.id,
-      // Der Perk steht schon jetzt fest - sonst waere die Karte eine Behauptung.
       perkId: def.effect.kind === 'perk' ? rng.pick(PERKS).id : null,
+      upgradeId,
       price: Math.max(1, Math.round(def.price * base)),
       sold: false,
     })
@@ -230,7 +242,8 @@ function applyPurchase(state: GameState, offer: TraderOffer): void {
 
   switch (effect.kind) {
     case 'upgrade':
-      for (let i = 0; i < effect.levels; i++) grantFreeUpgrade(state)
+      // Das benannte Upgrade von der Karte - nicht mehr ein gewuerfeltes beim Kauf.
+      if (offer.upgradeId !== null) grantUpgradeLevels(state, offer.upgradeId, effect.levels)
       return
 
     case 'boon':
@@ -251,21 +264,25 @@ function applyPurchase(state: GameState, offer: TraderOffer): void {
 }
 
 /**
- * Eine kostenlose Stufe auf einem zufaelligen globalen Pfad.
+ * Stufen auf einem **benannten** Pfad verschenken.
  *
- * Steht hier und nicht in `sim/events.ts`, obwohl die Kapsel dasselbe tut: Die beiden
- * Aufrufer sollen nicht voneinander abhaengen, und die Funktion ist vier Zeilen lang. Ein
- * gemeinsamer Ort waere eine Datei mehr fuer weniger Text.
+ * Gewuerfelt wurde schon beim Landen (`rollStock`), hier wird nur noch gutgeschrieben. Der
+ * Unterschied ist die Karte: Vorher stand darauf "eine Stufe auf einem Stations-Upgrade" und
+ * man erfuhr erst nach dem Kauf, welche - jetzt steht der Name da.
+ *
+ * Die Hoechststufe wird geachtet: Ein Pfad, der zwischen Landen und Kauf voll geworden ist,
+ * nimmt nichts mehr an.
  */
-function grantFreeUpgrade(state: GameState): void {
-  const open = globalUpgrades().filter(
-    (def) => upgradeLevel(state.run.upgrades, def.id) < def.maxLevel,
-  )
-  if (open.length === 0) return
+function grantUpgradeLevels(state: GameState, path: string, levels: number): void {
+  if (!isKnownUpgrade(path)) return
+  const def = upgradeById(path)
 
-  const def = state.runtime.rng.pick(open)
-  state.run.upgrades[def.id] = upgradeLevel(state.run.upgrades, def.id) + 1
-  emit('upgrade.bought', { path: def.id, level: state.run.upgrades[def.id] as number, cost: 0 })
+  for (let i = 0; i < levels; i++) {
+    const level = upgradeLevel(state.run.upgrades, path)
+    if (level >= def.maxLevel) return
+    state.run.upgrades[path] = level + 1
+    emit('upgrade.bought', { path, level: level + 1, cost: 0 })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -296,5 +313,10 @@ function isValidOffer(value: unknown): value is TraderOffer {
   if (typeof entry['price'] !== 'number' || !Number.isFinite(entry['price'])) return false
   if (typeof entry['sold'] !== 'boolean') return false
   const perkId = entry['perkId']
-  return perkId === null || typeof perkId === 'string'
+  if (perkId !== null && typeof perkId !== 'string') return false
+  // Seit E7 traegt ein Posten auch sein Upgrade. Ein alter Spielstand hat das Feld nicht -
+  // die Migration setzt es auf `null`, und `undefined` bleibt hier trotzdem zulaessig:
+  // Diese Pruefung soll unbrauchbare Daten abweisen, nicht eine Fassung.
+  const upgradeId = entry['upgradeId']
+  return upgradeId === undefined || upgradeId === null || typeof upgradeId === 'string'
 }

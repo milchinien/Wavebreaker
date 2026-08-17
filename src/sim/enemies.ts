@@ -19,6 +19,7 @@ import {
   ENEMY_BASE_DAMAGE,
   ENEMY_BASE_HP,
   ENEMY_BASE_SPEED,
+  GOLD_SCALE,
   MAX_ENEMIES,
   SPAWN_RING_MARGIN,
 } from '../data/balance.ts'
@@ -60,6 +61,53 @@ const CROWD_PUSH_MAX = 45
 const PUSH_DAMPING = 5
 
 /**
+ * Dieselben zwei Zahlen fuer das Gedraenge **im Anmarsch** (siehe `stepCrowd`).
+ *
+ * Sie sind nicht "mehr Kraft, weil mehr schoener ist", sondern die alten Zahlen auf die
+ * neue Reichweite umgerechnet. Der Stoss wirkt ueber `reach - length`, und `reach` ist im
+ * Anmarsch nicht mehr der Koerper, sondern der Umriss - gut doppelt so weit. Mit dem alten
+ * Anstieg von 3 endete das so: Der Umriss forderte 25 Welteinheiten Abstand, gemessen
+ * standen die Gegner auf 9,6. Der Stoss war zu weich, um seine eigene Reichweite zu halten;
+ * das Band blieb einlagig.
+ *
+ * Nachgemessen im Belastungsfall (194 Gegner): Anstieg 3 ergibt 8,8 Bildpunkte
+ * Nachbarabstand und 7 Welteinheiten Bandtiefe, Anstieg 9 ergibt 15,6 Bildpunkte und 31 -
+ * also ein Band, das mehrere Lagen tief steht, bei einem Umriss von 22,8 Bildpunkten.
+ *
+ * Der Deckel behaelt seine alte Rolle: Er sitzt knapp ueber dem Stoss zweier voellig
+ * deckungsgleicher Normalgegner (25 mal 9 = 225) und faengt damit nur den Ausnahmefall ab,
+ * in dem ein Boss und ein Schwarmkruemel auf demselben Fleck stehen.
+ */
+const CROWD_PACK = 9
+const CROWD_PACK_MAX = 250
+
+/**
+ * Der Platz, den ein Gegner im Gedraenge beansprucht - der Boden davon, in Welteinheiten.
+ *
+ * Er ist das Gegenstueck zu `ENEMY_MIN_DRAW` in `render/combat.ts`: Dort bekommt jeder
+ * Gegner eine Mindestgroesse im Bild, damit er ueberhaupt eine Form hat. Genau dieselbe
+ * Zahl muss hier stehen, sonst gehen Bild und Regel auseinander - und zwar sichtbar:
+ *
+ * Nachgemessen im Belastungsfall (Welle 12, 194 Gegner, Zoom 0,908): Ein Schwarmgegner wird
+ * 22,8 Bildpunkte breit gezeichnet, drueckt sich mit `radius` aber nur auf 10,9 Punkte von
+ * Mitte zu Mitte auf Abstand - gemessener Nachbarabstand 7,1 Punkte im Mittel. Jeder Umriss
+ * spannte damit ueber drei Nachbarn hinweg. Das Ergebnis war kein Pulk, sondern eine
+ * **einlagige Kette**: Die Gegner packten sich so eng, dass die ganze Horde auf einer
+ * Perlenschnur Platz fand, statt sich zu einem mehrlagigen Band aufzustauen.
+ *
+ * 10 Bildpunkte bei Zoom 0,908 sind 11 Welteinheiten - `ENEMY_MIN_DRAW / 0,908`. Aus
+ * Halbmesser 6 wird so ein Gedraenge-Halbmesser von `hypot(6, 11) = 12,5`, also gerade der
+ * gezeichnete Umriss in Welteinheiten. Nachbarn stehen danach eine Koerperbreite
+ * auseinander, und aus derselben Gegnerzahl wird ein Band, das den Ring fuellt.
+ *
+ * Der Zoom steht hier als **feste** Zahl und wird nicht von der Kamera geholt: `sim/` kennt
+ * kein Bild und darf keins kennen. Es ist auch nicht noetig - die Kamera haelt die Station
+ * im Ausschnitt und steht im Gefecht praktisch immer knapp unter 1. Eine Abweichung
+ * verschiebt nur, wie genau Umriss und Gedraenge zueinander passen, nie ob.
+ */
+const CROWD_MIN_RADIUS = 11
+
+/**
  * Wie viel Drehung ein Streifen bringt, wie schnell sie ausklingt, wie stark die Ruhelage
  * zurueckholt und wie weit der Ausschlag hoechstens geht (0,35 rad sind rund 20 Grad).
  */
@@ -80,6 +128,19 @@ export type Enemy = {
   /** Schaden je Schlag an der Station. */
   damage: number
   radius: number
+  /**
+   * Der Halbmesser, mit dem dieser Gegner seine Nachbarn auf Abstand haelt (`stepCrowd`).
+   *
+   * **Nur das Gedraengel benutzt ihn.** Treffer, Reichweite, Beruehrung mit einem Modul,
+   * Lebenspunkte, Schaden, Belohnung und Gegnerzahl rechnen weiter mit `radius` - an den
+   * Regeln aendert sich durch dieses Feld nichts, es ist die Anmutung von Enge.
+   *
+   * Er ist der gezeichnete Umriss, zurueckgerechnet in Welteinheiten (siehe
+   * `CROWD_MIN_RADIUS`), und deshalb immer mindestens so gross wie `radius`. Ohne ihn
+   * druecken sich Gegner enger, als sie gezeichnet werden - dann steht die Horde in einer
+   * Lage statt in vieren, und zweihundert Gegner lesen sich als Kette statt als Masse.
+   */
+  crowdRadius: number
   /** Belohnung, die sein Tod ausschuettet - nicht das Gold des Spielers. */
   goldReward: number
   xpReward: number
@@ -102,6 +163,19 @@ export type Enemy = {
   /** Eigendrehung als Winkel und Winkeltempo. Reine Anzeige, aber aus Beruehrungen gerechnet. */
   spin: number
   spinRate: number
+  /**
+   * Die Neigung, mit der dieser Gegner erschienen ist. Reine Anzeige, fest fuer sein Leben.
+   *
+   * Sie ist der Unterschied zwischen einem Pulk und einem Raster: `spin` entsteht erst aus
+   * Beruehrungen mit Nachbarn und ist bei einem ungestoerten Zug ueberall null - hundert
+   * Gegner stuenden dann achsparallel in Reih und Glied, was wie ein Kachelmuster aussieht
+   * und nicht wie eine anrueckende Horde. Der Wert ist gezogen, nicht gerechnet, und bleibt
+   * deshalb auch bei Tempo x4 stehen.
+   *
+   * Der Ausschlag ist derselbe wie beim Wanken (`SPIN_MAX`): Die Form nennt die Gegnerart,
+   * und ein frei gedrehtes Quadrat waere bei 45 Grad eine Raute - also eine andere Art.
+   */
+  tilt: number
   /** Kennung des Moduls, an dem er andockt. Angedockte Gegner stehen still. */
   dockedTo: string | null
   attackTimer: number
@@ -115,6 +189,22 @@ export type Enemy = {
   bite: number
   biteLife: number
   biteDir: Vec2
+
+  /**
+   * Die Trefferquittung am Gegner: Alter und Dauer seiner Aufhellung.
+   *
+   * Reine Anzeige, und trotzdem die wichtigste Rueckmeldung des Kampfes. Ohne sie sagt ein
+   * Einschlag nur "hier ist etwas passiert" - **wen** es erwischt hat, muesste man aus der
+   * Lage des Blitzes erraten, und im dichten Pulk stehen fuenf Gegner in derselben
+   * Handbreit. Der getroffene Gegner brennt kurz durch; damit zeigt der Treffer auf sein
+   * Ziel statt neben es.
+   *
+   * Sie sitzt wie der Biss am Gegner selbst und nicht in einem Vorrat: Ein Gegner kommt aus
+   * einem Pool, und ein Feld an ihm verschwindet mit ihm. Ein zweiter Speicher daneben
+   * muesste beim Zuruecklegen mit aufgeraeumt werden - genau das vergisst man.
+   */
+  flash: number
+  flashLife: number
 
   /*
    * Zustaende, die Tuerme und Faehigkeiten auf einem Gegner hinterlassen (E14) und die
@@ -173,17 +263,21 @@ function blankEnemy(id: number): Enemy {
     speed: 0,
     damage: 0,
     radius: 0,
+    crowdRadius: 0,
     goldReward: 0,
     xpReward: 0,
     vel: { x: 0, y: 0 },
     push: { x: 0, y: 0 },
     spin: 0,
     spinRate: 0,
+    tilt: 0,
     dockedTo: null,
     attackTimer: 0,
     bite: 0,
     biteLife: 0,
     biteDir: { x: 0, y: 0 },
+    flash: 0,
+    flashLife: 0,
     burnDps: 0,
     burnLeft: 0,
     chillFactor: 1,
@@ -247,13 +341,23 @@ export function spawnEnemy(state: GameState, defId: string, angle: number): Enem
   enemy.speed = def.speed * ENEMY_BASE_SPEED * speedScale
   enemy.damage = def.damage * ENEMY_BASE_DAMAGE * damageScale * power
   enemy.radius = def.size
-  enemy.goldReward = def.gold * rewardScale
+  // Der Platz im Gedraenge folgt dem Umriss, nicht dem Regelhalbmesser - weich gemittelt
+  // wie im Bild (`Math.hypot`), damit ein Boss er selbst bleibt und nur der Kruemel steigt.
+  enemy.crowdRadius = Math.hypot(def.size, CROWD_MIN_RADIUS)
+  // Der Goldmassstab sitzt hier und nicht an den Datenwerten in `data/enemies.ts`: Dort
+  // steht, was ein Gegner **im Verhaeltnis** zu den anderen wert ist, hier entsteht der
+  // Betrag. Die Erfahrung bleibt unberuehrt - sie hat ihre eigene Kurve (`XP_BASE`).
+  enemy.goldReward = def.gold * rewardScale * GOLD_SCALE
   enemy.xpReward = def.xp * rewardScale
   enemy.dockedTo = null
   enemy.attackTimer = 0
   // Aus dem Pool geholt: Der Biss des Vorgaengers darf nicht mitkommen.
   enemy.bite = 0
   enemy.biteLife = 0
+  // Ebenso wenig die Trefferquittung: Ein frisch erschienener Gegner, der mit dem Aufblitzen
+  // seines Vorgaengers auf das Feld tritt, meldet einen Treffer, den es nie gab.
+  enemy.flash = 0
+  enemy.flashLife = 0
 
   // Ebenso wenig sein Schwung und seine Drehung. Ein Gegner, der mit dem Stoss seines
   // Vorgaengers erscheint, driftet im ersten Takt sichtbar zur Seite.
@@ -263,6 +367,16 @@ export function spawnEnemy(state: GameState, defId: string, angle: number): Enem
   enemy.push.y = 0
   enemy.spin = 0
   enemy.spinRate = 0
+
+  /*
+   * Seine Neigung dagegen wird neu gezogen - jeder Gegner steht anders da.
+   *
+   * Der Generator ist ein **abgezweigter**: Zoege die Neigung aus `runtime.rng`, verschoebe
+   * jeder erschienene Gegner die Zahlenfolge fuer Elite-Wuerfe, Ereignisse und Beute. Der
+   * Salzwert ist die laufende Gegnerkennung, also fuer jeden Gegner ein anderer und beim
+   * selben Startwert immer derselbe.
+   */
+  enemy.tilt = state.runtime.rng.fork(enemy.id * 2 + 1).range(-SPIN_MAX, SPIN_MAX)
 
   // Ebenso wenig seine Zustaende und Faehigkeiten. Zuruecksetzen **vor** dem Anwenden der
   // eigenen Datenwerte, sonst erbte ein Schwarmkruemel den Schild eines Bosses.
@@ -322,9 +436,13 @@ function applyAbilities(enemy: Enemy, def: EnemyDef): void {
  * Boss zu Beginn seiner Welle. Er **ersetzt** die Welle nicht, er ergaenzt sie: Waehrend
  * des Kampfes stroemen die normalen Gegner weiter nach (GDD 07 Abschnitt 7).
  */
-export function spawnBoss(state: GameState, wave: number): Enemy | null {
-  const def = bossForWave(wave)
-  const angle = state.runtime.rng.fork(wave * 31 + 7).range(0, Math.PI * 2)
+export function spawnBoss(state: GameState, wave: number, effectiveWave = wave): Enemy | null {
+  // **Welcher** Boss kommt, entscheidet die effektive Welle - eine hohe Liga soll ihren
+  // Boss mitbringen und nicht in Welle 10 wieder beim Titan anfangen. **Dass** er kommt,
+  // entscheidet die angezeigte (`isBossWave` in `sim/waves.ts`): Jede Liga hat ihren
+  // eigenen Zehnerrhythmus, keinen fortgesetzten.
+  const def = bossForWave(effectiveWave)
+  const angle = state.runtime.rng.fork(effectiveWave * 31 + 7).range(0, Math.PI * 2)
   const boss = spawnEnemy(state, def.id, angle)
   if (boss) {
     state.runtime.combat.bossId = boss.id
@@ -661,7 +779,25 @@ function stepCrowd(enemies: readonly Enemy[], dt: number): void {
     for (let j = i + 1; j < count; j++) {
       const b = enemies[j] as Enemy
 
-      const reach = a.radius + b.radius
+      /*
+       * Zwei Gedraenge, nicht eins - und das ist der ganze Unterschied zwischen Anmutung
+       * und Balancing.
+       *
+       * **Im Anmarsch** zaehlt der Umriss: `crowdRadius` ist der gezeichnete Halbmesser in
+       * Welteinheiten, und nur hier gilt er. Wer sichtbar Platz einnimmt, muss ihn auch
+       * beanspruchen, sonst spannt jeder Umriss ueber drei Nachbarn und die Horde bleibt
+       * eine einlagige Kette.
+       *
+       * **An der Station** zaehlt wieder der Koerper. Ein angedockter Gegner steht auf
+       * seinem Platz, und der Nachruecker muss sich danebendraengen koennen. Wuerde ihn der
+       * grosse Umriss auf Armlaenge halten, naehme die Station messbar weniger Schaden -
+       * nachgemessen an Welle 20 nach 40 s: 118 von 326 Lebenspunkten mit Koerperabstand,
+       * 238 mit Umrissabstand. Das waere kein Bild mehr, das waere eine Regel.
+       */
+      const fixedA = a.dockedTo !== null
+      const fixedB = b.dockedTo !== null
+      const marching = !fixedA && !fixedB
+      const reach = marching ? a.crowdRadius + b.crowdRadius : a.radius + b.radius
       let dx = b.pos.x - a.pos.x
       let dy = b.pos.y - a.pos.y
       const square = dx * dx + dy * dy
@@ -688,14 +824,15 @@ function stepCrowd(enemies: readonly Enemy[], dt: number): void {
        * werden, sonst dockte er im naechsten Takt erneut an und die Station naehme Schaden
        * im Takt des Gedraengels statt im Takt der Schlaege.
        */
-      const fixedA = a.dockedTo !== null
-      const fixedB = b.dockedTo !== null
       const massA = a.radius * a.radius
       const massB = b.radius * b.radius
       const shareA = fixedA ? 0 : fixedB ? 1 : massB / (massA + massB)
       const shareB = fixedB ? 0 : fixedA ? 1 : 1 - shareA
 
-      const force = Math.min(CROWD_PUSH_MAX, (reach - length) * CROWD_PUSH)
+      // Der Stoss folgt derselben Trennung: der straffe im Anmarsch, der alte an der Station.
+      const force = marching
+        ? Math.min(CROWD_PACK_MAX, (reach - length) * CROWD_PACK)
+        : Math.min(CROWD_PUSH_MAX, (reach - length) * CROWD_PUSH)
       a.push.x -= nx * force * shareA * dt
       a.push.y -= ny * force * shareA * dt
       b.push.x += nx * force * shareB * dt

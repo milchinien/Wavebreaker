@@ -21,11 +21,13 @@ import {
   drawBeams,
   drawBursts,
   drawCoins,
+  drawDamageNumbers,
   drawDrones,
   drawEnemies,
   drawGains,
   drawHelpers,
   drawHits,
+  drawHpBars,
   drawMuzzles,
   drawPickups,
   drawPods,
@@ -36,6 +38,7 @@ import {
 } from './combat.ts'
 import { helperRadius } from '../sim/helpers.ts'
 import { drawBuffLines, drawBuildHints, drawDetachPreview, drawGhost } from './overlays.ts'
+import { drawScreenFilter } from './post.ts'
 import { drawModules } from './station.ts'
 import { THEME } from './theme.ts'
 
@@ -66,6 +69,33 @@ export function render(
   height: number,
   time: number,
   input: SceneInput = { pointer: null, showBuffLines: true, showEffects: true },
+): void {
+  drawScene(ctx, state, camera, width, height, time, input)
+
+  /*
+   * Ganz zum Schluss der Filter (`render/post.ts`) - die einzige Ebene, die nicht zeichnet,
+   * sondern das Gezeichnete aufnimmt.
+   *
+   * Deshalb steht sie hier und nicht im Rumpf: Der Rumpf verlaesst sich mitten im Kampfteil
+   * (`return` nach den Zahlen), und eine Nachbearbeitung, die im Kampf uebersprungen wird,
+   * waere ausgerechnet dort weg, wo das meiste leuchtet.
+   *
+   * Am Effekt-Schalter, wie die Lichtbahnen: Der Filter macht helle Stellen heller und alle
+   * Zeilen gleich viel dunkler, traegt also keine Auskunft. Wer ihn abstellt, verliert nur
+   * Zierde - und spart die einzige Rechnung im Zeichenweg, die mit der Bildflaeche waechst.
+   */
+  if (input.showEffects) drawScreenFilter(ctx, width, height)
+}
+
+/** Der Rumpf: alle Ebenen, die tatsaechlich etwas ins Bild setzen. */
+function drawScene(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  camera: Camera,
+  width: number,
+  height: number,
+  time: number,
+  input: SceneInput,
 ): void {
   const view = stationView(state)
   const { buildUid, dragUid, selectedUid, hoverUid } = state.runtime
@@ -117,7 +147,7 @@ export function render(
 
   // Der Wirkungsbereich liegt ganz unten - er ist der Boden, auf dem alles andere steht,
   // und darf nie ueber einem Gegner oder einer Muenze liegen.
-  drawRangeRing(ctx, CORE_CENTER, circles, camera, width, height, time)
+  drawRangeRing(ctx, CORE_CENTER, circles, camera, width, height)
 
   // Liegendes Gold gehoert **unter** die Station. Ein an der Station gefallener Gegner
   // laesst seine Muenze direkt an der Modulkante fallen; laege sie darueber, deckten
@@ -147,6 +177,11 @@ export function render(
     // sehen, dass ein Modul angedockt hat (GDD 13 Abschnitt 10).
     placings: state.runtime.combat.placings,
     flash: stationFlash(state),
+    // Nur wo der Kampf zu sehen ist: In der Basis steht die Station still, und ein
+    // pulsierender Umriss waere dort eine Bewegung ohne Anlass.
+    overdrive: fighting
+      ? new Set(state.runtime.combat.overdrive.keys())
+      : undefined,
   })
   drawBuffLines(
     ctx,
@@ -164,14 +199,29 @@ export function render(
     const combat = state.runtime.combat
     // Fliegende Muenzen dagegen liegen oben: Sie sind Bewegung zum Zeiger, keine Kulisse.
     drawPickups(ctx, combat.pickups, camera, width, height, time)
-    // Der Zerfall liegt hinter den lebenden Gegnern: Was tot ist, tritt zurueck.
+    drawEnemies(ctx, combat.enemies, camera, width, height)
+    // Wer noch ausserhalb laeuft, bekommt eine Marke am Rand statt gar nichts.
+    drawApproach(ctx, combat.enemies, camera, width, height)
+
+    /*
+     * Der Zerfall liegt **ueber** den lebenden Gegnern.
+     *
+     * Hier stand vorher "Was tot ist, tritt zurueck" - eine schoene Regel fuer einen
+     * Friedhof und eine falsche fuer ein Spiel. Der Abschuss ist der Augenblick, auf den
+     * das ganze Bild hinarbeitet: Alles davor - Zielen, Schiessen, Aufbauen - hat nur den
+     * Zweck, ihn herbeizufuehren. Lag er hinter dem Pulk, verschwand er genau dann, wenn es
+     * voll wurde, also genau dann, wenn er zaehlte: In der spaeten Welle schoss man in
+     * einen Teppich, in dem nichts mehr passierte.
+     *
+     * Ueber den Gegnern und **unter** allem, was dem Spieler gehoert (Drohnen, Haendler,
+     * Strahlen, Muendungsfeuer, Zahlen): Die Druckwelle darf den lebenden Nachbarn
+     * ueberdecken, den sie zerreisst - aber nicht die Station, die sie erzeugt hat.
+     */
     if (input.showEffects) {
       drawBursts(ctx, combat.bursts, camera, width, height)
       drawShards(ctx, combat.shards, camera, width, height)
     }
-    drawEnemies(ctx, combat.enemies, camera, width, height)
-    // Wer noch ausserhalb laeuft, bekommt eine Marke am Rand statt gar nichts.
-    drawApproach(ctx, combat.enemies, camera, width, height)
+
     drawProjectiles(ctx, combat.projectiles, camera, width, height)
     // Drohnen fliegen ueber dem Geschehen - sie gehoeren dem Spieler und sollen nicht
     // zwischen Gegnern verschwinden.
@@ -191,8 +241,34 @@ export function render(
     // Trefferblitze bleiben auch bei ausgeschalteten Effekten: Sie sind die Rueckmeldung,
     // ob ueberhaupt getroffen wird, und damit Auskunft statt Zierde.
     drawHits(ctx, combat.hits, camera, width, height)
-    // Die Zahl liegt ueber allem - sie ist die Quittung und darf nicht verdeckt werden.
-    if (input.showEffects) drawGains(ctx, combat.gains, camera, width, height)
+
+    /*
+     * Die Lebensbalken liegen ueber JEDEM Effekt.
+     *
+     * Vorgemerkt werden sie in `drawEnemies`, gezeichnet erst hier - und das ist der ganze
+     * Zweck der Trennung. Zwischen den beiden Zeilen liegen zehn Ebenen: Anmarschmarken,
+     * Druckwelle, Splitter, Geschosse, Drohnen, Helfer, Haendler, Strahlen, Muendungsfeuer,
+     * Trefferblitze. Jede einzelne davon hat den Balken frueher uebermalt; nachgemessen im
+     * Pulk trug ein Balken 0 von 54 Bildpunkten, weil ein Trefferblitz genau darauf lag.
+     *
+     * Ausgerechnet der Trefferblitz ist dabei der schlimmste Fall: Er erscheint dort, wo
+     * gerade Schaden entsteht, also genau an dem Gegner, dessen Lebensstand sich in
+     * derselben Sekunde aendert. Die Anzeige verschwand also immer im Augenblick ihrer
+     * groessten Aussagekraft.
+     *
+     * Nicht ueber den Zahlen: Die Zahl ist die Quittung eines Augenblicks und steigt aus dem
+     * Bild, der Balken bleibt liegen. Zwei Dauerflaechen ueber einer fluechtigen Schrift
+     * waeren eine Anzeige, die die andere frisst.
+     */
+    drawHpBars(ctx)
+
+    // Die Zahlen liegen ueber allem - sie sind die Quittung und duerfen nicht verdeckt
+    // werden. Erst der Schaden, dann der Gewinn: Wo beides zusammenfaellt, gehoert der
+    // eingesammelte Betrag nach oben. Er ist das, was der Spieler behaelt.
+    if (input.showEffects) {
+      drawDamageNumbers(ctx, combat.damages, camera, width, height)
+      drawGains(ctx, combat.gains, camera, width, height)
+    }
     return
   }
 
@@ -263,8 +339,13 @@ function drawRemovalPreview(
  *
  * Auch in der Basis: Wer dort baut, waehrend die Station getroffen wird, soll es sehen.
  * Das Zittern sitzt im Leuchten und verschiebt nichts, stoert also kein Ausrichten.
+ *
+ * Herausgereicht, weil der Kern seit dem Kernfeld an **zwei** Stellen gezeichnet wird
+ * (`ui/coregauge.ts`). Die Rechnung dort zu wiederholen hiesse, dass ein spaeter geaenderter
+ * Abklingverlauf an einer der beiden Stellen stehen bleibt - und niemand saehe es, weil
+ * beide fuer sich richtig aussehen.
  */
-function stationFlash(state: GameState): number {
+export function stationFlash(state: GameState): number {
   const flash = state.runtime.combat.stationFlash
   if (!flash.active || flash.life <= 0) return 0
   return Math.max(0, 1 - flash.age / flash.life)

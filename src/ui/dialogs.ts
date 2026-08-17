@@ -23,11 +23,21 @@
  */
 
 import { formatDuration, formatNumber, formatPercent } from '../core/format.ts'
+import { on } from '../core/events.ts'
+import { LEAGUE_REWARD_BONUS, LEAGUE_WAVE_OFFSET, WAVE_SCALING } from '../data/balance.ts'
+import { leagueByIndex } from '../data/leagues.ts'
 import { t } from '../data/strings.ts'
-import type { EventChoice } from '../data/events.ts'
-import { isKnownPerk, perkById, perkInfoKey, type PerkDef } from '../data/perks.ts'
+import type { EventChoice, EventEffect } from '../data/events.ts'
+import {
+  isKnownPerk,
+  perkById,
+  perkInfoKey,
+  type PerkDef,
+  type PerkGlobal,
+} from '../data/perks.ts'
 import { towerById } from '../data/towers.ts'
-import { traderStockById } from '../data/trader.ts'
+import { traderStockById, type TraderStockDef } from '../data/trader.ts'
+import { isKnownUpgrade, upgradeById } from '../data/upgrades.ts'
 import { isKnownTrait, traitById } from '../data/traits.ts'
 import type { Rarity } from '../data/types.ts'
 import {
@@ -35,6 +45,7 @@ import {
   chooseEventOption,
   closeTrader,
   dropOffer,
+  goToLeague,
   takeOffer,
   takePerk,
 } from '../app/actions.ts'
@@ -48,11 +59,12 @@ import {
   perkGlobalBonus,
   perkStatBonus,
 } from '../sim/progression.ts'
-import { RARITY_COLOR } from '../render/theme.ts'
-import { moduleTile, towerIcon } from './icons.ts'
+import { LEAGUE_TINT, PALETTE, RARITY_COLOR } from '../render/theme.ts'
+import { choiceCard } from './cards.ts'
+import { eventIcon, moduleTile, perkIcon, towerIcon, tradeIcon, type IconName } from './icons.ts'
 import { createMotes } from './motes.ts'
 import { setSlideLabel } from './slide.ts'
-import { hideTooltip, showTooltip } from './tooltip.ts'
+import { hideTooltip } from './tooltip.ts'
 import { createTypewriter } from './typewriter.ts'
 
 export type Dialogs = {
@@ -77,7 +89,7 @@ export function mountDialogs(
   const hint = document.createElement('p')
   hint.className = 'muted'
   const cards = document.createElement('div')
-  cards.className = 'perk-grid'
+  cards.className = 'choice-grid perk-grid'
   const more = document.createElement('p')
   more.className = 'levelup-more'
 
@@ -104,7 +116,7 @@ export function mountDialogs(
   const towerHint = document.createElement('p')
   towerHint.className = 'muted'
   const towerCards = document.createElement('div')
-  towerCards.className = 'offer-grid'
+  towerCards.className = 'choice-grid tower-grid'
   const discard = document.createElement('button')
   discard.type = 'button'
   discard.className = 'chip'
@@ -129,7 +141,7 @@ export function mountDialogs(
   const eventText = document.createElement('p')
   eventText.className = 'muted'
   const eventCards = document.createElement('div')
-  eventCards.className = 'offer-grid'
+  eventCards.className = 'choice-grid event-grid'
   const eventSkip = document.createElement('button')
   eventSkip.type = 'button'
   eventSkip.className = 'chip'
@@ -154,7 +166,7 @@ export function mountDialogs(
   const traderText = document.createElement('p')
   traderText.className = 'muted'
   const traderCards = document.createElement('div')
-  traderCards.className = 'offer-grid'
+  traderCards.className = 'choice-grid trade-grid'
   const traderLeave = document.createElement('button')
   traderLeave.type = 'button'
   traderLeave.className = 'chip'
@@ -191,6 +203,54 @@ export function mountDialogs(
   returnBackdrop.appendChild(returnPanel)
   overlay.appendChild(returnBackdrop)
 
+  // --- Aufstieg in die naechste Liga (docs/liga-system.md Abschnitt 6.2) ---
+  const leagueBackdrop = document.createElement('div')
+  leagueBackdrop.className = 'levelup-backdrop'
+  leagueBackdrop.hidden = true
+
+  const leaguePanel = document.createElement('section')
+  leaguePanel.className = 'panel levelup-panel league-panel'
+  const leagueTitle = document.createElement('h2')
+  const leagueName = document.createElement('p')
+  leagueName.className = 'league-panel-name'
+  const leagueText = document.createElement('p')
+  leagueText.className = 'muted'
+  const leagueButtons = document.createElement('div')
+  leagueButtons.className = 'league-panel-buttons'
+
+  const leagueEnter = document.createElement('button')
+  leagueEnter.type = 'button'
+  leagueEnter.className = 'chip active'
+  setSlideLabel(leagueEnter, t('league.enter'))
+  leagueEnter.addEventListener('click', () => answerLeague(true))
+
+  const leagueStay = document.createElement('button')
+  leagueStay.type = 'button'
+  leagueStay.className = 'chip'
+  setSlideLabel(leagueStay, t('league.stay'))
+  leagueStay.addEventListener('click', () => answerLeague(false))
+
+  leagueButtons.append(leagueEnter, leagueStay)
+  leaguePanel.append(leagueTitle, leagueName, leagueText, leagueButtons)
+  leagueBackdrop.appendChild(leaguePanel)
+  overlay.appendChild(leagueBackdrop)
+
+  /**
+   * Um wie viel eine Liga die Gegner anhebt - einmal gerechnet, nicht je Bild.
+   *
+   * Aus den Balancewerten und nicht als Zahl im Text: Wer am Versatz dreht, soll den Satz
+   * nicht nachziehen muessen. Ein Fenster, das eine veraltete Zahl behauptet, ist schlimmer
+   * als eines ohne Zahl.
+   */
+  const leaguePower = Math.pow(WAVE_SCALING, LEAGUE_WAVE_OFFSET).toFixed(1)
+
+  /** Die Liga, deren Freischaltung noch anzusagen ist - oder `null`. */
+  let pendingLeague: number | null = null
+  let shownLeague: number | null = null
+  const stopLeagueUnlock = on('league.unlocked', ({ league }) => {
+    pendingLeague = league
+  })
+
   /*
    * Die Anrede jedes Fensters schreibt sich (`ui/typewriter.ts`).
    *
@@ -213,6 +273,7 @@ export function mountDialogs(
   const eventWriter = createTypewriter()
   const traderWriter = createTypewriter()
   const returnWriter = createTypewriter()
+  const leagueWriter = createTypewriter()
 
   /**
    * Woran erkannt wird, dass sich etwas geaendert hat.
@@ -329,9 +390,14 @@ export function mountDialogs(
       const offer = trader.stock[row.index]
       if (!offer) continue
       const affordable = canAfford(state, offer)
-      row.card.disabled = !affordable
-      row.card.classList.toggle('affordable', affordable)
-      row.card.classList.toggle('sold', offer.sold)
+      // Gesperrt wird ueber eine Klasse und nicht ueber `disabled`. Ein gesperrter Knopf
+      // bekommt keine Zeigerereignisse mehr - die Karte wuerde sich dann weder neigen noch
+      // umdrehen, und genau das braucht man bei einem Posten, den man sich noch nicht
+      // leisten kann: nachsehen, was das ueberhaupt ist. Der Kauf selbst prueft ohnehin
+      // (`buyFromTraderAt`), ein Klick geht also ins Leere statt daneben.
+      row.card.setAttribute('aria-disabled', String(!affordable || offer.sold))
+      row.card.classList.toggle('locked', !affordable && !offer.sold)
+      row.card.classList.toggle('spent', offer.sold)
       row.price.textContent = offer.sold
         ? t('trader.sold')
         : t('hud.costs', { amount: formatNumber(offer.price) })
@@ -372,11 +438,55 @@ export function mountDialogs(
     }
   }
 
+  /**
+   * Das Aufstiegsfenster (docs/liga-system.md Abschnitt 6.2).
+   *
+   * Es haengt am **Ereignis** und nicht an einem gespeicherten Zustand: Die Freischaltung
+   * ist eine Nachricht, und eine Nachricht meldet man, wenn sie eintrifft. Beim naechsten
+   * Laden ist sie keine mehr - die Liga steht dann in der Ligazeile und wartet dort, so
+   * lange der Spieler will.
+   *
+   * **Es haelt nichts an.** Beide Antworten schalten die Liga frei; der Knopf entscheidet
+   * nur, ob jetzt gewechselt wird. Deshalb ist auch keine der beiden die "richtige" - wer
+   * bleibt, verliert nichts (GDD 02 Abschnitt 6).
+   */
+  function updateLeague(): void {
+    const target = pendingLeague
+    leagueBackdrop.hidden = target === null
+    if (target === null || target === shownLeague) return
+    shownLeague = target
+
+    const def = leagueByIndex(target)
+    leaguePanel.style.setProperty('--league-tint', LEAGUE_TINT[def.tint])
+    leagueWriter.write(
+      { node: leagueTitle, text: t('league.title') },
+      { node: leagueName, text: t(def.id) },
+      {
+        node: leagueText,
+        text: t('league.hint', {
+          power: leaguePower,
+          reward: LEAGUE_REWARD_BONUS.toFixed(1),
+        }),
+      },
+    )
+  }
+
+  function answerLeague(enter: boolean): void {
+    const target = pendingLeague
+    pendingLeague = null
+    shownLeague = null
+    leagueBackdrop.hidden = true
+    leagueWriter.reset()
+    if (enter && target !== null) goToLeague(state, target)
+    onChange()
+  }
+
   function update(): void {
     updateTowerOffer()
     updateEvent()
     updateTrader()
     updateReturn()
+    updateLeague()
 
     const pending = pendingLevelUps(state)
     const offer = pending > 0 ? currentOffer(state) : []
@@ -419,7 +529,15 @@ export function mountDialogs(
     update,
     detach() {
       hideTooltip()
-      for (const writer of [levelWriter, offerWriter, eventWriter, traderWriter, returnWriter]) {
+      stopLeagueUnlock()
+      for (const writer of [
+        levelWriter,
+        offerWriter,
+        eventWriter,
+        traderWriter,
+        returnWriter,
+        leagueWriter,
+      ]) {
         writer.reset()
       }
       backdrop.remove()
@@ -427,6 +545,7 @@ export function mountDialogs(
       eventBackdrop.remove()
       traderBackdrop.remove()
       returnBackdrop.remove()
+      leagueBackdrop.remove()
     },
   }
 }
@@ -434,9 +553,14 @@ export function mountDialogs(
 /**
  * Ein Posten im Sortiment der Drohne.
  *
- * Sie sieht aus wie eine Turmkarte und trägt dieselbe Raritätsfarbe - denn sie ist
- * dasselbe: etwas, das man sich ansieht und dann nimmt. Der Unterschied steht unten rechts,
- * wo bei der Turmkarte nichts steht: **der Preis**. Hier wird gekauft, nicht gewählt.
+ * Er sieht aus wie eine Turmkarte und traegt dieselbe Raritaetsfarbe - denn er ist
+ * dasselbe: etwas, das man sich ansieht und dann nimmt. Der Unterschied steht vorn unter
+ * dem Rang, wo bei der Turmkarte nichts steht: **der Preis**. Hier wird gekauft, nicht
+ * gewaehlt, und drei Preise nebeneinander muss man vergleichen koennen, ohne jede Karte
+ * einzeln umzudrehen.
+ *
+ * Der Preis kommt deshalb als fertiger Knoten in die Karte und bleibt hier: Er wird zu
+ * "Gekauft", sobald der Posten weg ist, und die Karte darf dafuer nicht neu entstehen.
  */
 function traderCard(
   state: GameState,
@@ -446,36 +570,52 @@ function traderCard(
 ): { index: number; card: HTMLButtonElement; price: HTMLElement } {
   const def = traderStockById(offer.defId)
 
-  const card = document.createElement('button')
-  card.type = 'button'
-  card.className = 'offer-card trade-card'
-  card.style.setProperty('--rarity', RARITY_COLOR[def.rarity])
-
-  const head = document.createElement('span')
-  head.className = 'offer-head'
-  const name = document.createElement('b')
-  name.textContent = def.label
-  head.appendChild(name)
-
   const text = document.createElement('span')
-  text.className = 'offer-text'
-  // Perk-Ware nennt ihren Perk beim Namen: Was auf der Karte steht, muss man bekommen -
-  // "eine Verbesserung" wäre eine Behauptung.
-  text.textContent =
-    offer.perkId && isKnownPerk(offer.perkId)
-      ? t('trader.perk', { name: perkById(offer.perkId).label })
-      : def.description
+  text.className = 'choice-text'
+  /*
+   * Perk- und Upgrade-Ware nennen ihren Inhalt **beim Namen**.
+   *
+   * Was auf der Karte steht, muss man bekommen - "eine Verbesserung" waere eine Behauptung.
+   * Bei den Upgrades ist das seit E7 moeglich: Vorher wuerfelte erst der Kauf, welcher Pfad
+   * gemeint war, und die Karte konnte gar nichts versprechen.
+   */
+  if (offer.perkId && isKnownPerk(offer.perkId)) {
+    text.textContent = t('trader.perk', { name: perkById(offer.perkId).label })
+  } else if (offer.upgradeId && isKnownUpgrade(offer.upgradeId)) {
+    text.textContent = t('trader.upgrade', {
+      levels: effectLevels(def),
+      name: upgradeById(offer.upgradeId).name,
+    })
+  } else {
+    text.textContent = def.description
+  }
 
   const price = document.createElement('span')
   price.className = 'trade-price'
 
-  card.append(head, text, price)
-  card.addEventListener('click', () => {
-    if (!buyFromTraderAt(state, index)) return
-    onChange()
+  const card = choiceCard({
+    tone: RARITY_COLOR[def.rarity],
+    rarity: def.rarity,
+    front: {
+      tile: moduleTile(tradeIcon(def.effect.kind), def.rarity, 18),
+      name: def.label,
+      rank: t(rarityKey(def.rarity)),
+      note: price,
+    },
+    back: [text],
+    action: t('trader.buy'),
+    onPick() {
+      if (!buyFromTraderAt(state, index)) return
+      onChange()
+    },
   })
 
   return { index, card, price }
+}
+
+/** Wie viele Stufen eine Upgrade-Ware verschenkt. Andere Waren zaehlen als eine. */
+function effectLevels(def: TraderStockDef): number {
+  return def.effect.kind === 'upgrade' ? def.effect.levels : 1
 }
 
 /**
@@ -483,31 +623,73 @@ function traderCard(
  *
  * Sie traegt ihre Folge im Klartext: "Gegner werden staerker", "ein besonderer Gegner
  * erscheint". Ein Ereignis, dessen Optionen sich nur in der Belohnung unterscheiden, waere
- * keine Entscheidung - deshalb steht die Folge gleich gross neben dem Namen und nicht als
- * Kleingedrucktes darunter.
+ * keine Entscheidung - deshalb steht die Folge auf der Rueckseite, und was fuer eine Art
+ * von Folge es ist, schon vorn.
+ *
+ * Denn eine Ereignisoption hat keine Seltenheit, und der Platz, an dem bei den anderen
+ * Karten der Rang steht, waere sonst leer. Dort steht deshalb ihre **Art** - Auszahlung,
+ * Verstaerkung, Risiko, Hinterhalt - in der Farbe, die im ganzen Spiel dafuer steht: Gold
+ * fuer Gold, Tuerkis fuer einen Bonus, Magenta fuer Gefahr, Violett fuer den Boss. Der
+ * Spieler sieht damit die sichere und die riskante Karte auseinander, bevor er liest.
  */
 function eventCard(state: GameState, choice: EventChoice, onChange: () => void): HTMLElement {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = 'offer-card'
-
-  const head = document.createElement('span')
-  head.className = 'offer-head'
-  const name = document.createElement('b')
-  name.textContent = choice.label
-  head.appendChild(name)
+  const kind = heaviestEffect(choice)
 
   const text = document.createElement('span')
-  text.className = 'offer-text'
+  text.className = 'choice-text'
   text.textContent = choice.detail
 
-  button.append(head, text)
-  button.addEventListener('click', () => {
-    if (!chooseEventOption(state, choice.id)) return
-    onChange()
+  return choiceCard({
+    tone: EVENT_TONE[kind],
+    front: {
+      tile: moduleTile(eventIcon(kind), null, 18, EVENT_TONE[kind]),
+      name: choice.label,
+      rank: t(eventKindKey(kind)),
+    },
+    back: [text],
+    action: t('event.choose'),
+    onPick() {
+      if (!chooseEventOption(state, choice.id)) return
+      onChange()
+    },
   })
+}
 
-  return button
+/**
+ * Wie schwer eine Wirkung wiegt - je groesser, desto schwerer.
+ *
+ * Eine Option kann mehrere Wirkungen haben, und die Karte zeigt nur **eine** Farbe. Sie
+ * zeigt die schwerste: Wer Gold bekommt und dabei einen Titanen ruft, waehlt einen
+ * Hinterhalt und keine Auszahlung. Faerbte die erste Wirkung die Karte, waere die Farbe
+ * eine Falle statt einer Auskunft.
+ */
+const EVENT_WEIGHT: Record<EventEffect['kind'], number> = {
+  reward: 0,
+  boon: 1,
+  hazard: 2,
+  spawn: 3,
+}
+
+/** Die Leitfarbe je Wirkungsart - dieselbe Sprache wie ueberall (GDD 13 Abschnitt 7). */
+const EVENT_TONE: Record<EventEffect['kind'], string> = {
+  reward: PALETTE.gold,
+  boon: PALETTE.teal,
+  hazard: PALETTE.magenta,
+  spawn: PALETTE.violet,
+}
+
+function heaviestEffect(choice: EventChoice): EventEffect['kind'] {
+  let worst: EventEffect['kind'] = 'reward'
+  for (const effect of choice.effects) {
+    if (EVENT_WEIGHT[effect.kind] > EVENT_WEIGHT[worst]) worst = effect.kind
+  }
+  return worst
+}
+
+function eventKindKey(
+  kind: EventEffect['kind'],
+): 'event.kind.reward' | 'event.kind.boon' | 'event.kind.hazard' | 'event.kind.spawn' {
+  return `event.kind.${kind}` as const
 }
 
 /** Eine Zeile im Abwesenheitsbericht: Beschriftung links, Zahl rechts. */
@@ -525,6 +707,11 @@ function entry(list: HTMLElement, label: string, value: string): void {
  * Sie zeigt alles, was den Turm ausmacht: Art, Raritaet und seine gewuerfelten
  * Eigenschaften. Der Spieler soll bewusst entscheiden - dafuer muss auf der Karte stehen,
  * was er bekommt, und nicht nur, welcher Turm es ist.
+ *
+ * Das teilt sich auf die beiden Seiten (`ui/cards.ts`) nach einer einfachen Frage: **Was
+ * unterscheidet die drei ausliegenden Karten voneinander?** Art und Seltenheit tun das und
+ * stehen vorn; die Beschreibung der Turmart und ihre gewuerfelten Eigenschaften sind die
+ * Begruendung und stehen hinten. Wer den Turm kennt, waehlt ihn nach dem Rahmen.
  */
 function offerCard(
   offer: TowerOffer,
@@ -534,25 +721,12 @@ function offerCard(
 ): HTMLElement {
   const def = towerById(offer.defId)
 
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = 'offer-card'
-  button.style.setProperty('--rarity', RARITY_COLOR[offer.rarity])
-
-  const head = document.createElement('span')
-  head.className = 'offer-head'
-  head.innerHTML = `${moduleTile(towerIcon(offer.defId, 'tower'), offer.rarity)}<b>${def.name}</b>`
-
-  const rarity = document.createElement('span')
-  rarity.className = 'perk-rarity'
-  rarity.textContent = t(rarityKey(offer.rarity))
-
   const text = document.createElement('span')
-  text.className = 'offer-text'
+  text.className = 'choice-text'
   text.textContent = def.description
 
   const traits = document.createElement('ul')
-  traits.className = 'offer-traits'
+  traits.className = 'choice-traits'
   const known = offer.traits.filter(isKnownTrait)
   if (known.length === 0) {
     const empty = document.createElement('li')
@@ -569,13 +743,21 @@ function offerCard(
     }
   }
 
-  button.append(head, rarity, text, traits)
-  button.addEventListener('click', () => {
-    if (!takeOffer(state, index)) return
-    onChange()
+  return choiceCard({
+    tone: RARITY_COLOR[offer.rarity],
+    rarity: offer.rarity,
+    front: {
+      tile: moduleTile(towerIcon(offer.defId, 'tower'), offer.rarity, 18),
+      name: def.name,
+      rank: t(rarityKey(offer.rarity)),
+    },
+    back: [text, traits],
+    action: t('offer.take'),
+    onPick() {
+      if (!takeOffer(state, index)) return
+      onChange()
+    },
   })
-
-  return button
 }
 
 function rarityKey(
@@ -585,98 +767,57 @@ function rarityKey(
 }
 
 /**
- * Wie lange der Zeiger auf einer Karte stehen muss, bis die ausfuehrliche Auskunft kommt.
- *
- * Drei Sekunden sind bewusst lang. Der Aufstieg haelt das Spiel nicht an - wer die Karten
- * schon kennt, faehrt ueber sie hinweg und will nicht bei jeder Bewegung ein Fenster
- * aufgehen sehen. Wer stehenbleibt, hat gefragt.
- *
- * Die Karte macht das Warten sichtbar: Derselbe Wert setzt die Fuellzeit des Streifens an
- * ihrem unteren Rand (`--probe`). Ohne ihn waeren drei Sekunden ununterscheidbar von
- * "hier passiert nichts", und die Auskunft fuende nie jemand.
- */
-const INFO_DELAY_MS = 3000
-
-/**
  * Eine Perk-Karte.
  *
  * Der Rahmen traegt die Farbe der Seltenheit - dieselbe Sprache wie bei Tuermen im Lager
  * und auf der Bauflaeche (GDD 13 Abschnitt 7). Ein legendaerer Perk ist damit schon zu
  * erkennen, bevor man seinen Text gelesen hat.
  *
- * Auf der Karte selbst steht weiterhin nur der Betrag. Sie ist eine Handbreit gross und
- * steht neben zwei gleichrangigen - ein Absatz Fliesstext darauf machte aus der Auswahl
- * eine Leseaufgabe. Was der Wert **tut**, kommt deshalb erst auf Nachfrage (`perkInfo`).
+ * Vorn steht nur der Betrag. Die Karte ist eine Handbreit gross und steht neben zwei
+ * gleichrangigen - ein Absatz Fliesstext darauf machte aus der Auswahl eine Leseaufgabe.
+ * Was der Wert **tut**, steht auf der Rueckseite (`perkDetail`), und die kommt beim
+ * Beruehren.
+ *
+ * Frueher lag dieselbe Auskunft in einem Hinweisfenster, das erst nach drei Sekunden
+ * Stehenbleiben aufging. Sie steht jetzt an der Stelle, an der man ohnehin hinsieht - und
+ * kostet keine drei Sekunden mehr.
  */
 function card(state: GameState, perk: PerkDef, onChange: () => void): HTMLElement {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = 'perk-card'
-  button.style.setProperty('--rarity', RARITY_COLOR[perk.rarity])
-  button.style.setProperty('--probe', `${INFO_DELAY_MS}ms`)
-
-  const name = document.createElement('span')
-  name.className = 'perk-name'
-  name.textContent = perk.label
-
-  const rarity = document.createElement('span')
-  rarity.className = 'perk-rarity'
-  rarity.textContent = t(rarityKey(perk.rarity))
-
-  button.append(name, rarity)
-
   // Wie oft man diesen Perk schon hat. Bei einem Angebot, das sich wiederholen darf, ist
-  // das die Auskunft, die den Unterschied zwischen "neu" und "noch mehr davon" macht.
+  // das die Auskunft, die den Unterschied zwischen "neu" und "noch mehr davon" macht - und
+  // sie gehoert nach vorn, weil sie die drei ausliegenden Karten unterscheidet.
   const owned = perkCount(state, perk.id)
-  if (owned > 0) {
-    const taken = document.createElement('span')
-    taken.className = 'perk-taken'
-    taken.textContent = t('levelup.taken', { count: owned })
-    button.appendChild(taken)
-  }
 
-  // --- Nachfrage durch Stehenbleiben ---
-  let timer = 0
-
-  function forget(): void {
-    if (timer !== 0) {
-      window.clearTimeout(timer)
-      timer = 0
-    }
-    button.classList.remove('probing')
-    hideTooltip()
-  }
-
-  button.addEventListener('pointerenter', (event) => {
-    // Ein Finger schwebt nicht. Auf dem Tablet gaebe `pointerenter` beim Tippen sonst den
-    // Startschuss fuer eine Auskunft, die im selben Augenblick mit der Karte verschwindet.
-    if (event.pointerType === 'touch') return
-    forget()
-    button.classList.add('probing')
-    timer = window.setTimeout(() => {
-      timer = 0
-      const box = button.getBoundingClientRect()
-      showTooltip({ x: box.left + box.width / 2, y: box.bottom }, perkInfo(state, perk), {
-        variant: 'perk-info',
-        center: true,
-        clear: { top: box.top, bottom: box.bottom },
-      })
-    }, INFO_DELAY_MS)
+  return choiceCard({
+    tone: RARITY_COLOR[perk.rarity],
+    rarity: perk.rarity,
+    front: {
+      tile: moduleTile(perkTile(perk), perk.rarity, 18),
+      name: perk.label,
+      rank: t(rarityKey(perk.rarity)),
+      note: owned > 0 ? t('levelup.taken', { count: owned }) : undefined,
+    },
+    back: perkDetail(state, perk),
+    action: t('levelup.take'),
+    onPick() {
+      if (!takePerk(state, perk.id)) return
+      onChange()
+    },
   })
+}
 
-  button.addEventListener('pointerleave', forget)
-  // Die Karte verschwindet beim Klick, `pointerleave` kommt dann nicht mehr.
-  button.addEventListener('click', () => {
-    forget()
-    if (!takePerk(state, perk.id)) return
-    onChange()
-  })
-
-  return button
+/** Worauf der Perk wirkt, als Zeichen - dasselbe wie an der Wertzeile im Moduldetail. */
+function perkTile(perk: PerkDef): IconName {
+  const effect = perk.effect
+  if (effect.kind === 'percent' || effect.kind === 'flat') return perkIcon('stat', effect.stat)
+  if (effect.kind === 'global') return perkIcon('global', effect.key)
+  // Seit E7 kann ein Perk grundsaetzlich jede Wirkung des Katalogs tragen; die heutige Liste
+  // nutzt nur zwei davon. Ein fehlendes Bild darf trotzdem nie eine leere Karte ergeben.
+  return perkIcon('global', 'xpBonus')
 }
 
 /**
- * Die ausfuehrliche Auskunft zu einer Perk-Karte.
+ * Die Rueckseite einer Perk-Karte.
  *
  * Sie beantwortet drei Fragen, und zwar in dieser Reihenfolge, weil das die Reihenfolge
  * ist, in der man sie stellt:
@@ -686,30 +827,40 @@ function card(state: GameState, perk: PerkDef, onChange: () => void): HTMLElemen
  *   2. **Wo stehe ich?** Der Betrag, den man aus dieser Richtung bereits hat.
  *   3. **Wo staende ich danach?** Derselbe Wert plus diese Karte.
  *
- * Punkt 2 und 3 sind der eigentliche Grund fuer das Fenster. "Damage +8%" sagt nichts
+ * Punkt 2 und 3 sind der eigentliche Grund fuer die Rueckseite. "Damage +8%" sagt nichts
  * darueber, ob das viel ist - neben einem bereits stehenden "+120%" ist es wenig, als
  * erster Schadensperk ist es der Anfang von allem. Perks sind additiv (GDD 03 Abschnitt 9),
  * also laesst sich das ausrechnen und muss nicht geschaetzt werden.
  */
-function perkInfo(state: GameState, perk: PerkDef): string {
+function perkDetail(state: GameState, perk: PerkDef): HTMLElement[] {
   const effect = perk.effect
-  const now =
-    effect.kind === 'stat'
-      ? perkStatBonus(state, effect.stat)
-      : perkGlobalBonus(state, effect.global)
-  const after = now + effect.amount
-  const owned = perkCount(state, perk.id)
+  // Der Stand aus derselben Richtung - je nachdem, ob der Perk einen Kampfwert oder eine
+  // Groesse des Runs hebt.
+  let now = 0
+  if (effect.kind === 'percent' || effect.kind === 'flat') now = perkStatBonus(state, effect.stat)
+  else if (effect.kind === 'global') now = perkGlobalBonus(state, effect.key as PerkGlobal)
+  const step = effect.kind === 'rule' || effect.kind === 'window' ? 0 : effect.amount
+  const after = now + step
 
-  const head = `<b class="tip-name" style="color: ${RARITY_COLOR[perk.rarity]}">${perk.label}</b>`
-  const rarity = `<span class="tip-rarity">${t(rarityKey(perk.rarity))}</span>`
-  const text = `<p class="tip-text">${t(perkInfoKey(effect))}</p>`
-  const rows =
-    `<dl class="tip-rows">` +
-    `<dt>${t('perk.info.now')}</dt><dd>${formatPercent(now, { sign: true })}</dd>` +
-    `<dt>${t('perk.info.after')}</dt><dd class="up">${formatPercent(after, { sign: true })}</dd>` +
-    `</dl>`
-  const foot = `<p class="tip-foot">${owned > 0 ? t('perk.info.stacks', { count: owned }) : t('perk.info.first')}</p>`
+  const text = document.createElement('p')
+  text.className = 'choice-text'
+  text.textContent = t(perkInfoKey(effect))
 
-  return head + rarity + text + rows + foot
+  const rows = document.createElement('dl')
+  rows.className = 'choice-rows'
+  row(rows, t('perk.info.now'), formatPercent(now, { sign: true }), false)
+  row(rows, t('perk.info.after'), formatPercent(after, { sign: true }), true)
+
+  return [text, rows]
+}
+
+/** Eine Zeile der Rueckseite: Frage links, Zahl rechts. `up` faerbt den besseren Wert. */
+function row(list: HTMLElement, label: string, value: string, up: boolean): void {
+  const term = document.createElement('dt')
+  term.textContent = label
+  const data = document.createElement('dd')
+  if (up) data.className = 'up'
+  data.textContent = value
+  list.append(term, data)
 }
 

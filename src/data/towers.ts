@@ -5,8 +5,10 @@
  * keine neue **Mechanik** dazukommt. Die restlichen Turmarten folgen in E14.
  *
  * Die Grundflaeche ist eine Balance-Entscheidung, keine Optik (GDD 03 Abschnitt 7): Ein
- * Buff-Turm als Fuenfeck erreicht bis zu 5 Module, als Dreieck nur 3 - bei gleichem
- * Turmplatz-Preis.
+ * Buff-Turm als Sechseck erreicht bis zu 6 Module, als Dreieck nur 3 - bei gleichem
+ * Turmplatz-Preis. Welche Formen es ueberhaupt gibt und warum es genau diese drei sind,
+ * steht bei `FootprintSides` in `data/types.ts`; welcher Turm welche bekommt, steht bei
+ * `TOWERS` weiter unten.
  *
  * ACHTUNG - PLATZHALTER: Die Kampfwerte sind aus Prototyp 01 uebernommen und dienen nur
  * dazu, dass ueberhaupt gerechnet werden kann. Verbindlich werden sie erst beim Justieren
@@ -22,6 +24,7 @@ import {
   type Emblem,
   type FootprintSides,
   type StatKey,
+  type TowerClass,
 } from './types.ts'
 
 /**
@@ -57,6 +60,14 @@ export type TowerDef = {
   sides: FootprintSides
   emblem: Emblem
   category: Category
+  /**
+   * Turmklasse - wovon dieser Turm im Upgrade-Menue mitprofitiert (`data/types.ts`).
+   *
+   * Sie steht **neben** `category` und nicht statt ihr: `category` ist die Buff-Regel,
+   * `class` der Name der Gruppe. Ein Turm gehoert genau einer Klasse an; ohne sie waere er
+   * von jedem Gruppen-Upgrade ausgenommen, ohne dass es auffiele.
+   */
+  class: TowerClass
   stats: CombatStats
   /** Spezialmechanik. Ohne Angabe: gewoehnliches Geschoss. */
   mechanic?: TowerMechanic
@@ -83,54 +94,119 @@ export type TowerDef = {
 }
 
 /**
- * Zur Reichweite: Sie ist bei **allen** Tuermen auf 70 % ihres urspruenglichen Wertes
- * gekuerzt (2026-08-04).
+ * **Die Kantenzahl folgt der Staerke.**
  *
- * Der Grund liegt nicht am einzelnen Turm, sondern an der Summe. Was der Spieler sieht, ist
- * die Vereinigung aller Wirkungskreise (`rangeCircles` in `sim/towers.ts`), und ein Turm
- * bringt seinen Anbauabstand mit: Er sitzt rund 65 bis 97 Einheiten vor dem Kern und legt
- * seine Reichweite **dort** an. Der Marksman kam damit auf 485 Einheiten ab der Mitte,
- * mehr als das Doppelte des Kerns (220) - die Station verschwand in ihrem eigenen
- * Wirkungsbereich, und weil der Bildausschnitt ihn mit einrechnet, wurde sie im Bild
- * entsprechend klein.
+ * Vorher war die Form frei gewaehlt und hat der Wirkung gefolgt: wenige Kanten fuer harte
+ * Einzelziel-Tuerme, viele fuer Streuung und Unterstuetzung. Das war schluessig, aber der
+ * Spieler konnte es nicht lesen - ein Dreieck sagte ihm nichts darueber, was er in der Hand
+ * hat. Jetzt sagt es das Wichtigste: **Mehr Kanten heisst staerkerer Turm.**
  *
- * Gekuerzt wurde **anteilig und ausnahmslos**, nicht turmweise nachjustiert: Jeder Abstand
- * zwischen zwei Tuermen bleibt damit genau erhalten, der Marksman reicht weiter als der
- * Laser und der Flamer bleibt der kuerzeste. Ein Deckel haette dieselbe Zahl fuer mehrere
- * Tuerme erzwungen und ihre Rangfolge eingeebnet - und "Reichweite: sehr hoch" aus GDD 05
- * meint einen Vergleich unter Tuermen, keinen festen Wert.
+ * Der Massstab dafuer ist nicht geschaetzt, sondern die Raritaetsuntergrenze aus
+ * `data/rarities.ts` - die einzige Zahl im Spiel, die "wie stark ist diese Turmart" schon
+ * beantwortet, und dieselbe, die der Spieler als Rahmenfarbe ohnehin vor sich hat:
+ *
+ *   Common -> Dreieck    Rare -> Quadrat    Epic -> Quadrat    Legendary/Mythic -> Sechseck
+ *
+ * Drei Formen auf fuenf Stufen, weil es nur drei zugelassene Formen gibt (Herleitung bei
+ * `FootprintSides` in `data/types.ts`). Gaebe man das Zwoelfeck frei, bekaeme Mythic seine
+ * eigene Stufe. `selftest/suites/station.ts` haelt die Leiter nach: Eine seltenere Turmart
+ * darf **nie** weniger Kanten haben als eine haeufigere.
+ *
+ * Was mehr Kanten wirklich einbringen, und warum das ein Preis fuer Seltenheit sein darf:
+ * mehr Nachbarn (also mehr Buff-Verbindungen), mehr eigene freie Kanten (also mehr Raum zum
+ * Weiterbauen), und eine groessere Grundflaeche, die den Turm weiter nach aussen setzt - was
+ * seine Reichweite ab Stationsmitte verlaengert, siehe unten. Alles drei ist Vorteil; bezahlt
+ * wird er dadurch, dass die Turmart selten faellt und der Turmpreis mit jedem Kauf steigt.
+ *
+ * **Die eine Ausnahme sind Buff-Tuerme.** Bei ihnen sind die Kanten nicht Staerke, sondern
+ * Funktion: Ein Verstaerker, der nur drei Module erreicht, reisst die Schwelle b > 1/k aus
+ * GDD 03 Abschnitt 9 nie. Der Verstaerker ist deshalb ein Sechseck, obwohl er ab Common
+ * faellt - und seine 20 % halten dort die Schwelle 1/6 = 16,7 %.
+ *
+ * ---
+ *
+ * Zur Reichweite: Der Massstab ist **nicht** die Zahl beim Turm, sondern wie weit er ab der
+ * **Stationsmitte** reicht - und damit der Kern mit seinen 220 (`data/cores.ts`).
+ *
+ * Ein Turm legt seine Reichweite an seinem eigenen Modul an (GDD 05 Abschnitt 4), und das
+ * sitzt am ersten Ring 65 bis 97 Einheiten vor der Mitte: Dreieck 64,7 - Quadrat 76,5 -
+ * Sechseck 97,0 (Kern-Apothem 48,5 plus das des Turms, `MODULE_SIDE` = 56). Was zaehlt, ist
+ * die Summe aus beidem.
+ *
+ * Genau daran scheiterte die vorherige Fassung: Sie hatte alle Reichweiten anteilig auf 70 %
+ * gekuerzt (2026-08-04), weil die Vereinigung aller Wirkungskreise die Station optisch
+ * erschlagen hatte. Das Ergebnis war ein Autocannon mit 100 - ab Mitte also 176, **innerhalb**
+ * der 220 des Kerns. Sein Kreis lag vollstaendig im Kernkreis, er schoss auf nichts, worauf
+ * der Kern nicht ohnehin schon schoss, und ein Turmplatz brachte sichtbar nichts. Dasselbe
+ * galt fuer Kanone und Cryo (216) und den Flamer (150).
+ *
+ * Die Kuerzung ist deshalb zurueckgenommen, aber **nicht anteilig**: Anteilig haette den
+ * Marksman auf 700 ab Mitte gehoben, weiter als der Erscheinungsring der Gegner
+ * (`spawnRadius` in `sim/enemies.ts`, rund 520 bei kleiner Station) - er haette dann schon
+ * beim Erscheinen geschossen und den Anmarsch als Spielphase gestrichen. Stattdessen ist der
+ * **Boden angehoben** und die Spitze nur moderat: Jeder Angriffsturm reicht ab Mitte ueber
+ * den Kern hinaus, der Marksman kommt auf 405 und laesst dem Anmarsch Luft.
+ *
+ * Die Rangfolge ist dabei unveraendert - Flamer bleibt der kuerzeste, der Marksman reicht
+ * weiter als der Laser (GDD 05: "Reichweite: sehr hoch" meint einen Vergleich unter Tuermen,
+ * keinen festen Wert). Ab Mitte am ersten Ring, nachgerechnet mit den neuen Formen:
+ *
+ *   Flamer 246 - Autocannon 250 - Tesla 271 - Cannon 280 - Cryo 281 - Rocket 301 -
+ *   Laser 326 - Void 332 - Plasma 342 - Drohnen 349 - Marksman 405
+ *
+ * Die Formleiter hat diese Liste verschoben, ohne eine ihrer Regeln zu brechen: Der Flamer
+ * ist weiter der kuerzeste, der Marksman reicht weiter als der Laser, und der niedrigste
+ * Wert (246) liegt weiter ueber den 220 des Kerns. Die `range`-Zahlen in den Datensaetzen
+ * sind deshalb unangetastet - verschoben hat sich nur, wie weit aussen das Modul sitzt.
+ *
+ * Fuer den Bildausschnitt ist das folgenlos: `rangeAllowance` (`render/camera.ts`) nimmt
+ * ohnehin nur einen gedeckelten Anteil auf (260), und den erreicht bereits ein einzelner
+ * gebauter Turm.
  */
 export const TOWERS: readonly TowerDef[] = [
   {
+    /** Dreieck: der guenstigste Turm im Spiel - und damit der Universal-Fuellstein. */
     id: 'autocannon',
     name: 'Autocannon',
-    sides: 4,
+    sides: 3,
     emblem: 'bars',
     category: 'attack',
-    stats: makeStats(8, 6, 100, 0.05, 520),
+    class: 'kinetic',
+    stats: makeStats(8, 6, 185, 0.05, 520),
     accent: '#46c8ff',
     description: 'Rapid fire. Low damage per shot, very high rate.',
   },
   {
     id: 'cannon',
     name: 'Siege Cannon',
-    sides: 4,
+    sides: 3,
     emblem: 'chevron',
     category: 'attack',
-    stats: makeStats(90, 0.6, 140, 0.1, 300),
+    class: 'kinetic',
+    stats: makeStats(90, 0.6, 215, 0.1, 300),
     accent: '#ffcc33',
     description: 'Heavy gun. High damage, slow, good range.',
   },
   {
     /**
-     * Der Buff-Turm. Fuenfeck, weil er damit bis zu 5 Module erreicht - die Schwelle
-     * b > 1/k aus GDD 03 Abschnitt 9 ist sonst nicht zu halten.
+     * Der Buff-Turm - und die **eine Ausnahme** von der Formleiter: Er faellt ab Common und
+     * ist trotzdem die groesste Form. Bei ihm sind Kanten keine Staerke, sondern Funktion.
+     *
+     * Sechseck, weil er damit bis zu 6 Module erreicht und die Schwelle b > 1/k aus GDD 03
+     * Abschnitt 9 sonst nicht zu halten ist - bei 6 Kanten sind das 16,7 %, seine 20 %
+     * liegen darueber.
+     *
+     * Er war ein Fuenfeck, und das war der schlimmste Platz fuer diese Form: Das GDD
+     * empfiehlt, ihn **zuerst** zu setzen und darum herum zu bauen. Jede Station begann
+     * damit mit den 108 Grad, die keine Ecke schliessen (Herleitung bei `FootprintSides`),
+     * und der Spieler bekam beim Fuellen der Restluecke die Sperrfarbe.
      */
     id: 'amplifier',
     name: 'Power Amplifier',
-    sides: 5,
+    sides: 6,
     emblem: 'star',
     category: 'buff',
+    class: 'support',
     stats: NO_STATS,
     buffs: [{ stat: 'damage', amount: 0.2 }],
     accent: '#b45cff',
@@ -142,19 +218,22 @@ export const TOWERS: readonly TowerDef[] = [
    *
    * Die **Form ist keine Optik**, sondern eine Balance-Entscheidung: Sie legt fest, wie
    * viele Nachbarn ein Turm haben kann und damit, wie viele Buff-Verbindungen moeglich
-   * sind (GDD 05, Hinweis zur Form). Ein Dreieck erreicht drei, ein Hexagon sechs.
+   * sind (GDD 05, Hinweis zur Form). Ein Dreieck erreicht drei, ein Sechseck sechs - und
+   * weil sie der Raritaetsuntergrenze folgt, liest der Spieler an der Form ab, wie stark
+   * die Turmart ist.
    *
    * "Spezialtuerme sind keine besseren Tuerme" (GDD 05 Abschnitt 6): Jeder von ihnen kann
    * etwas, das kein anderer kann - und bezahlt dafuer an anderer Stelle.
    */
   {
-    /** Dreieck: sehr weit, sehr langsam - dafuer nur drei Nachbarn. */
+    /** Dreieck: faellt ab Common - sehr weit und sehr langsam, aber kein seltener Turm. */
     id: 'sniper',
     name: 'Marksman',
     sides: 3,
     emblem: 'chevron',
     category: 'attack',
-    stats: makeStats(220, 0.35, 295, 0.25, 900),
+    class: 'kinetic',
+    stats: makeStats(220, 0.35, 340, 0.25, 900),
     // Keine eigene Mechanik - seine Identitaet ist die Zielwahl. Genau so soll ein neuer
     // Turm im Regelfall aussehen: ein Datensatz.
     targetMode: 'strongest',
@@ -164,10 +243,11 @@ export const TOWERS: readonly TowerDef[] = [
   {
     id: 'rocket',
     name: 'Rocket Battery',
-    sides: 3,
+    sides: 4,
     emblem: 'chevron',
     category: 'area',
-    stats: makeStats(55, 0.8, 160, 0.05, 260),
+    class: 'kinetic',
+    stats: makeStats(55, 0.8, 225, 0.05, 260),
     mechanic: { kind: 'explosive', radius: 90, share: 0.7 },
     unlock: 'tech.rocket',
     accent: '#ff9a3c',
@@ -177,10 +257,11 @@ export const TOWERS: readonly TowerDef[] = [
     /** Der Dauerstrahl: trifft ohne Flugzeit, dafuer immer nur eines. */
     id: 'laser',
     name: 'Laser Lance',
-    sides: 3,
+    sides: 4,
     emblem: 'bars',
     category: 'special',
-    stats: makeStats(34, 6, 180, 0.08, 0),
+    class: 'elemental',
+    stats: makeStats(34, 6, 250, 0.08, 0),
     mechanic: { kind: 'beam' },
     unlock: 'tech.laser',
     accent: '#2ee0c0',
@@ -190,10 +271,11 @@ export const TOWERS: readonly TowerDef[] = [
   {
     id: 'tesla',
     name: 'Tesla Coil',
-    sides: 6,
+    sides: 4,
     emblem: 'star',
     category: 'special',
-    stats: makeStats(26, 2.2, 135, 0.05, 700),
+    class: 'elemental',
+    stats: makeStats(26, 2.2, 195, 0.05, 700),
     mechanic: { kind: 'chain', hops: 3, falloff: 0.6 },
     unlock: 'tech.tesla',
     accent: '#b45cff',
@@ -202,10 +284,11 @@ export const TOWERS: readonly TowerDef[] = [
   {
     id: 'flamer',
     name: 'Flame Projector',
-    sides: 3,
+    sides: 4,
     emblem: 'bars',
     category: 'area',
-    stats: makeStats(9, 5, 85, 0.02, 420),
+    class: 'elemental',
+    stats: makeStats(9, 5, 170, 0.02, 420),
     mechanic: { kind: 'burn', dps: 26, duration: 3 },
     accent: '#ff6a2d',
     description: 'Short range, sets enemies on fire. The burn keeps working after the shot.',
@@ -216,7 +299,8 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 4,
     emblem: 'star',
     category: 'special',
-    stats: makeStats(14, 1.6, 140, 0.03, 480),
+    class: 'elemental',
+    stats: makeStats(14, 1.6, 205, 0.03, 480),
     mechanic: { kind: 'chill', factor: 0.55, duration: 2.5 },
     accent: '#7fd8ff',
     description: 'Slows what it hits. Buys the other towers time.',
@@ -225,9 +309,10 @@ export const TOWERS: readonly TowerDef[] = [
     /** Kein Schuss - er macht die gemeinsame Huelle dicker (GDD 03 Abschnitt 5). */
     id: 'bulwark',
     name: 'Shield Generator',
-    sides: 6,
+    sides: 4,
     emblem: 'core',
     category: 'support',
+    class: 'support',
     stats: NO_STATS,
     mechanic: { kind: 'hull', amount: 320 },
     accent: '#2ee0c0',
@@ -236,10 +321,11 @@ export const TOWERS: readonly TowerDef[] = [
   {
     id: 'plasma',
     name: 'Plasma Cannon',
-    sides: 5,
+    sides: 6,
     emblem: 'star',
     category: 'area',
-    stats: makeStats(140, 0.7, 175, 0.12, 320),
+    class: 'elemental',
+    stats: makeStats(140, 0.7, 245, 0.12, 320),
     mechanic: { kind: 'explosive', radius: 130, share: 0.85 },
     unlock: 'tech.plasma',
     accent: '#ff2d78',
@@ -248,10 +334,11 @@ export const TOWERS: readonly TowerDef[] = [
   {
     id: 'void',
     name: 'Void Sphere',
-    sides: 5,
+    sides: 6,
     emblem: 'core',
     category: 'special',
-    stats: makeStats(70, 1.1, 170, 0.1, 300),
+    class: 'elemental',
+    stats: makeStats(70, 1.1, 235, 0.1, 300),
     mechanic: { kind: 'chill', factor: 0.4, duration: 3.5 },
     accent: '#8f7dff',
     description: 'Black energy spheres that slow everything they touch.',
@@ -266,7 +353,11 @@ export const TOWERS: readonly TowerDef[] = [
     sides: 6,
     emblem: 'star',
     category: 'special',
+    class: 'support',
     stats: NO_STATS,
+    // Die Drohne misst ab sich selbst, nicht ab ihrem Modul (`sim/drones.ts`): Zum
+    // Anbauabstand kommt ihre Kreisbahn (62). Ab Mitte sind das 349 - deshalb steht hier
+    // eine kleinere Zahl als bei Tuermen, die vergleichbar weit reichen.
     mechanic: { kind: 'drones', count: 3, damage: 26, range: 190, interval: 0.8 },
     unlock: 'tech.drone',
     accent: '#46c8ff',
@@ -284,4 +375,17 @@ export function towerById(id: string): TowerDef {
 
 export function isKnownTower(id: string): boolean {
   return BY_ID.has(id)
+}
+
+/**
+ * Alle Turmarten einer Klasse (`data/types.ts`).
+ *
+ * Der eine Zugang, ueber den Gruppen-Upgrades ihre Ziele finden. Er wird **erfragt** und
+ * steht nicht als Liste in `data/upgrades.ts`: Ein neuer Turm bringt seine Klasse mit und
+ * ist damit sofort von allen Upgrades seiner Gruppe erfasst, ohne dass dort eine Zeile
+ * dazukommt. Genau das ist der Unterschied zu einer aufgezaehlten Turmliste, die bei jedem
+ * neuen Turm nachgepflegt werden muesste - und beim ersten Vergessen still danebenliegt.
+ */
+export function towersOfClass(towerClass: TowerClass): TowerDef[] {
+  return TOWERS.filter((tower) => tower.class === towerClass)
 }

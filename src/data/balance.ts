@@ -11,6 +11,10 @@
  */
 
 import type { Rarity, StatKey } from './types.ts'
+// Nur der Typ, nie ein Wert: `data/upgrades.ts` liest umgekehrt nichts aus dieser Datei,
+// und ein `import type` verschwindet beim Uebersetzen ganz. Damit kann zwischen Katalog und
+// Kurven kein Kreis entstehen - weder beim Typpruefen noch zur Laufzeit.
+import type { UpgradeDef, UpgradeKind, UpgradeWindow } from './upgrades.ts'
 
 // ---------------------------------------------------------------------------
 // Simulation und Leistung
@@ -73,8 +77,39 @@ export const START_TOWER_SLOTS = 4
 export const START_ABILITY_SLOTS = 1
 export const MAX_ABILITY_SLOTS = 3
 export const START_WAVE = 1
+export const START_LEAGUE = 1
 export const START_GOLD = 0
 export const START_LEVEL = 1
+
+// ---------------------------------------------------------------------------
+// Goldmassstab
+// ---------------------------------------------------------------------------
+
+/**
+ * Gemeinsamer Massstab **aller** Goldbetraege - Einnahmen wie Ausgaben.
+ *
+ * Er greift an genau sechs Stellen, und das sind alle, an denen Gold entsteht oder
+ * verlangt wird:
+ *
+ *   Einnahmen   Gegnerbeute (`sim/enemies.ts`), Wellenbelohnung (`eventRewardFor`)
+ *   Ausgaben    Upgrades (`upgradeCost`), Turmkauf (`towerCost` in `sim/shop.ts`),
+ *               Faehigkeiten (`abilityUnlockCost` in `sim/abilities.ts`)
+ *   Schwellen   `PRESTIGE_MIN_GOLD` und `GOLD_PER_PRESTIGE_POINT`
+ *
+ * Weil er auf **beide** Seiten wirkt, aendert er die Wirtschaft nicht, sondern nur ihre
+ * Zahlen: Wer vorher zwanzig Drohnen fuer den ersten Turm brauchte, braucht sie auch
+ * jetzt. Kleiner heisst also nicht knapper, sondern lesbarer - vierstellige Betraege
+ * sagen dem Spieler nicht mehr als zweistellige, sie sind nur schwerer zu vergleichen.
+ *
+ * Ein Fuenftel ist so gewaehlt, dass die Bezugsgroessen glatt bleiben: Eine Drohne bringt
+ * auf Welle 1 genau **1** Gold, der erste Turm kostet **20**, die erste Upgrade-Stufe
+ * **12 bis 30**. Wer weiter herunter will, dreht diesen einen Wert - die Datenwerte
+ * daneben sind bewusst die des GDD geblieben, damit sich beides noch vergleichen laesst.
+ *
+ * Handelspreise stehen nicht in der Liste: Sie sind Vielfache der Wellenbelohnung
+ * (`data/trader.ts`) und ziehen deshalb von selbst mit.
+ */
+export const GOLD_SCALE = 0.2
 
 // ---------------------------------------------------------------------------
 // Kurven - PLATZHALTER bis nach E9
@@ -112,8 +147,72 @@ export const BOSS_WAVE_INTERVAL = 10
 // Station, Raritaeten und Buffs
 // ---------------------------------------------------------------------------
 
-/** PLATZHALTER - gemeinsame Stations-HP ohne Support-Module (GDD 03 Abschnitt 5). */
-export const BASE_STATION_HP = 1000
+/**
+ * Gemeinsame Stations-HP ohne Support-Module (GDD 03 Abschnitt 5).
+ *
+ * Von 1000 auf 220 gesenkt, dann auf 100. Der Wert 1000 war kein Puffer mehr, sondern eine
+ * Absicherung gegen das Verlieren: Ein Spieler ohne einen einzigen Upgrade lief damit bis
+ * Welle 10 durch, ohne je in Gefahr zu geraten - gemessen in zwoelf Laeufen, kein einziger
+ * verlorener Anlauf vor Welle 5.
+ *
+ * Die Stations-HP sind der dritte Hebel neben den beiden Faktoren unten, und sie wirken
+ * anders als die: Schaden und Feuerrate entscheiden, **ob** ein Gegner ankommt, die HP
+ * entscheiden, **wie oft** einer ankommen darf. Ein Spiel, das nur ueber die Feuerkraft
+ * haerter wird, bestraft einen Fehler gar nicht - es macht ihn nur langsamer wieder gut.
+ *
+ * Der Schritt von 220 auf 100 dreht **allein** an diesem dritten Hebel: Die Feuerkraft
+ * bleibt unangetastet, ein Gegner stirbt also nach genauso vielen Treffern wie vorher.
+ * Geaendert hat sich nur, wie viele Gegner durchkommen duerfen. Das ist der Hebel, den die
+ * Messung unten ausdruecklich empfiehlt - er verschiebt keine Kante, hinter der das Spiel
+ * unspielbar kippt, sondern verkuerzt gleichmaessig die Nachsicht.
+ */
+export const BASE_STATION_HP = 100
+
+/*
+ * Zwei Faktoren auf **alle** Kampfwerte, Hauptturm eingeschlossen.
+ *
+ * Sie sitzen in `sim/stats.ts` in `baseStats`, also an der einen Stelle, durch die jedes
+ * Modul laeuft, bevor Seltenheit, Eigenschaften, Upgrades, Perks und Buffs darauf kommen.
+ * Damit gilt eine Aenderung hier fuer den Kern genauso wie fuer den letzten Spezialturm -
+ * und sie gilt auch fuer alles, was in `data/towers.ts` noch dazukommt.
+ *
+ * **Warum zwei Faktoren und nicht zwanzig geaenderte Grundwerte:** Die Grundwerte in
+ * `data/towers.ts` sagen, wie sich die Tuerme **zueinander** verhalten - der Belagerungs-
+ * turm schlaegt hart und langsam, die Autokanone weich und schnell. Wer daran dreht, um das
+ * Spiel schwerer zu machen, verschiebt dieses Verhaeltnis bei jedem Turm ein bisschen
+ * anders und merkt es erst zwanzig Wellen spaeter. Zwei Faktoren lassen das Verhaeltnis in
+ * Ruhe und drehen nur an der Gesamtlautstaerke.
+ *
+ * **Warum getrennt nach Schaden und Feuerrate**, obwohl beide auf denselben DPS wirken: Sie
+ * fuehlen sich verschieden an. Weniger Schaden heisst, dass ein Gegner mehr Treffer
+ * aushaelt - der Kampf wird zaeh. Weniger Feuerrate heisst, dass zwischen zwei Schuessen
+ * mehr Zeit liegt - der Kampf wird loechrig, und ein Schwarm kommt durch. Das Zweite trifft
+ * einen Spieler ohne Upgrades haerter, weil ihm nicht die Zahlen fehlen, sondern die
+ * Abdeckung.
+ *
+ * **Nachgemessen, nicht geschaetzt** (`tools/wellen-messen.mjs`, 24 Laeufe ohne einen
+ * einzigen gekauften Upgrade). Gezaehlt wird nicht, wo die Station faellt - ein verlorener
+ * Anlauf setzt die Welle neu an -, sondern wo es **nicht mehr weitergeht**: fuenfmal
+ * dieselbe Welle verloren gilt als Mauer.
+ *
+ *   Faktoren    Stations-HP   geschafft bis
+ *   1,00 / 1,00        1000   Welle 10 (Boss), keine einzige Niederlage davor
+ *   0,34 / 0,55         260   Welle 5
+ *   0,28 / 0,48         220   Welle 3   <- Stand der Messreihe
+ *   0,27 / 0,47         215   Welle 1
+ *
+ * Die Faktoren stehen weiterhin auf 0,28 / 0,48; gesenkt wurden allein die Stations-HP auf
+ * 100. Die Messreihe oben gilt fuer die Faktoren und ist damit unveraendert gueltig - die
+ * Kante zwischen 0,28 und 0,27 liegt, wo sie lag.
+ *
+ * Die letzte Zeile ist eine Warnung fuer den naechsten, der hier dreht: Zwischen 0,28 und
+ * 0,27 liegt eine **Kante**, keine Steigung. Knapp darunter reicht die Feuerkraft auf Welle
+ * 2 nicht mehr aus, und weil eine nicht geschaffte Welle sich beliebig oft wiederholt, faellt
+ * der Lauf nicht um eine Welle zurueck, sondern um vier. Wer haerter will, senkt deshalb
+ * besser die Stations-HP als diese beiden Faktoren.
+ */
+export const GLOBAL_DAMAGE_SCALE = 0.28
+export const GLOBAL_RATE_SCALE = 0.48
 
 /** PLATZHALTER - Faktor auf Kampfwerte und Buffstaerke je Seltenheitsstufe. */
 export const RARITY_MULT: Record<Rarity, number> = {
@@ -225,6 +324,77 @@ export const WAVE_PAUSE_SECONDS = 3
 export const WAVE_SPAWN_WINDOW_SECONDS = 20
 
 // ---------------------------------------------------------------------------
+// Ligen (docs/liga-system.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Eine Liga ist ein fester **Wellenvorsprung** - kein zweiter Satz Faktoren.
+ *
+ * Das ist der Kern des ganzen Ligensystems: Statt HP, Schaden, Tempo, Gegnerauswahl, Boss
+ * und Elitechance je einen eigenen Ligafaktor zu geben, verschiebt die Liga die Welle, mit
+ * der die Welt rechnet. Liga 3 Welle 1 ist damit dieselbe Welt wie Liga 1 Welle 51 - bis
+ * auf zwei bewusste Ausnahmen (Gegnerzahl und Belohnung, siehe unten).
+ *
+ * Der Gewinn ist nicht Bequemlichkeit, sondern Justierbarkeit: Es gibt weiterhin **eine**
+ * Schwierigkeitskurve, und `WAVE_SCALING` bleibt der eine Wert, an dem man sie dreht. Zwei
+ * getrennte Kurven waeren zwei Kurven, die man auseinanderlaufen lassen kann.
+ *
+ * Was die Liga **nicht** verschiebt:
+ *
+ *   - `enemyCount` folgt der angezeigten Welle. Sonst begaenne Liga 5 mit 158 Gegnern in
+ *     Welle 1 - Bildlast ohne Spielgewinn, und die Gegnerzahl ist laut `sim/waves.ts`
+ *     ausdruecklich nicht der Ort, an dem die Haerte waechst.
+ *   - Ereignis- und Haendlerzeitpunkte folgen ebenfalls der angezeigten Welle, damit jede
+ *     Liga ihren eigenen Rhythmus hat statt einen fortgesetzten.
+ *
+ * PLATZHALTER wie die Wellenkurve: justiert wird am laufenden Spiel (GDD 15 Abschnitt 16).
+ * Am Modell gerechnet ergeben 25 Wellen Versatz einen Sprung von x10,8 Gegner-HP je Liga.
+ */
+export const LEAGUE_WAVE_OFFSET = 25
+
+/**
+ * Zusaetzlicher Gold- und XP-Faktor je Liga - **der einzige Grund aufzusteigen.**
+ *
+ * Er steht bewusst allein: Weil der Versatz Belohnung und Haerte gemeinsam hebt, bliebe
+ * ohne ihn kein Vorteil uebrig, den ein blosses Weiterspielen nicht auch braechte. Wer den
+ * Reiz des Aufstiegs justieren will, dreht an dieser Zahl und an keiner anderen - der
+ * Versatz verschoebe gleichzeitig Gegner, Bosse und Elite und machte jede vorherige
+ * Messung wertlos.
+ */
+export const LEAGUE_REWARD_BONUS = 1.5
+
+/** Welle, ab der die naechste Liga freigeschaltet wird (GDD 07, docs/liga-system.md §4.2). */
+export const LEAGUE_ADVANCE_WAVE = 50
+
+/**
+ * Die Welle, mit der die **Welt** rechnet. Die Anzeige zeigt weiter die kleine Zahl:
+ * In Liga 3 steht "Wave 12" da, gerechnet wird mit 62.
+ *
+ * Das ist Absicht - die Wellennummer misst den Fortschritt *innerhalb* der Liga, die Liga
+ * misst den Rest. Eine durchlaufende Nummer nach dem Aufstieg waere kein Neuanfang.
+ */
+export function effectiveWave(wave: number, league: number): number {
+  return wave + LEAGUE_WAVE_OFFSET * Math.max(0, league - 1)
+}
+
+/** Zusaetzlicher Faktor auf Gold und XP dieser Liga. Liga 1 ergibt 1. */
+export function leagueRewardFactor(league: number): number {
+  return Math.pow(LEAGUE_REWARD_BONUS, Math.max(0, league - 1))
+}
+
+/**
+ * Der **volle** Belohnungsfaktor einer Welle: Wellenkurve mal Ligazuschlag.
+ *
+ * Steht hier und nicht zweimal woanders, weil ihn zwei ganz verschiedene Stellen brauchen
+ * und beide dieselbe Antwort bekommen muessen: `buildWave` legt ihn in den Wellenplan, und
+ * `prestigePoints` **teilt** durch ihn, um den Goldanteil ligenneutral zu machen. Liefen
+ * die beiden auseinander, zahlte eine hohe Liga entweder doppelt oder gar nicht.
+ */
+export function rewardScaleFor(effective: number, league: number): number {
+  return Math.pow(REWARD_SCALING, Math.max(0, effective - 1)) * leagueRewardFactor(league)
+}
+
+// ---------------------------------------------------------------------------
 // Geschosse (GDD 05)
 // ---------------------------------------------------------------------------
 
@@ -308,11 +478,61 @@ export const MAX_LEVEL = 1000
 export const PERK_CHOICES = 3
 
 // ---------------------------------------------------------------------------
+// Hinweise (GDD 14 Abschnitt 4a)
+// ---------------------------------------------------------------------------
+
+/**
+ * Frist eines einzelnen Hinweises, in gespielten Sekunden.
+ *
+ * Die Reihe der acht Zettel ist eine Warteschlange, und eine Warteschlange kann stecken
+ * bleiben: Wer nie ein Modul andockt, erreicht den Augenblick des Verstaerker-Zettels nie,
+ * und alles dahinter steht mit ihm still. Deshalb hat jeder Zettel ein Zeitfenster; laeuft
+ * es ab, geht die Reihe ohne ihn weiter (`sim/hints.ts`, `hintDeadline`).
+ *
+ * Zwanzig Minuten sind reichlich bemessen, und das ist Absicht: Das Drehbuch in GDD 14
+ * Abschnitt 2 legt die ganze Reihe in die ersten Minuten, die Frist soll also nur den
+ * Spieler erreichen, bei dem der Augenblick wirklich nie kommt. Zugleich bleibt sie eine
+ * feste Zusage - nach acht Fenstern ist die Reihe in jedem Spielverlauf durch.
+ */
+export const HINT_GRACE_SECONDS = 20 * 60
+
+/**
+ * Wie lange ein **stehender** Zettel am Rand bleibt, in gespielten Sekunden.
+ *
+ * Die Frist oben gilt fuer den Zettel, der noch nicht dran war. Dieser Wert gilt fuer den,
+ * der schon steht - und ohne ihn taugt die Zusage der Reihe nichts: Ein stehender Zettel
+ * wird nicht abgeloest, also haelt er die ganze Reihe an, solange er steht. Wer nie auf
+ * "Got it" klickt, bekaeme ohne diesen Wert genau einen der acht Saetze zu lesen, fuer immer.
+ *
+ * Die Zahl ist eine **Mindeststandzeit** und von unten gebaut, aus dem laengsten der acht
+ * Texte (`hint.buff`, 96 Zeichen, 17 Woerter):
+ *
+ *   - **6,9 s Anschlag.** Der Zettel schreibt sich Buchstabe fuer Buchstabe
+ *     (`ui/typewriter.ts`, 68 ms Grundtakt, im Mittel das 1,05-Fache). Vor Sekunde sieben
+ *     steht der Satz nicht einmal ganz da.
+ *   - **10,2 s Lesen.** 17 Woerter bei 100 Woertern je Minute - die Haelfte des ueblichen
+ *     Lesetempos, weil nebenher das Feld laeuft.
+ *   - **15 s Bemerken.** Der Zettel ist der einzige Text im Spiel, der ungefragt kommt. Er
+ *     faellt mitten in eine Handlung, und bis der Blick vom Feld an den Rand wandert,
+ *     vergeht Zeit.
+ *
+ * Macht 32,1 Sekunden; 45 lassen Luft. Die Rechnung steht als Selbsttest neben dem Wert
+ * ("die Lesefrist reicht fuer den laengsten der acht Texte") und faellt, sobald jemand einen
+ * laengeren Hinweis schreibt. Gezaehlt wird gespielte Zeit, und die zaehlt **echte**
+ * Sekunden (`main.ts`: `dt / speed`) - bei Tempo x4 steht der Zettel also genauso lange da
+ * wie bei x1. Wer schneller liest, klickt weg; die Zahl ist fuer den, der es nicht tut.
+ */
+export const HINT_READ_SECONDS = 45
+
+// ---------------------------------------------------------------------------
 // Prestige (GDD 10)
 // ---------------------------------------------------------------------------
 
-/** Voraussetzung fuer ein Prestige: so viel Gold muss der Run insgesamt gebracht haben. */
-export const PRESTIGE_MIN_GOLD = 1000
+/**
+ * Voraussetzung fuer ein Prestige: so viel Gold muss der Run insgesamt gebracht haben.
+ * Der GDD-Wert ist 1.000; gerechnet wird er im Goldmassstab (`GOLD_SCALE`).
+ */
+export const PRESTIGE_MIN_GOLD = 1000 * GOLD_SCALE
 
 /**
  * Punkteformel: `(Wellenrekord / DIVISOR)^EXPONENT + Gold / GOLD_PER_POINT`.
@@ -326,7 +546,8 @@ export const PRESTIGE_MIN_GOLD = 1000
  */
 export const PRESTIGE_WAVE_DIVISOR = 45
 export const PRESTIGE_WAVE_EXPONENT = 2
-export const GOLD_PER_PRESTIGE_POINT = 25000
+/** Wie der Wellenanteil ein Tuning-Wert - im Goldmassstab, sonst zaehlte Gold fuenffach. */
+export const GOLD_PER_PRESTIGE_POINT = 25000 * GOLD_SCALE
 
 // ---------------------------------------------------------------------------
 // Ereignisse und Versorgungskapseln (GDD 11)
@@ -354,7 +575,8 @@ export const EVENT_WAVE_MAX = 25
 export const EVENT_REWARD_BASE = 120
 
 export function eventRewardFor(wave: number): number {
-  return Math.round(EVENT_REWARD_BASE * Math.pow(REWARD_SCALING, Math.max(0, wave - 1)))
+  const base = EVENT_REWARD_BASE * GOLD_SCALE
+  return Math.round(base * Math.pow(REWARD_SCALING, Math.max(0, wave - 1)))
 }
 
 /**
@@ -501,7 +723,72 @@ export const HELPER_MAX_DISTANCE = 900
  * `Kosten = Basiswert x Stufe^1,15` (GDD 08 Abschnitt 6). Das GDD nennt daneben eine
  * Beispielkurve (100/150/225/...), die einer Verdopplung naeher kaeme - verbindlich ist
  * ausdruecklich die Formel, die Kurve ist ein Tuning-Wert.
+ *
+ * `base` ist der Wert aus `data/upgrades.ts` und damit ungerechnet; der Goldmassstab
+ * kommt hier dazu, weil dies die einzige Stelle ist, an der aus einem Basiswert ein Preis
+ * wird. Die Untergrenze von 1 sorgt dafuer, dass ein kleiner Basiswert bei scharfem
+ * Massstab nicht auf 0 faellt - ein Upgrade, das nichts kostet, waere keines.
  */
 export function upgradeCost(base: number, nextLevel: number): number {
-  return Math.round(base * Math.pow(Math.max(1, nextLevel), UPGRADE_COST_EXPONENT))
+  const scaled = base * GOLD_SCALE
+  return Math.max(1, Math.round(scaled * Math.pow(Math.max(1, nextLevel), UPGRADE_COST_EXPONENT)))
+}
+
+/*
+ * === Der neue Katalog (`docs/upgrade-umbau.md` Abschnitt 3.1) =================
+ *
+ * Ab hier steht die Preisrechnung des Katalogs aus `data/upgrades.ts`. Sie loest die
+ * Funktion darueber ab, sobald `data/upgrades-alt.ts` faellt - bis dahin stehen beide
+ * nebeneinander, weil die alte Liste das laufende Spiel noch traegt.
+ *
+ * Zwei Zahlen kommen zur alten Formel hinzu, und beide tun etwas, das ein einzelner
+ * Exponent nicht kann:
+ *
+ *   **Die Art bestimmt die Steigung.** Ein endloser Pfad braucht eine steilere Kurve als
+ *   einer mit zwanzig Stufen - nicht weil er teurer sein soll, sondern weil ihn sonst
+ *   nichts bremst. Er deckelt sich damit selbst und bleibt attraktiv, bis er es nicht mehr
+ *   ist, ohne dass eine Obergrenze danebenstuende. Umgekehrt braucht ein Charge mit drei
+ *   Stufen eine steile Kurve, damit die dritte Stufe eine Entscheidung bleibt und nicht das
+ *   Auffuellen einer Leiste.
+ *
+ *   **Das Fenster bestimmt die Hoehe.** Fenster 2 kostet im Schnitt das Dreifache von
+ *   Fenster 1, Fenster 3 das Achtfache. Das ist ein Durchschnitt und kein Deckel: In jedem
+ *   Fenster stehen bewusst Ausreisser nach unten (etwas, das man sofort mitnimmt) und einer
+ *   nach oben (etwas, worauf man den halben Run spart).
+ */
+
+/**
+ * Steigung je Upgrade-Art.
+ *
+ * `directive` steht mit 1 dabei, obwohl es nur eine Stufe gibt: Damit braucht die Rechnung
+ * unten keine Fallunterscheidung, und `1^x` ist fuer jedes `x` gleich 1. Eine Ausnahme, die
+ * sich selbst erledigt, ist besser als eine, die man schreiben muss.
+ */
+export const UPGRADE_KIND_EXPONENT: Record<UpgradeKind, number> = {
+  endless: 1.25,
+  extension: 1.15,
+  charge: 1.6,
+  directive: 1,
+}
+
+/** Preisfaktor je Fenster. Fenster 4 ist gesperrt und steht nur der Vollstaendigkeit halber hier. */
+export const UPGRADE_WINDOW_FACTOR: Record<UpgradeWindow, number> = {
+  1: 1,
+  2: 3,
+  3: 8,
+  4: 8,
+}
+
+/**
+ * Preis der naechsten Stufe eines Katalog-Upgrades.
+ *
+ * `Preis = Grundpreis x Goldmassstab x Fensterfaktor x Stufe^Steigung`
+ *
+ * Die Untergrenze von 1 aus der alten Formel bleibt, und aus demselben Grund: Ein Upgrade,
+ * das nichts kostet, waere keines.
+ */
+export function upgradeStepCost(def: UpgradeDef, nextLevel: number): number {
+  const scaled = def.baseCost * GOLD_SCALE * UPGRADE_WINDOW_FACTOR[def.window]
+  const steps = Math.pow(Math.max(1, nextLevel), UPGRADE_KIND_EXPONENT[def.kind])
+  return Math.max(1, Math.round(scaled * steps))
 }

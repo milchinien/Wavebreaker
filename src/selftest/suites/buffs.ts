@@ -243,8 +243,11 @@ export function buffsSuite(): void {
   })
 
   check('die Schwelle b > 1/k ist mit dieser Grundflaeche erreichbar', () => {
-    // GDD 03 Abschnitt 9: Ein Buff-Turm unter 1/k ist rechnerisch tot. Bei einem Fuenfeck
-    // sind bis zu 5 Ziele moeglich, die Schwelle liegt dann bei 20 %.
+    // GDD 03 Abschnitt 9: Ein Buff-Turm unter 1/k ist rechnerisch tot. Bei einem Sechseck
+    // sind bis zu 6 Ziele moeglich, die Schwelle liegt dann bei 16,7 %.
+    //
+    // Die Pruefung rechnet mit `def.sides` und nicht mit einer Zahl - genau deshalb hat sie
+    // den Wechsel vom Fuenfeck aufs Sechseck ueberlebt, ohne angefasst zu werden.
     const def = towerById('amplifier')
     const amount = def.buffs?.[0]?.amount ?? 0
     assert(

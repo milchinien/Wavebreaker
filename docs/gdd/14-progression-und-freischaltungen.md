@@ -87,19 +87,35 @@ prestigt, bekommt die Hinweise nicht noch einmal.
 
 ### 4a. Die acht Hinweise
 
-In der Reihenfolge, in der sie normalerweise erscheinen. Der Auslöser ist eine Bedingung am
-Spielzustand, kein Zeitpunkt — wer schneller spielt, sieht sie früher.
+Die Liste ist eine **Reihe, kein Suchlauf**: Fällig ist immer genau der nächste ungesehene
+Zettel — nie ein späterer, dessen Bedingung zufällig früher zutrifft. Der Auslöser ist eine
+Bedingung am Spielzustand, kein Zeitpunkt — wer schneller spielt, sieht sie früher, aber
+niemand sieht sie in anderer Reihenfolge.
 
 | # | Kennung | Auslöser | Was er sagt |
 |---|---|---|---|
 | 1 | `hint.collect` | erstes Gold liegt im Feld | Gold wird durch Darüberfahren eingesammelt |
 | 2 | `hint.upgrade` | erstes Kern-Upgrade bezahlbar | Upgrades stehen im Menü darunter |
 | 3 | `hint.buyTower` | Gold reicht für den ersten Turmkauf | Türme werden gekauft und angedockt |
-| 4 | `hint.buff` | ein Verstärker liegt im Lager | **Verstärker wirken auf Nachbarn mit gemeinsamer Kante** |
+| 4 | `hint.buff` | erster Turm angedockt, Verstärker liegt noch im Lager | **Verstärker wirken auf Nachbarn mit gemeinsamer Kante** |
 | 5 | `hint.level` | Level 4 erreicht | Jedes Level bringt einen Perk zur Wahl |
 | 6 | `hint.boss` | erster Boss im Feld | Der Boss hält lange, und die Welle läuft weiter |
-| 7 | `hint.melt` | genug überzählige Türme im Lager | Drei Türme werden zu einem freien Zug |
+| 7 | `hint.melt` | Station steht, genug überzählige Türme im Lager | Drei Türme werden zu einem freien Zug |
 | 8 | `hint.prestige` | Prestige erstmals möglich | Zurücksetzen macht dauerhaft stärker |
+
+Zwei Eigenschaften der Auslöser sind so wichtig wie die Reihenfolge selbst:
+
+- **Eine Bedingung beschreibt Geschehenes, keinen Augenblick.** „Die erste Münze ist
+  gefallen" bleibt wahr, auch wenn sie längst eingesammelt ist. Sonst verschwände der Satz
+  unter der Hand des Lesers, sobald der Zustand kippt, den er beschreibt.
+- **Nichts ist beim allerersten Start fällig.** Der Verstärker liegt ab Sekunde null im
+  Lager (§1) und drei Türme auch — trotzdem beginnt das Spiel mit Hinweis 1 und nicht mit
+  Hinweis 4 oder 7. Ein erster Satz, der von „module" und „edge" spricht, bevor der Spieler
+  die Basis gesehen hat, erklärt nichts.
+
+Ein Zettel, dessen Augenblick nachweislich vorbei ist, blockiert die Reihe nicht: Wer seinen
+Verstärker einschmilzt, bekommt nie etwas über Verstärker zu lesen — alles danach kommt
+trotzdem.
 
 Die Texte selbst stehen in `data/strings.ts` unter denselben Kennungen — hier steht die
 Auslösebedingung, dort der Wortlaut. Ein Spielertext gehört nie in ein Dokument und nie in
@@ -113,18 +129,42 @@ anderen Turm lässt sich das später nur durch Umbau heilen. Der Text muss desha
 nur die Wirkung beschreiben.
 
 > Diese Anforderung ist als Selbsttest festgehalten: *„der Hinweis zum Buff-Turm nennt den
-> Zeitpunkt"* in `selftest/suites/idle.ts`. Wer den Text ändert und den Zeitpunkt
-> herausnimmt, bekommt einen roten Test.
+> Zeitpunkt"* in `selftest/suites/hints.ts`. Wer den Text ändert und den Zeitpunkt
+> herausnimmt, bekommt einen roten Test. Dieselbe Sammlung spielt ein Drehbuch der ersten
+> Minuten ab und schreibt mit, was in jedem Bild am Rand steht: Der erste Satz muss
+> `hint.collect` sein, und keine Kennung darf zurückkehren, nachdem eine andere dran war.
 
 Aus demselben Grund liegt der Verstärker schon im **Startlager** (§1): Der Hinweis kann nur
 erscheinen, wenn es etwas zu erklären gibt.
 
 ## 5. Freischaltungs-Reihenfolge
 
-Innerhalb eines Runs schaltet nichts frei — ein Run beginnt immer gleich (§3). **Alles
-Dauerhafte kommt aus dem Prestige-Baum** ([10](10-prestige-system.md)). Das hält die
+**Alles Dauerhafte kommt aus dem Prestige-Baum** ([10](10-prestige-system.md)). Das hält die
 Startsituation vergleichbar und macht Fortschritt sichtbar: Was ein neuer Run anders kann als
 der vorige, hat man bewusst gekauft.
+
+### 5a. Die eine Ausnahme: die Upgrade-Fenster
+
+> **Geändert am 10.08.2026.** Hier stand: *„Innerhalb eines Runs schaltet nichts frei."* Das
+> gilt nicht mehr uneingeschränkt — die Upgrade-Fenster 2 und 3 werden **im Run** geöffnet
+> (→ [08, Abschnitt 8](08-ressourcen-oekonomie-und-upgrades.md)).
+
+Der Satz hatte zwei Begründungen, und beide muss eine Ausnahme aushalten:
+
+| Einwand | Warum er hier nicht greift |
+|---|---|
+| „macht die Startsituation unvergleichbar" | Jeder Run beginnt mit demselben Fenster 1 und findet dieselben Tore zu denselben Preisen vor. Was ein späterer Run anders macht, ist **wann** er das Tor erreicht — nicht **was** er vorfindet. |
+| „nimmt dem Prestige-Baum seine Aufgabe" | Der Baum bleibt das Einzige, was **über** einen Run hinaus wirkt. Die Tore sind kein zweiter Baum, sondern eine Kurve **innerhalb** der Stunde: Sie geben einem Run eine Mitte statt nur einen Anfang. |
+
+Die Grenze bleibt damit scharf und ist leicht zu prüfen: **Was ein Run freischaltet, verliert
+er beim Prestige wieder.** Die Tore stehen in denselben Run-Daten wie jedes gekaufte Upgrade
+und verschwinden mit ihnen — es gibt kein Feld, das jemand zurücksetzen müsste.
+
+Was weiterhin **nicht** im Run freischaltet: Turmarten, Seltenheitsstufen, Spieltempo,
+Helfer, Fähigkeiten-Slots und Turmplätze aus dem Baum. Sie alle gehören dem Spieler, nicht
+dem Versuch.
+
+### 5b. Die Reihenfolge im Baum
 
 Die Reihenfolge, in der ein Spieler die Äste üblicherweise öffnet:
 
@@ -156,8 +196,9 @@ bis dahin kennt.
 
 ## 7. Was diese Progression nicht verträgt
 
-- **Freischaltungen innerhalb eines Runs.** Sie machen die Startsituation unvergleichbar und
-  nehmen dem Prestige-Baum seine Aufgabe.
+- **Dauerhafte Freischaltungen innerhalb eines Runs.** Sie machen die Startsituation
+  unvergleichbar und nehmen dem Prestige-Baum seine Aufgabe. Die Upgrade-Fenster sind die
+  begründete Ausnahme, und sie ist genau deshalb eine: Sie überleben den Run nicht (§5a).
 - **Hinweise, die pausieren.** Siehe §4 — das bricht die Schleife.
 - **Ein Startkapital.** Es nimmt der ersten Handlung ihren Sinn.
 - **Ein neunter Hinweis für jede Kleinigkeit.** Acht sind eine Liste, zwanzig sind ein

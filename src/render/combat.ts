@@ -2,8 +2,8 @@
  * Gegner, Geschosse und Treffer.
  *
  * Der Spieler soll **ohne Text** erkennen, was auf ihn zukommt (GDD 07 Abschnitt 3):
- * Form, Farbe und Groesse zeigen die Rolle. Ein Lebensbalken erscheint nur bei Gegnern,
- * die ihn brauchen - bei jedem Gegner waere er Rauschen.
+ * Form, Farbe und Groesse zeigen die Rolle. Wie weit ein Gegner schon herunter ist, zeigt
+ * sein Lebensbalken - und zwar bei jedem, der ueberhaupt getroffen wurde.
  */
 
 import { formatNumber } from '../core/format.ts'
@@ -13,7 +13,7 @@ import { enemyById, type EnemyShape } from '../data/enemies.ts'
 import { podById } from '../data/events.ts'
 import { TRADER_STAY_SECONDS } from '../data/balance.ts'
 import type { Helper, Pod, Trader } from '../app/state.ts'
-import type { Beam, Burst, Gain, Hit, Muzzle, Pickup, Shard } from '../sim/combat.ts'
+import type { Beam, Burst, DamageNumber, Gain, Hit, Muzzle, Pickup, Shard } from '../sim/combat.ts'
 import type { Drone } from '../sim/drones.ts'
 import { meanCoinValue, type Coin } from '../sim/economy.ts'
 import type { Enemy } from '../sim/enemies.ts'
@@ -23,20 +23,101 @@ import { viewZoom, worldToScreen, type Camera } from './camera.ts'
 import { drawFrame, SPRITES } from './sprites.ts'
 import { PALETTE, RARITY_COLOR, RGB, THEME } from './theme.ts'
 
-/** Ab dieser Lebensmenge lohnt ein Balken - darunter stirbt der Gegner ohnehin sofort. */
-const HP_BAR_FROM_MAX_HP = 60
+/*
+ * Der Lebensbalken, in **Bildschirmpixeln** und fuer jeden Gegner in denselben Massen.
+ *
+ * Frueher hing er an zwei Bedingungen: erst ab 60 Lebenspunkten ueberhaupt, und dann so
+ * breit wie der Gegner (`max(16, radius * 2,2)`) und in dessen Farbe. Beides war falsch.
+ *
+ * Die Schwelle liess die Mehrheit der frueheren Wellen ohne Balken - nachgemessen in Welle
+ * 12 mit Pulk: vier angeschlagene Gegner im Bild, drei davon ohne jede Anzeige. Man sah an
+ * ihnen nicht, ob sie beim naechsten Schuss fallen oder gerade erst gestreift wurden. Ein
+ * Zustand, den nur ein Teil der Objekte zeigt, ist kein Zustand, sondern ein Sonderfall.
+ *
+ * Breite und Farbe je Gegner waren der zweite Fehler. Vierzig verschiedene Balkenlaengen in
+ * vierzig Farben sind vierzig Einzelzeichnungen, die der Blick nacheinander abgehen muss.
+ * Ein und derselbe Strich an jedem - gleich lang, gleich hoch, gleich gefaerbt - liest sich
+ * dagegen als **eine** Front, und die Fuellung darin ist die einzige Groesse, die sich
+ * unterscheidet. Nur der Boss weicht ab, und nur in der Laenge: Er ist ein Ziel, kein Teil
+ * der Masse.
+ *
+ * Feste Pixelmasse, nicht mit dem Zoom skaliert: Zwei Balken duerfen sich nie in der Laenge
+ * unterscheiden, auch nicht um den halben Pixel, den eine Rundung auf krummen Koordinaten
+ * hinterliesse. Deshalb auch `fillRect` auf ganzen Zahlen statt runder Strichenden.
+ */
+const HP_BAR_WIDTH = 18
+const HP_BAR_WIDTH_BOSS = 54
+const HP_BAR_HEIGHT = 3
+/** Abstand zwischen Scheitel des Gegners und Unterkante des Balkens. */
+const HP_BAR_GAP = 5
 
 /** Abstand des Muendungsfeuers von der Modulmitte, in Welteinheiten. */
 const MUZZLE_OFFSET = 13
 const MUZZLE_LENGTH = 16
 
-/**
- * Wie viel Flugzeit der Schweif eines Geschosses zeigt.
+/*
+ * Der Schweif eines Geschosses, in **Bildschirmpixeln**.
  *
- * In Sekunden, nicht in Einheiten: Ein langsames Geschoss zieht dadurch einen kurzen
- * Schweif, ein schnelles einen langen - die Laenge sagt etwas ueber das Tempo.
+ * Frueher stand hier eine Flugzeit (0,05 s). Das klang richtig - ein schnelles Geschoss
+ * zoege einen laengeren Schweif -, ergab aber nachgemessen 26 Welteinheiten, bei Zoom 0,6
+ * also sechzehn Pixel hinter einem Kopf von gut einem Pixel. Im Standbild war schlicht nicht
+ * zu sehen, dass ueberhaupt geschossen wird. Ein Effekt, den man nur in Bewegung bemerkt,
+ * ist fuer ein Bild kein Effekt.
+ *
+ * Deshalb jetzt eine Bildschirmlaenge: Der Keil ist so lang, wie er im Bild gelesen werden
+ * muss, unabhaengig davon, wie weit die Kamera draussen steht. `MAX` ist die Obergrenze,
+ * `MIN` der kuerzeste Keil, der noch als Keil und nicht als Klecks gelesen wird - faellt der
+ * Platz darunter, wird gar keiner gezeichnet.
  */
-const TRAIL_SECONDS = 0.05
+const TRAIL_MIN_PX = 14
+const TRAIL_MAX_PX = 104
+
+/*
+ * Zuschlag auf den Umkreis des abfeuernden Moduls (`Projectile.reach`), in **Welteinheiten**.
+ * Zusammen ergeben beide den Abstand, den das Ende des Keils von der Modulmitte haelt.
+ *
+ * Frueher lief der Keil die vollen 104 Pixel bis in das abfeuernde Modul hinein. Er wird mit
+ * `source-over` und hoechstens 0,5 Deckkraft gezeichnet, und darunter liegen die hellste
+ * Kante der Station und ihr Muendungsfeuer - beide schienen also durch ihn hindurch. Damit
+ * war das eine kaputt, was den Keil zur Richtungsangabe macht: der stetige Abfall vom Kopf
+ * zum Ende. Nachgemessen in Welle 12 bei 18 Sekunden, entlang der Achse des ersten
+ * Geschosses: von 38,8 auf 62,0 und weiter auf 136,7 Luminanz, wo der Keil die Modulkante
+ * ueberquerte - ein Schweif, der hinten heller ist als vorn, zeigt nach hinten.
+ *
+ * Deshalb endet der Keil jetzt **vor** dem Modul. Der Zuschlag deckt den Neonschein der
+ * Modulkante ab: Nachgemessen entlang derselben Achse, in Welteinheiten ab Modulmitte,
+ * steht die Kante bei 24 bis 27, ihr Schein reicht bis 33, ab 34 liegt wieder Untergrund -
+ * bei einem Viereck mit Umkreis 39,6 also gut sechs Einheiten ueber den Umkreis hinaus.
+ */
+const TRAIL_CLEAR_HALO = 7
+
+/*
+ * Halbe Breite des Keils, in **Bildschirmpixeln** - vorn am Kopf und hinten am Ende.
+ *
+ * Frueher wurde die Breite als Vielfaches des Kopfradius gerechnet (Faktor 0,62) und das
+ * Dreieck lief hinten auf null zu. Nachgemessen blieben davon 3,75 px bei einem Fuenftel der
+ * Laenge, 2,75 px bei der Haelfte und 1,25 px bei vier Fuenfteln: ein Haar, kein Keil. Der
+ * Schweif verschwand nicht durch das Ausblenden, sondern weil ihm der Koerper fehlte.
+ *
+ * Jetzt ist es ein Trapez mit fester Bildschirmbreite - 8 px am Kopf, 10 px am Ende, in jedem
+ * Zoom gleich. Es wird also nach hinten sogar minimal *breiter*, so wie ein Nachzieher sich
+ * aufloest, statt sich zuzuspitzen. Das Ausblenden macht danach allein `trailGradient`, nicht
+ * mehr die Geometrie: Deckkraft faellt monoton, Querschnitt bleibt.
+ */
+const TRAIL_HALF_HEAD_PX = 4
+const TRAIL_HALF_TAIL_PX = 5
+
+/*
+ * Der Geschosskopf in Bildschirmpixeln - Grundradius, Aufschlag fuer den kritischen Treffer
+ * und die Untergrenze, unter die kein Zoom ihn druecken darf.
+ *
+ * Acht Pixel quer ist keine willkuerliche Zahl, sondern die Grenze, ab der ein Ring mit Kern
+ * ueberhaupt als Ring gelesen wird. Darunter fliessen Kern, Ring und Hof zu einem Punkt
+ * zusammen, und der Unterschied zwischen Geschoss und Staubkorn verschwindet.
+ */
+const HEAD_PX = 4.4
+const HEAD_CRIT_PX = 5.4
+const HEAD_MIN_PX = 4
 
 /** Abstand der Randmarke vom Bildrand, ihre Groesse und ihr Deckel, in Bildschirmpixeln. */
 const APPROACH_INSET = 13
@@ -48,6 +129,105 @@ const APPROACH_MAX = 24
 
 /** Wie weit die eingesammelte Zahl aufsteigt, in Welteinheiten. */
 const GAIN_RISE = 26
+
+/*
+ * Die Schadenszahl ueber dem Feld.
+ *
+ * `RISE` ist ihr Weg nach oben und `DRIFT` ihr seitlicher Ausschlag, beides in
+ * Welteinheiten. Nach oben begrenzt beides dasselbe: Die Zahl gehoert dem Gegner, ueber dem
+ * sie steht, und eine, die quer durchs Bild zieht, gehoert am Ende niemandem mehr. Nach
+ * unten begrenzt sie das Gedraenge. Ein Turm mit acht Schuessen je Sekunde setzt acht Zahlen
+ * an denselben Gegner; stieg jede in ihrer Frist nur 22 Einheiten - bei ausgezoomter Kamera
+ * keine anderthalb Zeilenhoehen -, dann lagen drei aufeinanderfolgende Treffer als ein
+ * einziger Ziffernklumpen uebereinander. Nachgemessen im Standbild von Welle 12: siebzehn
+ * lebende Zahlen ergaben fuenf lesbare Bloecke im Bild, mit dem laengeren Weg dreizehn.
+ * Aus dem Klumpen wird dabei eine Saeule, wie sie ueber einem beschossenen Gegner auch
+ * stehen soll - unten die frische, darueber die aelteren.
+ *
+ * `SIZE` ist etwas kleiner als die Gewinnzahl (18) - der Gewinn ist die Belohnung und darf
+ * lauter sein als die laufende Auskunft. Ein kritischer Treffer bekommt die groessere
+ * Schrift und **keine eigene Farbe**: Farbe ist im Feld belegt (Gegner, Muenzen, Reichweite),
+ * Groesse ist frei. Man sieht den Ausreisser, ohne dass eine siebte Leitfarbe entsteht.
+ *
+ * `SIZE_MIN` ist der Boden unter der Groesse. Die Schrift schrumpft mit dem Zoom, und eine
+ * Pixelschrift, deren Strich unter einen Bildschirmpixel faellt, ist keine Schrift mehr,
+ * sondern ein grauer Fleck. Eine gewachsene Station zoomt weit heraus - ohne den Boden waere
+ * genau dann nichts mehr zu lesen, wenn am meisten los ist.
+ *
+ * `OUTLINE` ist die Breite der schwarzen Kontur als **Anteil der Schrifthoehe**. Nicht als
+ * feste Pixelzahl, weil die Schrift mit dem Zoom mitgeht und eine feste Kontur die Glyphe
+ * beim Herauszoomen zuschmieren wuerde.
+ *
+ * Der Anteil ist nachgemessen und nicht geschaetzt: Bei dieser Pixelschrift sind die Striche
+ * einer Ziffer rund ein Achtel der Schrifthoehe breit und die Luecken - innerhalb einer
+ * Ziffer wie zwischen zwei Ziffern - bis zu einem Drittel. Die Kontur liegt je zur Haelfte
+ * innen und aussen, ein Drittel Breite traegt also ein Sechstel von jeder Seite in die Luecke
+ * hinein und schliesst sie gerade. Nachgemessen an "111.5K" vor einem hellen Grund
+ * RGB(180,150,60): quer durch die Zeile liegen neun Striche und acht Luecken, und in jeder
+ * einzelnen Luecke steht RGB(0,0,0) - vom Untergrund kommt zwischen den Ziffern nichts
+ * durch.
+ *
+ * `FADED_ALPHA` ist die Deckkraft der aelteren Zahlen im Augenblick, in dem sie alt werden.
+ * Deutlich unter eins, und das ist der Sinn der Sache: Der Sprung von der frischen zur alten
+ * Zahl ist die **Rangfolge**. Ohne ihn liegen zwanzig gleich helle Zahlen im Bild, und keine
+ * sagt mehr, was gerade eben passiert ist. Nach unten ist sie durch die Lesbarkeit begrenzt:
+ * Eine alte Zahl soll zuruecktreten, nicht verschwinden - sonst waere sie nur noch Schmutz
+ * auf dem Bild.
+ */
+const DAMAGE_RISE = 68
+const DAMAGE_DRIFT = 26
+/**
+ * Hoehenversatz aufeinanderfolgender Zahlen, in Welteinheiten.
+ *
+ * Der seitliche Ausschlag allein reicht nicht: Zwei Tuerme treffen denselben Gegner im
+ * selben Takt, und zwei Zahlen auf gleicher Hoehe stossen dann Ziffer an Ziffer. Drei
+ * Stufen aus der laufenden Nummer versetzen sie gegeneinander - ohne Zufall, ohne
+ * gespeicherten Zustand, und aufeinanderfolgende Treffer landen nie auf derselben Stufe.
+ *
+ * Die Stufen gehen ausschliesslich nach OBEN (0, 1, 2 mal diesen Wert). Frueher war es eine
+ * Stufe nach unten, keine, eine nach oben - und die nach unten fuehrte die Zahl zurueck in
+ * das Balkenband, das der Startpunkt gerade erst freigeraeumt hat. Der Abstand zwischen zwei
+ * Stufen ist derselbe geblieben; nur ihre Lage insgesamt ist es nicht mehr.
+ */
+const DAMAGE_STAGGER = 12
+const DAMAGE_SIZE = 20
+const DAMAGE_SIZE_CRIT = 27
+/**
+ * Untergrenze der Schriftgroesse, in Bildpunkten.
+ *
+ * Bei weit herausgezogener Kamera schrumpft die Zahl mit dem Zoom, und unter dieser Grenze
+ * ist eine Pixelschrift keine Schrift mehr: Ihre Striche sind einen Punkt breit, die
+ * schwarze Kontur frisst sie von beiden Seiten auf. Siebzehn ist der Wert, bei dem die
+ * Kontur (ein Drittel der Groesse, also knapp sechs Punkte) noch zwischen zwei Striche
+ * passt.
+ */
+const DAMAGE_SIZE_MIN = 17
+const DAMAGE_OUTLINE = 1 / 3
+const DAMAGE_FADED_ALPHA = 0.62
+/**
+ * Anteil der Lebenszeit, den eine alte Zahl **ruhig** steht, bevor sie ausblendet.
+ *
+ * Eine Zahl, die vom ersten Augenblick ihres Alters an dunkler wird, ist die halbe Zeit
+ * schon zu blass zum Lesen - nachgemessen blieben von sechzehn lebenden Zahlen nur drei
+ * ueber der Schwelle, ab der man Ziffern ueberhaupt auseinanderhaelt. Die alte Zahl soll
+ * aber stehen bleiben und erst am Ende gehen: flaches Mittelgrau, und die letzte
+ * Vierteldrehung ihrer Frist blendet sie weg.
+ */
+const DAMAGE_HOLD = 0.75
+
+/**
+ * Wie weit eine Ziffer unter ihren eigenen Ankerpunkt reicht - als Anteil der Schriftgroesse.
+ *
+ * Gesetzt wird mit `textBaseline = 'middle'`, der Anker liegt also in der Mitte der Zeile.
+ * Eine Ziffer dieser Schrift reicht von dort rund 0,36 Schrifthoehen nach unten; ein halbes
+ * Geviert deckt das mit Rand ab und bleibt auch dann richtig, wenn die Ersatzschrift greift,
+ * weil das Geviert die Obergrenze jeder Glyphe ist.
+ *
+ * Gebraucht wird die Zahl nur an einer Stelle: Die aufsteigende Schadenszahl muss **ueber**
+ * dem Lebensbalken beginnen, und "ueber dem Balken" heisst "ihre Unterkante ueber seiner
+ * Oberkante" - nicht ihr Ankerpunkt.
+ */
+const DAMAGE_TEXT_HALF = 0.5
 
 /** Deckkraft des liegenden Goldes ausserhalb der Kampfansicht. */
 const COIN_DIM_IDLE = 0.45
@@ -90,6 +270,60 @@ const COIN_TIER_GOLD = 2.2
  * `PICKUP_POP` ist der Stupser im Augenblick des Aufhebens, `PICKUP_POP_SHARE` sein Anteil
  * an der Flugzeit.
  */
+/*
+ * Groesse der Einschlag- und Zerfallsbilder.
+ *
+ * Sie standen vorher als nackte Zahlen mitten im Zeichnen, und sie waren zu klein: Ein
+ * Gegner mit acht Weltradien zerfiel in einem Bild von sechsunddreissig Bildschirmpixeln -
+ * kleiner als der Gegner selbst kurz davor. Der Abschuss, also der Augenblick, auf den das
+ * ganze Spiel hinauslaeuft, war damit das Unauffaelligste auf dem Feld.
+ *
+ * Der Zerfall misst in **Vielfachen des Gegners**, der Einschlag in festen Pixeln: Der
+ * Zerfall gehoert dem Gegner und soll mit ihm wachsen, ein Treffer gehoert dem Geschoss und
+ * ist bei einem Titanen derselbe wie bei einem Krumen.
+ */
+const DEATH_SPRITE_SCALE = 9
+const DEATH_RING_GROWTH = 2.6
+const HIT_SPRITE_PX = 40
+const CRIT_SPRITE_PX = 66
+
+/**
+ * Der Kranz des Abschusses (GDD 13 Abschnitt 10).
+ *
+ * Ein einzelner duenner Ring ist als Todesanzeige zu wenig. Nachgemessen hob der ganze
+ * Zerfall - Ring plus Splitter - 42 Bildpunkte ueber Helligkeit 150, waehrend eine einzelne
+ * herumliegende Muenze 97 hebt: Der Abschuss war weniger wert als ein Geldstueck, das
+ * niemand aufgehoben hat. Zwei Gruende dafuer, beide hier behoben:
+ *
+ *   *Kein Hof.* `drawBursts` war die einzige Effektfunktion dieser Datei ohne `shadowBlur`.
+ *               Ein Strich ohne Streuung ist in einem Bild aus brennenden Roehren ein
+ *               Fremdkoerper - und vor allem ist er duenn: Ein Haarstrich traegt ein paar
+ *               Dutzend Bildpunkte, ein Hof traegt die Flaeche darum mit.
+ *
+ *   *Ein Ring.* Die Vorlage zeigt keinen Ring, sondern einen **Kranz**: zehn bis vierzehn
+ *               kleine hohle Kreise auf dem wachsenden Ring, jeder mit eigenem Hof. Das ist
+ *               der Unterschied zwischen "hier war eine Welle" und "hier ist einer
+ *               zerplatzt" - der Koerper zerfaellt in Stuecke, statt sich aufzuloesen.
+ *
+ * Die Zahl der Kreise waechst mit dem Gegner: Ein Krumen zerplatzt in zehn Stuecke, ein Boss
+ * in vierzehn. Mehr waeren bei kleinem Radius eine geschlossene Linie und damit wieder ein
+ * Ring; weniger waeren bei grossem Radius verlorene Punkte.
+ */
+const DEATH_BLUR = 18
+const DEATH_NODES_MIN = 10
+const DEATH_NODES_MAX = 14
+const DEATH_NODE_PX = 2.6
+
+/**
+ * Streuung des Einschlags im Augenblick des Treffers, in Pixeln.
+ *
+ * Nicht groesser: Bei hohem Angriffstempo stehen mehrere Einschlaege gleichzeitig im Bild,
+ * und ein Hof, der breiter ist als der Ring selbst, macht aus einer Reihe von Treffern eine
+ * Nebelbank. Der Wert reicht genau so weit, dass die Kante des Rings weich in den Grund
+ * laeuft - mehr will er nicht.
+ */
+const HIT_BLUR = 12
+
 const PICKUP_LANDING = 2.6
 const PICKUP_MIN_SCALE = 0.45
 const PICKUP_POP = 0.22
@@ -104,29 +338,64 @@ const GLINT_PERIOD = 3.4
 const GLINT_FPS = 14
 
 /**
- * Der Wirkungsbereich um die Station.
+ * Die Kante des Wirkungsbereichs: Strichbreite in Bildpunkten, abhaengig vom Radius.
  *
- * Er atmet langsam - sichtbar genug, dass man ihn als Anzeige liest, ruhig genug, dass er
- * nicht mit den Gegnern um Aufmerksamkeit streitet.
+ * Sie ist bewusst **keine feste Zahl**. Das optische Gewicht einer Linie ist ihre Breite im
+ * Verhaeltnis zu dem, was sie umschliesst: Derselbe Strich, der um eine kleine Station
+ * angemessen wirkt, ist um eine weit ausgebaute nur noch ein Haar, das im Bild verschwindet.
+ * Ein Zwanzigstel des Bildradius haelt das Gewicht ueber den ganzen Ausbau gleich.
+ *
+ * Der untere Deckel steht bei zehn, nicht bei sechs: Darunter faellt die Kante durch die
+ * Kurvenglaettung und die Kantenweichzeichnung auf weniger als acht durchgehende Punkte
+ * zusammen, und ab da liest das Auge sie wieder als Haarstrich statt als Durchgang.
  */
-const RANGE_RING_BREATH = 0.9
+const RANGE_EDGE_SHARE = 0.05
+const RANGE_EDGE_MIN = 10
+const RANGE_EDGE_MAX = 16
+
+/**
+ * Der Wirkungsbereich in seiner urspruenglichen Fassung: cyan, fein, leuchtend.
+ *
+ * Deckkraft der Kante, Deckkraft der Flaeche am Aussenrand, Strichbreite und Leuchthof. Die
+ * Flaeche laeuft zur Mitte hin auf null - unter der Station bleibt das Bild frei.
+ */
 const RANGE_RING_ALPHA = 0.3
 const RANGE_RING_FILL = 0.05
+const RANGE_RING_WIDTH = 1.5
+const RANGE_RING_BLUR = 12
 /**
- * Wie viele Strahlen den Umriss abtasten. 180 heisst: alle zwei Grad ein Punkt - fein genug,
- * dass zusammen mit der Kurvenglaettung keine Kante zu sehen ist, und grob genug, dass es
- * in jedem Bild bezahlbar bleibt.
- */
-const RANGE_RING_RAYS = 180
-/**
- * Wie breit die Ecken zwischen zwei Reichweitenkreisen verrundet werden - als Anteil des
- * **Vollkreises**, nicht als Abstand. Eine Ecke ist ein Winkelknick; wie weit sie im Bild
- * ausladet, haengt vom Zoom ab, ihre Breite in Grad nicht.
+ * Wie stark zwei Reichweitenkreise sich anziehen, in Welteinheiten.
  *
- * 0,04 sind rund 15 Grad zu jeder Seite. Genug, dass keine Spitze stehen bleibt, und wenig
- * genug, dass eine Beule ihre Hoehe behaelt - geglaettet wird auch das Maximum.
+ * Das ist die Oberflaechenspannung des Wirkungsbereichs: Kommen sich zwei Kreisraender naeher
+ * als dieser Abstand, waechst zwischen ihnen ein Hals, statt dass sie sich in einer Spitze
+ * schneiden - zwei Tropfen, die zu einem werden. Weiter auseinander merken sie nichts
+ * voneinander und bleiben zwei.
+ *
+ * Der Preis steht fest und ist klein: Am Hals traegt der Zusammenschluss hoechstens
+ * `merge / 4` nach aussen auf, hier also 11 von rund 250 Einheiten. Das ist eine bewusst
+ * gekaufte Unschaerfe - genau dort, wo ohnehin zwei Tuerme decken, und nirgends sonst. Der
+ * Kampf selbst rechnet unveraendert mit den echten Kreisen (`inCoverage` in `sim/enemies.ts`);
+ * was hier weicher wird, ist die Zeichnung, nicht die Regel.
  */
-const RANGE_RING_ROUNDING = 0.04
+const RANGE_BLOB_MERGE = 44
+/**
+ * Kantenlaenge einer Abtastzelle in Welteinheiten und die Obergrenze der Gitterweite.
+ *
+ * Das Feld wird auf einem Gitter abgetastet und die Nulllinie daraus gezogen (Marching
+ * Squares). Die Kosten wachsen mit dem Quadrat der Feinheit mal der Turmzahl, und zwar bei
+ * jedem **Neuaufbau** - der faellt beim Bauen an, bei einem Reichweiten-Upgrade und wenn ein
+ * Buff an- oder ausgeht, nie im Ruhezustand. Im Browser gemessen, volle Station aus fuenfzehn
+ * Modulen: 6,5 ms bei 8 Einheiten, 3,4 ms bei 12. Gewaehlt sind 12 - eine Modulkante ist 56
+ * Einheiten lang, der Umriss bekommt damit alle 12 Einheiten einen Punkt, und die
+ * Kurvenglaettung in `traceBlob` macht daraus eine runde Linie. Ein einzelnes Bild soll durch
+ * einen Bauklick nicht ins Rutschen kommen.
+ *
+ * Der Deckel begrenzt das Gitter auf 160 x 160 Stuetzstellen, damit eine sehr weit ausgebaute
+ * Station die Rechnung nicht ins Quadratische zieht; dann wird die Zelle groesser statt das
+ * Gitter.
+ */
+const RANGE_BLOB_CELL = 12
+const RANGE_BLOB_MAX_STEPS = 160
 
 /**
  * Die Kapsel: Groesse in Welteinheiten, dazu Weite und Tempo ihres Schwebens.
@@ -149,6 +418,129 @@ const HELPER_SIZE = 6
  */
 const TRADER_RADIUS = 17
 
+/**
+ * Streuung der Gegnerlinie beim Einzelstueck - Elite und Boss, sonst niemand.
+ *
+ * Ein Canvas-Schatten streut in JEDE Richtung, auch in den Spalt zum Nachbarn. Solange
+ * das Einzelstueck allein steht, ist das genau richtig: seine Roehre brennt sichtbar aus.
+ * Sobald aber jeder Gegner einen Schatten traegt, addieren sich in einem dichten Band die
+ * Auslaeufer zweihundert Mal uebereinander, und die Taeler zwischen den Konturen steigen
+ * messbar an - selbst bei kleinem Blur (nachgemessen: bei vier Pixeln Streuung lag der
+ * Talwert im 200er-Band bei Hintergrund + 14, ohne Streuung bei Hintergrund - 1).
+ * Deshalb bekommt die Masse gar keinen Schatten; ihr Brennen kommt aus HOT_EDGE_MIX.
+ */
+const ENEMY_SINGULAR_BLUR = 10
+
+/**
+ * Wie weit der Innenstrich eines Normalgegners zu Weiss hin aufgehellt wird.
+ *
+ * Das Brennen einer Neonroehre ist kein Hof, sondern ein Verlauf ueber die Roehre selbst:
+ * aussen die Glasfarbe, innen der ueberbelichtete Kern. Genau das baut ein zweiter,
+ * schmalerer Strich auf derselben Kontur nach - und weil er deckungsgleich auf der Linie
+ * liegt, addiert er anders als ein Schatten nichts in den Zwischenraum zweier Nachbarn.
+ * Der Wert ist an der Vorlage abgelesen: Dort erreicht ein Normalgegner im Scheitel
+ * RGB(255, 182, 192), also die Gegnerfarbe knapp zur Haelfte nach Weiss verschoben.
+ */
+const HOT_EDGE_MIX = 0.6
+
+/**
+ * Gemerkte Aufhellungen. Es gibt eine Handvoll Gegnerfarben und sechzig Bilder je Sekunde -
+ * die Zeichenkette wird einmal je Farbe gebaut und danach nur noch nachgeschlagen.
+ */
+const hotEdgeCache = new Map<string, string>()
+
+/**
+ * Wie weit die Innenschulter eines Normalgegners hinter der Kontur liegt, in Pixeln.
+ *
+ * Zusammen mit ihrer eigenen Strichbreite ergibt das den Querschnitt, den die Vorlage an
+ * einem Normalgegner zeigt: vom Grund ueber einen Bildpunkt hinauf zum Scheitel und ueber
+ * rund vier weitere wieder herunter ins Innere. Groesser darf der Versatz nicht werden -
+ * ab etwa drei Pixeln loest sich die Schulter von der Kontur und wird ein zweiter Ring.
+ */
+const INNER_SHOULDER = 1.7
+
+/**
+ * Deckkraft, mit der die Flaeche eines eben getroffenen Gegners im Scheitel angehoben wird.
+ *
+ * Der Wert ist gegen den Einschlag gemessen und nicht gegen den leeren Grund: Ueber dem
+ * getroffenen Gegner liegt das Trefferbild, und was dieses Bild deckt, kann keine Fuellung
+ * darunter mehr anheben. Bei 0,55 blieb der Koerper des Getroffenen nur 33 Helligkeitsstufen
+ * ueber demselben Gegner ohne Treffer - sichtbar, wenn man es weiss, und unsichtbar, wenn
+ * man es nicht weiss. Erst hier steht der Unterschied ueber vierzig Stufen und traegt damit
+ * auch unter dem Einschlag.
+ *
+ * Nach oben ist trotzdem eine Grenze: Volle Deckung waere ein weisser Fleck, und die Form
+ * nennt die Gegnerart - sie darf auch im Augenblick des Treffers nicht ausfallen.
+ */
+const HIT_FLASH_FILL = 0.8
+
+/**
+ * Streuung des Trefferrings im Scheitel, in Pixeln. Klingt mit der Quittung aus.
+ *
+ * Sie traegt mehr als nur Stimmung: Die Fuellung endet an der Kontur, der Gegner sitzt aber
+ * in einem Feld aus Nachbarn. Erst der Hof hebt auch den Rand um ihn herum an und macht aus
+ * dem aufgehellten Umriss eine Stelle, die man im Pulk **findet**, statt sie zu suchen.
+ */
+const HIT_FLASH_BLUR = 16
+
+/**
+ * Kleinster Halbmesser, mit dem ein Gegner im Bild gezeichnet wird, in Bildpunkten.
+ *
+ * Der Zoom rechnet Welteinheiten in Bildpunkte um, und er richtet sich nach der **Station**,
+ * nicht nach dem Gegner: Was die Station gross macht, macht den Gegner klein. Nachgemessen
+ * im Belastungsfall (Welle 12, 194 Gegner, Zoom 0,908): Ein Schwarmgegner mit Halbmesser 6
+ * wird 5,45 Bildpunkte gross und misst quer zehn Punkte - davon sind drei die Kontur selbst.
+ * Zweihundert solcher Stuecke sind keine Masse, sondern ein Nadelstreifen; das Auge liest
+ * eine duenne Kette, weil jedes Glied unter der Groesse liegt, ab der es eine Form hat.
+ *
+ * Deshalb ein Boden - und zwar ein weicher: `Math.hypot` mittelt quadratisch, hebt also das
+ * Kleine deutlich und laesst das Grosse in Ruhe. Bei Zoom 0,908 wird aus dem Schwarm-Halb-
+ * messer 5,45 dadurch 11,4 (quer gemessen 21 statt 10 Punkte), aus einer Drohne mit 10,0
+ * werden 14,1, aus einer schweren Einheit mit 15,4 werden 18,4 - und ein Boss mit 47,2
+ * bleibt 48,2, also praktisch er selbst. Die Reihenfolge der Groessen bleibt erhalten, Form
+ * UND Groesse nennen weiter die Gegnerart (GDD 07 Abschnitt 3), aber keine Art faellt mehr
+ * unter die Lesbarkeit.
+ *
+ * Ein harter Boden (`Math.max`) waere hier falsch: Er machte Schwarm und Drohne bei kleinem
+ * Zoom exakt gleich gross und naehme der Groesse ihre Aussage.
+ *
+ * Nach oben ist der Wert durch die Zaehlprobe gedeckelt: Bei 11 fing das Band an, ein
+ * Geflecht zu werden.
+ *
+ * DIESE ZAHL HAT EIN GEGENSTUECK IN DER SIMULATION. Solange sie allein hier stand, war das
+ * Bild breiter als die Regel: Der Umriss mass 22,8 Bildpunkte, die Gegner drueckten sich
+ * aber nur auf gemessene 7,1 auseinander, weil `stepCrowd` mit `enemy.radius` rechnete.
+ * Jeder Umriss spannte damit ueber drei Nachbarn, und aus zweihundert Gegnern wurde eine
+ * einlagige Kette statt eines Bandes. `CROWD_MIN_RADIUS` in `sim/enemies.ts` traegt
+ * dieselbe Zahl in Welteinheiten; wer hier etwas aendert, aendert sie dort mit.
+ */
+const ENEMY_MIN_DRAW = 10
+
+/**
+ * Halbmesser, mit dem ein Gegner gezeichnet wird - nicht der, mit dem er rechnet.
+ *
+ * Die Simulation behaelt ihren eigenen Halbmesser: Treffer, Reichweite, Beruehrung mit einem
+ * Modul und das Auseinanderdruecken der Nachbarn rechnen weiter mit der Zahl aus
+ * `data/enemies.ts`. Hier geht es allein darum, wie viel Bild ein Gegner bekommt - das
+ * Gedraenge ist eine Frage der Darstellung, nicht der Regeln.
+ */
+function drawnRadius(worldRadius: number, zoom: number): number {
+  return Math.hypot(worldRadius * zoom, ENEMY_MIN_DRAW)
+}
+
+/** Aufgehellte Fassung einer Gegnerfarbe - dieselbe Farbe, nur naeher an Weiss. */
+function hotEdge(color: string): string {
+  const cached = hotEdgeCache.get(color)
+  if (cached !== undefined) {
+    return cached
+  }
+  const value = Number.parseInt(color.replace('#', ''), 16)
+  const lift = (channel: number): number => Math.round(channel + (255 - channel) * HOT_EDGE_MIX)
+  const hot = `rgb(${lift((value >> 16) & 255)}, ${lift((value >> 8) & 255)}, ${lift(value & 255)})`
+  hotEdgeCache.set(color, hot)
+  return hot
+}
+
 export function drawEnemies(
   ctx: CanvasRenderingContext2D,
   enemies: readonly Enemy[],
@@ -160,10 +552,11 @@ export function drawEnemies(
   // Runde Ecken: Die breite Schein-Linie stellt sonst an jeder Spitze einen Zacken auf,
   // der laenger ist als der halbe Gegner.
   ctx.lineJoin = 'round'
+  hpBarCount = 0
   for (const enemy of enemies) {
     const def = enemyById(enemy.defId)
     const center = worldToScreen(camera, enemy.pos, width, height)
-    const radius = enemy.radius * viewZoom(camera)
+    const radius = drawnRadius(enemy.radius, viewZoom(camera))
 
     // Der Biss: ein Stoss zum Modul hin und zurueck. Ein Sinusbogen geht weich hin und
     // weich zurueck - der Gegner beisst, er springt nicht.
@@ -193,39 +586,165 @@ export function drawEnemies(
     const alpha = hidden ? 0.28 : 1
 
     /*
-     * Gegner sind leuchtende Umrisse, keine gefuellten Klumpen: Die Fuellung deutet den
-     * Koerper nur an, die Aussage traegt die Kante. So bleiben auch dichte Wellen lesbar,
-     * und der Blick faellt weiter auf die helle Station statt auf den Gegnerteppich.
+     * Gegner sind leuchtende Umrisse, keine gefuellten Klumpen: Die Aussage traegt die
+     * Kante. So bleiben auch dichte Wellen lesbar, und der Blick faellt weiter auf die
+     * helle Station statt auf den Gegnerteppich.
      *
-     * Die Kante wird deshalb **zweimal** gezogen: einmal breit und blass als Schein, einmal
-     * schmal und voll als Linie. Das ist der Unterschied zwischen einem Koerper, der von
-     * innen glimmt, und einer Roehre, die brennt - und nur die Roehre ist Neon. Vorher trug
-     * die Fuellung ein Siebtel Deckkraft und die Kante einen einzigen Strich; ein Pulk sah
-     * dadurch aus wie ein Feld heller Flecken, in dem die Formen untergingen.
+     * DAS GLIMM-BUDGET (GDD 13 Abschnitt 7): Schein ist eine **knappe** Groesse und gehoert
+     * dem Einzelstueck. Vorher bekam jeder Gegner einen breiten blassen Scheinstrich unter
+     * die Linie gelegt; bei zweihundert Gegnern legten sich zweihundert solcher Hoefe
+     * uebereinander und summierten sich zu einer deckenden Milchflaeche, in der die
+     * Konturen aufhoerten, Konturen zu sein. Ein Schein, den jeder hat, sagt nichts mehr.
+     *
+     * Deshalb: Der Normalgegner ist **eine** scharfe Linie mit gerade so viel Streuung, dass
+     * die Roehre brennt statt gezeichnet zu sein - zwischen zwei Nachbarn faellt der Wert
+     * wieder auf den Grund zurueck. Den breiten Hof und den weissen Kern bekommen nur Elite
+     * und Boss, und weil es davon wenige gibt, ist der hellste Punkt im Gegnerfeld auch
+     * wieder einer, auf den man zeigen kann.
      */
-    tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null, enemy.spin)
-    ctx.fillStyle = def.color
-    ctx.globalAlpha = 0.06 * alpha
-    ctx.fill()
+    // Ein Elite traegt einen zusaetzlichen Neon-Effekt und bleibt sonst er selbst -
+    // "verstaerkter Tank", nicht neuer Gegnertyp (GDD 07 Abschnitt 6). Der Boss ist ohnehin
+    // die Zaesur der Welle. Beide sind Einzelstuecke - alle anderen sind Masse.
+    const singular = enemy.elite.length > 0 || def.isBoss === true
 
-    const elite = enemy.elite.length > 0
+    /*
+     * Und deshalb ist die Masse HOHL - buchstaeblich, ohne jede Fuellung.
+     *
+     * Solange die Gegner nur klein genug waren, um einander nie zu beruehren, war eine
+     * angedeutete Fuellung folgenlos. Sobald sie Gewicht bekommen, ueberlappen sie - und
+     * eine Fuellung, die einmal sechs Prozent deckt, deckt bei drei uebereinander schon
+     * siebzehn. Das ist der Punkt, an dem aus zweihundert Umrissen eine Flaeche wird und
+     * das Zaehlen aufhoert. Ein Umriss ohne Fuellung kann sich mit beliebig vielen
+     * Nachbarn ueberlagern und bleibt trotzdem ein Umriss.
+     *
+     * Das Einzelstueck behaelt seine Fuellung: Davon stehen selten mehr als eine Handvoll
+     * im Bild, sie ueberlagern einander nicht, und die Fuellung ist Teil dessen, was sie
+     * aus der Masse heraushebt.
+     */
+    tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null, enemy.spin + enemy.tilt)
+    if (singular) {
+      ctx.fillStyle = def.color
+      ctx.globalAlpha = 0.06 * alpha
+      ctx.fill()
+    }
+
     ctx.strokeStyle = def.color
     ctx.shadowColor = def.color
 
-    // Der Schein. Er sitzt unter der Linie, damit die Kante scharf bleibt.
-    ctx.globalAlpha = (elite ? 0.4 : 0.28) * alpha
-    ctx.lineWidth = elite ? 6 : 4.5
-    // Ein Elite traegt einen zusaetzlichen Neon-Effekt und bleibt sonst er selbst -
-    // "verstaerkter Tank", nicht neuer Gegnertyp (GDD 07 Abschnitt 6).
-    ctx.shadowBlur = elite ? 22 : enemy.dockedTo !== null ? 16 : 11
+    // Der Schein. Er sitzt unter der Linie, damit die Kante scharf bleibt - und er wird nur
+    // fuer das Einzelstueck gezogen. Die Zahl der breiten Scheinstriche je Bild ist damit
+    // die Zahl der Elites plus Bosse, nicht die Zahl der Gegner.
+    if (singular) {
+      ctx.globalAlpha = 0.4 * alpha
+      ctx.lineWidth = 6
+      ctx.shadowBlur = 22
+      ctx.stroke()
+    }
+
+    // Die Linie. Streuung traegt nur das Einzelstueck - die Masse bekommt shadowBlur 0.
+    ctx.globalAlpha = alpha
+    ctx.lineWidth = singular ? 2.4 : 1.6
+    ctx.shadowBlur = singular ? ENEMY_SINGULAR_BLUR : 0
     ctx.stroke()
 
-    // Die Linie.
-    ctx.globalAlpha = alpha
-    ctx.lineWidth = elite ? 2.4 : 1.6
-    ctx.shadowBlur = elite ? 10 : 6
-    ctx.stroke()
+    /*
+     * Das Brennen der Roehre beim Normalgegner.
+     *
+     * Kein Schatten, sondern ein zweiter, schmalerer und hellerer Strich auf derselben
+     * Kontur: Er sitzt mitten in der ersten Linie und macht aus dem flachen Strich einen
+     * Querschnitt - aussen Glasfarbe, innen ueberbelichteter Kern. Ein Schatten wuerde
+     * dasselbe erzaehlen, aber eben auch in den Spalt zum Nachbarn hinein; dieser Strich
+     * kann das nicht, weil er die Kontur nirgends verlaesst.
+     */
+    if (!singular) {
+      ctx.strokeStyle = hotEdge(def.color)
+      ctx.lineWidth = 0.7
+      ctx.stroke()
+
+      /*
+       * Und die Schulter, auf der der Kern absitzt - **nach innen** gelegt.
+       *
+       * Ohne sie faellt der Wert einen Bildpunkt neben dem Scheitel auf den Grund, und der
+       * Gegner ist eine Strichzeichnung statt einer Roehre. Nach aussen darf diese Schulter
+       * nicht: Dort liegt der Spalt zum Nachbarn, und alles, was dort landet, addiert sich
+       * im dichten Band zweimal. Innen liegt der eigene Koerper - dieselbe weiche Flanke,
+       * aber niemand teilt sie sich mit jemandem.
+       */
+      ctx.strokeStyle = def.color
+      ctx.globalAlpha = 0.3 * alpha
+      ctx.lineWidth = 1.6
+      tracePolygon(
+        ctx,
+        def.shape,
+        center,
+        Math.max(radius * 0.5, radius - INNER_SHOULDER),
+        enemy.dockedTo !== null,
+        enemy.spin + enemy.tilt,
+      )
+      ctx.stroke()
+      ctx.globalAlpha = alpha
+    }
+
+    /*
+     * Der weisse Kern des Einzelstuecks.
+     *
+     * Er ist der eigentliche Zeigefinger: Ein Elite unterscheidet sich vom Normalgegner
+     * nicht durch mehr Farbe - die haetten beide - sondern dadurch, dass seine Kante
+     * durchbrennt. Der Hof darum bleibt in seiner Gegnerfarbe, sonst waere es ein weisser
+     * Fleck statt einer glaubwuerdig ueberlasteten Roehre.
+     */
+    if (singular) {
+      ctx.strokeStyle = THEME.enemyCoreHot
+      ctx.lineWidth = 1.1
+      ctx.shadowBlur = 5
+      ctx.stroke()
+      ctx.strokeStyle = def.color
+    }
     ctx.shadowBlur = 0
+
+    /*
+     * Die Trefferquittung: Der eben getroffene Gegner brennt durch (GDD 13 Abschnitt 10).
+     *
+     * Der Einschlag allein sagt nur, dass irgendwo etwas eingeschlagen ist. Im dichten Pulk
+     * stehen fuenf Gegner in derselben Handbreit, und ein Blitz zwischen ihnen zeigt auf
+     * keinen davon. Erst wenn **der Getroffene selbst** hell wird, hat der Schuss ein Ziel.
+     *
+     * Zwei Striche und eine Fuellung, alle in derselben kurzen Zeit:
+     *
+     *   *Fuellung*  hebt die ganze Flaeche an. Sie ist der Teil, der den Gegner auch dann
+     *               noch aus der Reihe holt, wenn seine Kontur zwischen Nachbarn liegt -
+     *               eine hellere Linie allein geht in einem Band aus Linien unter.
+     *
+     *   *Kontur*    dick und heiss, damit die Form erkennbar bleibt. Eine reine Aufhellung
+     *               ohne Kante waere ein Fleck und keine Einheit mehr.
+     *
+     *   *Streuung*  nur hier, und nur fuer diesen Wimpernschlag. Das Glimm-Budget (GDD 13
+     *               Abschnitt 7) gehoert dem Einzelstueck - und ein Gegner, der gerade
+     *               getroffen wird, **ist** in diesem Augenblick das Einzelstueck. Die Zahl
+     *               der Hoefe je Bild ist die Zahl der Treffer, nicht die Zahl der Gegner.
+     *
+     * Sie klingt linear aus und faellt damit sichtbar ab, statt zu blinken. Getarnte Gegner
+     * bekommen sie ueber `alpha` gedaempft mit: Wer trifft, was er nicht sieht, soll das
+     * ruhig sehen.
+     */
+    const flash = enemy.flashLife > 0 ? Math.max(0, 1 - enemy.flash / enemy.flashLife) : 0
+    if (flash > 0) {
+      ctx.fillStyle = THEME.enemyHitFlash
+      ctx.globalAlpha = HIT_FLASH_FILL * flash * alpha
+      tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null, enemy.spin + enemy.tilt)
+      ctx.fill()
+
+      ctx.strokeStyle = THEME.enemyHitFlash
+      ctx.shadowColor = THEME.enemyHitFlash
+      ctx.shadowBlur = HIT_FLASH_BLUR * flash
+      ctx.globalAlpha = flash * alpha
+      ctx.lineWidth = 3
+      ctx.stroke()
+
+      ctx.shadowBlur = 0
+      ctx.strokeStyle = def.color
+      ctx.globalAlpha = alpha
+    }
 
     // Ein Schild liegt als zweiter Ring aussen herum - man soll sehen, warum die Treffer
     // wenig bewirken, statt es an der Lebensleiste zu erraten.
@@ -251,14 +770,82 @@ export function drawEnemies(
     if (enemy.chillLeft > 0) {
       ctx.globalAlpha = 0.3 * alpha
       ctx.fillStyle = PALETTE.edge
-      tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null, enemy.spin)
+      tracePolygon(ctx, def.shape, center, radius, enemy.dockedTo !== null, enemy.spin + enemy.tilt)
       ctx.fill()
     }
 
     ctx.globalAlpha = alpha
-    if (enemy.maxHp >= HP_BAR_FROM_MAX_HP) {
-      drawHpBar(ctx, center, radius, enemy.hp / enemy.maxHp, def.color, viewZoom(camera))
+    // Getroffen heisst Balken - ohne Ausnahme und ohne Schwelle. Wer noch unversehrt ist,
+    // traegt keinen: Ein leerer Rahmen an jedem der zweihundert Anmarschierenden waere
+    // Rauschen, und "voll" sagt die unversehrte Kontur selbst.
+    //
+    // Gezeichnet wird er hier noch nicht, nur vorgemerkt - siehe `hpBars` und `drawHpBars`.
+    if (enemy.hp < enemy.maxHp) {
+      const slot = hpBarSlot()
+      slot.x = center.x
+      slot.y = center.y
+      slot.radius = radius
+      slot.fraction = enemy.hp / enemy.maxHp
+      slot.boss = def.isBoss === true
     }
+  }
+
+  ctx.restore()
+}
+
+/*
+ * Die vorgemerkten Balken - eine Liste, die mitwaechst und dann liegen bleibt.
+ *
+ * Sie wird je Bild auf Laenge null zurueckgesetzt, aber nie geleert: Ihre Eintraege sind
+ * die immer gleichen Objekte, die nur neu beschrieben werden. Bei zweihundert
+ * angeschlagenen Gegnern und sechzig Bildern in der Sekunde waeren frisch erzeugte
+ * Eintraege zwoelftausend Wegwerfobjekte je Sekunde - dieselbe Ueberlegung wie bei den
+ * Effektlisten in `sim/`.
+ */
+type HpBarSlot = { x: number; y: number; radius: number; fraction: number; boss: boolean }
+const hpBars: HpBarSlot[] = []
+let hpBarCount = 0
+
+function hpBarSlot(): HpBarSlot {
+  let slot = hpBars[hpBarCount]
+  if (slot === undefined) {
+    slot = { x: 0, y: 0, radius: 0, fraction: 0, boss: false }
+    hpBars.push(slot)
+  }
+  hpBarCount++
+  return slot
+}
+
+/**
+ * Die Lebensbalken aller angeschlagenen Gegner - alle zusammen, ganz zum Schluss.
+ *
+ * Die Reihenfolge steht in `render/scene.ts`, wie jede Ebene: Diese hier gehoert **hinter**
+ * den letzten Kampfeffekt und **vor** die Schadenszahlen.
+ *
+ * Warum ueberhaupt eine eigene Ebene: Ein Balken, der im Gegnerdurchlauf entsteht, wird von
+ * allem uebermalt, was danach kommt - erst vom spaeter gezeichneten Nachbarn, dann von
+ * Druckwelle, Splittern, Geschossen, Drohnen, Strahlen und Trefferblitzen. Nachgemessen in
+ * Welle 12 mit Pulk: von fuenf angeschlagenen Gegnern trug einer 0 von 54 Bildpunkten
+ * seines Balkens, drei weitere zwischen 27 und 31; ein einzelner Trefferblitz genuegte, um
+ * eine Lebensanzeige vollstaendig auszuloeschen.
+ *
+ * Der Balken ist keine Zeichnung AM Gegner, sondern eine Auskunft UEBER ihn. Auskunft haengt
+ * nicht davon ab, wo in einer Liste ihr Traeger steht oder ob gerade jemand neben ihm
+ * getroffen wurde. Ueber den Zahlen liegt sie trotzdem nicht: Die Zahl ist die Quittung des
+ * Augenblicks und flieht nach oben aus dem Bild, der Balken ist Dauerzustand.
+ *
+ * Ohne Kamera und ohne Bildmasse: Was hier gezeichnet wird, steht in `hpBars` bereits in
+ * Bildschirmkoordinaten - `drawEnemies` hat sie eben umgerechnet, samt Biss-Versatz und
+ * gezeichnetem Halbmesser. Ein zweites Mal umzurechnen hiesse, dieselbe Zahl aus zwei
+ * Quellen zu holen.
+ */
+export function drawHpBars(ctx: CanvasRenderingContext2D): void {
+  ctx.save()
+  ctx.globalAlpha = 1
+  for (let i = 0; i < hpBarCount; i++) {
+    const bar = hpBars[i]
+    if (bar === undefined) break
+    drawHpBar(ctx, bar, bar.radius, bar.fraction, bar.boss)
   }
   ctx.restore()
 }
@@ -651,14 +1238,33 @@ export function drawApproach(
  * wird ein Zwoelftel der Muenzen, und Beträge gibt es hoechstens zwoelf. Gemessen kostet
  * ein Aufruf rund zwei Mikrosekunden.
  */
+/*
+ * `outline` ist die Breite einer harten schwarzen Kontur unter der Fuellung, 0 heisst keine.
+ *
+ * Sie wird als **Linie** gezogen und nicht als Schatten: Ein Schatten waere weich, und weich
+ * heisst, dass zwischen zwei Ziffernstrichen ein Grau steht statt Schwarz - genau dort, wo
+ * das Auge die Ziffer trennt. Die Linie liegt je zur Haelfte innen und aussen; ist sie so
+ * breit wie der Zwischenraum einer Ziffer, faellt der Zwischenraum auf Schwarz, und die Zahl
+ * traegt ihren eigenen Grund mit sich, egal was darunter liegt.
+ *
+ * Runde Ecken sind dabei Pflicht: Eine Pixelschrift besteht aus rechten Winkeln, und ein
+ * spitzer Stossverbund stellte an jedem davon eine Nadel auf.
+ */
 function writePixelText(
   ctx: CanvasRenderingContext2D,
   text: string,
   centerX: number,
   centerY: number,
+  outline = 0,
 ): void {
   const width = ctx.measureText(text).width
-  ctx.fillText(text, Math.round(centerX - width / 2), Math.round(centerY))
+  const x = Math.round(centerX - width / 2)
+  const y = Math.round(centerY)
+  if (outline > 0) {
+    ctx.lineWidth = outline
+    ctx.strokeText(text, x, y)
+  }
+  ctx.fillText(text, x, y)
 }
 
 /**
@@ -708,65 +1314,126 @@ function sidesOfShape(shape: EnemyShape): number {
 }
 
 /**
- * Lebensbalken eines Gegners.
+ * Lebensbalken eines Gegners - fuer alle derselbe.
  *
- * Er spricht dieselbe Sprache wie alles andere auf dem Feld: runde Enden, ein dunkles
- * Bett, ein leuchtender Faden darin. Die Fuellung traegt **seine** Farbe, nicht eine
- * eigene - so gehoert der Balken sichtbar zu ihm und nicht zur Oberflaeche.
+ * Ein fast schwarzes Bett fester Laenge, darin ein Faden in `THEME.hpBar`. Das Bett ist
+ * die eigentliche Leistung: Ohne es waere der sichtbare Balken die Fuellung selbst, und
+ * ein Gegner bei 44 Prozent traege einen sichtbar kuerzeren Strich als einer bei 63. Vier
+ * verschieden lange Striche sind vier Objekte; vier gleich lange Betten mit verschieden
+ * gefuellten Faeden sind eine Reihe mit einer ablesbaren Groesse darin.
  *
- * Gezeichnet als zwei Striche statt zweier Rechtecke: Das gibt die runden Enden ohne
- * eigenen Pfad und passt zu den Leisten im HUD.
+ * Die Fuellung traegt bewusst **nicht** die Gegnerfarbe. Sie sagt "Leben", und Leben hat
+ * im ganzen Spiel genau eine Farbe (GDD 13 Abschnitt 2, `PALETTE.life`). Trueg sie die
+ * Farbe des Traegers, muesste man vor dem Ablesen erst herausfinden, welcher Ton hier
+ * gerade "voll" bedeutet.
+ *
+ * `PALETTE.life` und nicht `PALETTE.magenta`: Magenta ist selbst eine Gegnerfarbe - der
+ * `drone` traegt sie byteidentisch. Ein Balken in der Farbe seines Traegers ist kein
+ * Balken. Nachgerechnet ist der Abstand bei `LIFE` in `theme.ts`; gehalten wird er von der
+ * Pruefung "kein Gegner traegt die Farbe des Lebensbalkens" in `selftest/suites/content.ts`.
+ *
+ * Zwei `fillRect` auf gerundeten Koordinaten statt zweier Striche mit runden Enden: Runde
+ * Enden setzen an jedes Balkenende einen halben Pixel Weichzeichnung, und die faellt bei
+ * krummen Mittelpunkten mal so und mal so aus. Ein Balken, dessen Laenge vom Unterpixel
+ * seines Gegners abhaengt, ist nicht mehr fuer alle derselbe.
  */
 function drawHpBar(
   ctx: CanvasRenderingContext2D,
   center: Vec2,
   radius: number,
   fraction: number,
-  color: string,
-  zoom: number,
+  boss: boolean,
 ): void {
-  const barWidth = Math.max(16, radius * 2.2)
-  const thickness = Math.max(3, 4 * zoom)
-  const left = center.x - barWidth / 2
-  const right = center.x + barWidth / 2
-  const y = center.y - radius - thickness * 2
+  const barWidth = boss ? HP_BAR_WIDTH_BOSS : HP_BAR_WIDTH
+  const left = Math.round(center.x - barWidth / 2)
+  const top = Math.round(center.y - radius - HP_BAR_GAP - HP_BAR_HEIGHT)
   const filled = Math.max(0, Math.min(1, fraction))
 
   ctx.save()
-  ctx.lineCap = 'round'
   ctx.globalAlpha = 1
+  // Kein Hof. Der Faden liegt gesaettigt auf fast schwarzem Bett und traegt sich selbst;
+  // ein Schatten an jedem angeschlagenen Gegner streute ueber das Bett hinaus und legte
+  // die Taeler zwischen zwei Konturen zu (Glimm-Budget, GDD 13 Abschnitt 7).
+  ctx.shadowBlur = 0
 
-  ctx.strokeStyle = PALETTE.inkDeep
-  ctx.lineWidth = thickness
-  ctx.beginPath()
-  ctx.moveTo(left, y)
-  ctx.lineTo(right, y)
-  ctx.stroke()
+  ctx.fillStyle = PALETTE.inkDeep
+  ctx.fillRect(left, top, barWidth, HP_BAR_HEIGHT)
 
   if (filled > 0) {
-    ctx.strokeStyle = color
-    ctx.lineWidth = thickness * 0.62
-    ctx.shadowColor = color
-    ctx.shadowBlur = 6
-    ctx.beginPath()
-    ctx.moveTo(left, y)
-    ctx.lineTo(left + barWidth * filled, y)
-    ctx.stroke()
+    // Mindestens ein Pixel: Der letzte Rest Leben ist die Auskunft, auf die es ankommt -
+    // er darf nicht dadurch verschwinden, dass er unter die Rundung faellt.
+    ctx.fillStyle = THEME.hpBar
+    ctx.fillRect(left, top, Math.max(1, Math.round(barWidth * filled)), HP_BAR_HEIGHT)
   }
 
   ctx.restore()
 }
 
+/*
+ * Der Verlauf des Schweifs, einmal angelegt und wiederverwendet.
+ *
+ * Bei 600 gleichzeitigen Geschossen (`MAX_PROJECTILES`) waere ein eigener Verlauf je Geschoss
+ * und Bild 36 000 Wegwerfobjekte je Sekunde. Der Verlauf ist aber fuer alle derselbe: Er
+ * laeuft in einem Einheitsraum von 0 (Kopf) nach 1 (Ende), und jedes Geschoss legt ihn ueber
+ * eine gedrehte und gestreckte Leinwand auf seine eigene Bahn. Gehalten wird er zusammen mit
+ * der Leinwand, fuer die er gebaut wurde - wechselt sie, wird er neu angelegt.
+ */
+let trailFade: CanvasGradient | null = null
+let trailFadeCtx: CanvasRenderingContext2D | null = null
+
+function trailGradient(ctx: CanvasRenderingContext2D): CanvasGradient {
+  if (trailFade && trailFadeCtx === ctx) return trailFade
+
+  const gradient = ctx.createLinearGradient(0, 0, 1, 0)
+  const rgb = THEME.bulletTrailRgb
+  const peak = THEME.bulletTrailAlpha
+  /*
+   * Die Stuetzstellen fallen streng monoton - das ist die Eigenschaft, an der man den
+   * Schweif als Richtungsangabe liest und nicht als Strich.
+   *
+   * Sie sind bewusst **flach** gehalten und stuerzen erst am letzten Zwanzigstel ab. Ein
+   * schneller Abfall sah zwar weicher aus, liess vom Keil aber nur die vordere Haelfte
+   * ueber dem Grund stehen - nachgemessen war der Rest bei Zoom 0,9 keine zwei
+   * Helligkeitsstufen vom Hintergrund entfernt. Die Laenge, die den Schuss lesbar macht,
+   * muss auch gemessen werden koennen.
+   *
+   * Seit der Keil vor dem Modul endet, ist er kuerzer, und dieselben Stuetzstellen liegen
+   * damit auf weniger Pixeln - in der Mitte des Keils blieb nur noch 0,28 Deckkraft ueber
+   * dem Grund. Dort, wo ein Reichweitenkreis unter ihm durchlief, hob der Grund die Zahl
+   * nachgemessen um 3,0 Luminanz an: ein Wiederanstieg, der nicht vom Schweif kam, ihn aber
+   * genauso zerbricht. Die Stuetzstellen halten die Deckkraft in der Mitte deshalb jetzt bei
+   * 0,37 - hoch genug, dass der Keil dort bestimmt, was zu sehen ist, und mit unveraendert
+   * fallendem Verlauf.
+   */
+  gradient.addColorStop(0, `rgba(${rgb}, ${peak})`)
+  gradient.addColorStop(0.45, `rgba(${rgb}, ${(peak * 0.8).toFixed(3)})`)
+  gradient.addColorStop(0.78, `rgba(${rgb}, ${(peak * 0.5).toFixed(3)})`)
+  gradient.addColorStop(0.95, `rgba(${rgb}, ${(peak * 0.16).toFixed(3)})`)
+  gradient.addColorStop(1, `rgba(${rgb}, 0)`)
+
+  trailFade = gradient
+  trailFadeCtx = ctx
+  return gradient
+}
+
 /**
- * Geschosse mit Schweif.
+ * Geschosse: heller Kopf, dunkler Keil dahinter.
  *
- * Ohne ihn ist ein schneller Schuss nur ein Punkt, der zwischen zwei Bildern springt: Bei
- * 520 Einheiten je Sekunde legt er in einem Bild fast neun Einheiten zurueck, und das Auge
- * sieht keine Bahn, sondern ein Flackern. Der Schweif ist die Strecke der letzten 50
- * Millisekunden - er schliesst die Luecke zwischen Muendungsfeuer und Einschlag.
+ * Der Kopf ist zweiteilig - ein Ring in der Turmfarbe mit weissem Kern und einem schwachen
+ * Hof. Erst diese drei Lagen machen aus dem Geschoss ein *Objekt*: Ein einfarbiger Punkt in
+ * der Groesse, in der ein Geschoss stehen darf, ist im Standbild nicht von einem Rest eines
+ * Effekts zu unterscheiden. Der Ring traegt die Auskunft (welcher Turm), der Kern die
+ * Helligkeit (da ist etwas), der Hof den Neonton.
  *
- * Er waechst aus dem Rohr heraus: Am Anfang ist er hoechstens so lang wie die bereits
- * geflogene Strecke, sonst ragte er im ersten Bild hinter den Turm.
+ * Der Keil dahinter zeigt **zum Rohr zurueck**, nicht entgegen der Flugrichtung: Geschosse
+ * verfolgen ihr Ziel, `dir` dreht also unterwegs weg. Gezeichnet wird deshalb ueber
+ * `projectile.origin`, und damit trifft die Verlaengerung jedes Keils das Modul, das ihn
+ * abgefeuert hat. Im Standbild liest man daran ab, welche Tuerme gerade arbeiten und wohin -
+ * eine Auskunft, die eine Punktwolke nicht geben kann.
+ *
+ * Alle Keile zuerst, alle Koepfe danach: Sonst legte der Keil eines spaeteren Geschosses
+ * seinen Schleier ueber den Kopf eines frueheren, und in einem dichten Feld saehen einzelne
+ * Koepfe stumpfer aus als andere.
  */
 export function drawProjectiles(
   ctx: CanvasRenderingContext2D,
@@ -775,35 +1442,78 @@ export function drawProjectiles(
   width: number,
   height: number,
 ): void {
+  if (projectiles.length === 0) return
+
+  const zoom = Math.max(0.6, viewZoom(camera))
   ctx.save()
-  ctx.lineCap = 'round'
+
+  // Der Abstand zum Modul steht in Welteinheiten und wird deshalb mit dem **ungedeckelten**
+  // Zoom umgerechnet: Er muss dieselbe Strecke abdecken, die auch das Modul einnimmt.
+  const worldZoom = viewZoom(camera)
+
+  const fade = trailGradient(ctx)
+  ctx.shadowBlur = 0
+  ctx.fillStyle = fade
 
   for (const projectile of projectiles) {
     const center = worldToScreen(camera, projectile.pos, width, height)
-    const zoom = Math.max(0.6, viewZoom(camera))
-    const radius = (projectile.crit ? 3.4 : 2.2) * zoom
+    const from = worldToScreen(camera, projectile.origin, width, height)
 
-    const trail = Math.min(projectile.speed * TRAIL_SECONDS, projectile.speed * projectile.life)
-    if (trail > 1) {
-      ctx.globalAlpha = projectile.crit ? 0.55 : 0.4
-      ctx.strokeStyle = projectile.color
-      ctx.shadowColor = projectile.color
-      ctx.shadowBlur = 0
-      ctx.lineWidth = radius * 1.1
-      ctx.beginPath()
-      ctx.moveTo(center.x, center.y)
-      ctx.lineTo(center.x - projectile.dir.x * trail * zoom, center.y - projectile.dir.y * trail * zoom)
-      ctx.stroke()
-    }
+    const backX = from.x - center.x
+    const backY = from.y - center.y
+    const flown = Math.hypot(backX, backY)
 
-    ctx.globalAlpha = 1
+    // Der Keil endet vor dem Modul, statt hineinzulaufen. Wer noch keinen Platz dafuer hat,
+    // steckt eben noch im eigenen Rohr - dort steht das Muendungsfeuer und sagt dasselbe.
+    const clear = (projectile.reach + TRAIL_CLEAR_HALO) * worldZoom
+    const length = Math.min(TRAIL_MAX_PX, flown - clear)
+    if (length < TRAIL_MIN_PX) continue
+
+    // Der Einheitsverlauf wird auf die Bahn gelegt: Ursprung am Kopf, x-Achse nach hinten,
+    // Laenge 1 entspricht dem Ende des Keils. Gestreckt wird nur die Laenge - die y-Werte
+    // stehen deshalb unveraendert in Bildschirmpixeln.
+    ctx.save()
+    ctx.translate(center.x, center.y)
+    ctx.rotate(Math.atan2(backY, backX))
+    ctx.scale(length, 1)
     ctx.beginPath()
-    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2)
+    ctx.moveTo(0, -TRAIL_HALF_HEAD_PX)
+    ctx.lineTo(1, -TRAIL_HALF_TAIL_PX)
+    ctx.lineTo(1, TRAIL_HALF_TAIL_PX)
+    ctx.lineTo(0, TRAIL_HALF_HEAD_PX)
+    ctx.closePath()
+    ctx.fill()
+    ctx.restore()
+  }
+
+  for (const projectile of projectiles) {
+    const center = worldToScreen(camera, projectile.pos, width, height)
+    const head = Math.max(HEAD_MIN_PX, (projectile.crit ? HEAD_CRIT_PX : HEAD_PX) * zoom)
+
+    // Hof: der einzige Teil des Geschosses, der leuchtet - und zwar nur so weit, wie ein
+    // Neonpunkt eben ausstrahlt. Er liegt unter Ring und Kern, damit er sie nicht aufweicht.
+    ctx.globalAlpha = 0.22
     ctx.fillStyle = projectile.color
     ctx.shadowColor = projectile.color
-    ctx.shadowBlur = projectile.crit ? 10 : 5
+    ctx.shadowBlur = head * 2
+    ctx.beginPath()
+    ctx.arc(center.x, center.y, head * 0.95, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.globalAlpha = 1
+    ctx.strokeStyle = projectile.color
+    ctx.lineWidth = head * 0.46
+    ctx.beginPath()
+    ctx.arc(center.x, center.y, head * 0.68, 0, Math.PI * 2)
+    ctx.stroke()
+
+    ctx.shadowBlur = 0
+    ctx.fillStyle = THEME.bulletCore
+    ctx.beginPath()
+    ctx.arc(center.x, center.y, head * 0.34, 0, Math.PI * 2)
     ctx.fill()
   }
+
   ctx.restore()
 }
 
@@ -920,18 +1630,30 @@ function glintFrame(time: number, x: number, y: number): number {
  * schiesst (`rangeCircles` in `sim/towers.ts`). Ein einzelner Kreis um den Kern waere in
  * beide Richtungen falsch: Nimmt er die kleinste Reichweite, sterben Gegner sichtbar
  * ausserhalb; nimmt er die groesste, verspricht er Deckung auf der Seite, wo gar kein Turm
- * steht. Solange ein Turm nicht weiter reicht als der Rest, sieht man von ihm nichts - erst
- * wenn er ueber den bestehenden Umriss hinausragt, waechst dort eine Beule.
+ * steht.
  *
- * Abgetastet wird radial: Fuer jeden Strahl vom Kern nach aussen zaehlt der am weitesten
- * entfernte Kreisdurchstoss. Dabei entstehen an den Schnittstellen zweier Kreise Spitzen,
- * und Spitzen sehen nach Fehler aus, nicht nach Reichweite - deshalb laeuft das Maximum
- * ueber `softMax` und rundet sie ab (dasselbe Verfahren wie bei einer weichen Vereinigung
- * von Abstandsfeldern).
+ * Sie werden **wie Tropfen zusammengefuehrt**, nicht wie Scheiben uebereinandergelegt: Wo
+ * zwei Kreise einander nahe kommen, waechst zwischen ihnen ein Hals, und aus zwei Formen wird
+ * eine (`RANGE_BLOB_MERGE`). Der Bereich liest sich dadurch als **ein** Koerper mit Beulen -
+ * und jede Beule gehoert sichtbar einem Turm.
  *
- * Gezeichnet als sehr blasse Flaeche mit einer klaren Kante: Die Flaeche macht den Bereich
- * als Raum lesbar, die Kante nennt die Grenze. Beides zusammen bleibt weit hinter Gegnern
- * und Station zurueck - der Umriss ist Kulisse, kein Gegenstand.
+ * Vorher wurde radial ab dem Kern abgetastet: eine Reichweite je Winkel, dann ueber die
+ * Winkel geglaettet. Das kann gar keine Beule zeigen, die schmaler ist als das Glaettungs-
+ * fenster, und liefert grundsaetzlich nur sternfoermige Umrisse - jeder Turm verschwand darin
+ * zu einer sanften Welle, und man sah dem Bereich nicht mehr an, aus wie vielen Tuermen er
+ * besteht. Der Kern der Aenderung ist deshalb der Wechsel des Verfahrens: Der Umriss ist jetzt
+ * die Nulllinie eines Feldes (`rangeBlobs`) und an keinen Mittelpunkt mehr gebunden.
+ *
+ * Gezeichnet als flach angehobene Flaeche mit einer breiten, stumpfen Kante - beides in
+ * einem unbunten Blaugrau und ohne Leuchthof. Damit ist der Wirkungsbereich das **dunkelste**
+ * Element des Bildes: Er liegt in jedem einzelnen Bild da und reicht ueber die ganze
+ * Bildbreite, waehrend Gegner, Zahlen und Geschosse kommen und gehen. Was immer da ist, darf
+ * nicht leuchten, sonst leuchtet nichts mehr.
+ *
+ * Die Flaeche wird **additiv** aufgetragen (`THEME.rangeLift`) statt als durchscheinender
+ * Verlauf. Ein Verlauf zur Mitte hin laesst die Zone genau dort verschwinden, wo die Station
+ * steht, und macht aus einer Grenze eine Beleuchtung; die gleichmaessige Anhebung dagegen
+ * traegt die Aussage "hier wird geschossen" auch da noch, wo ein Pulk die Kante zudeckt.
  */
 export function drawRangeRing(
   ctx: CanvasRenderingContext2D,
@@ -940,12 +1662,11 @@ export function drawRangeRing(
   camera: Camera,
   width: number,
   height: number,
-  time: number,
 ): void {
   if (circles.length === 0) return
 
-  // Die weiteste Ecke des Umrisses. Sie entscheidet, ob ueberhaupt gezeichnet wird, und ist
-  // der Bezug fuer Rundung und Farbverlauf - beide sollen mit dem Bild mitwachsen.
+  // Die weiteste Ecke des Umrisses. Sie entscheidet, ob ueberhaupt gezeichnet wird, und gibt
+  // der Kante ihre Strichbreite - die soll mit dem Bild mitwachsen.
   let outer = 0
   for (const circle of circles) {
     outer = Math.max(outer, dist(origin, circle.center) + circle.range)
@@ -954,30 +1675,49 @@ export function drawRangeRing(
   const zoom = viewZoom(camera)
   if (outer * zoom < 8) return
 
-  const point = worldToScreen(camera, origin, width, height)
-  const breath = 0.85 + 0.15 * Math.sin(time * RANGE_RING_BREATH)
-
-  const reaches = cachedOutline(origin, circles)
-  const outline = projectOutline(reaches, point, zoom)
+  const loops = cachedBlobs(circles)
+  if (loops.length === 0) return
 
   ctx.save()
 
-  traceLoop(ctx, outline)
+  // Alle Schleifen in **einen** Pfad. Fuellen mit der Gerade-Ungerade-Regel: Damit wird ein
+  // Loch im Bereich - etwa ein Ring aus Tuermen mit einer Luecke in der Mitte - zum Loch und
+  // nicht zur Flaeche, ohne dass der Umlaufsinn der Schleifen stimmen muesste.
+  ctx.beginPath()
+  for (const loop of loops) traceBlob(ctx, loop, camera, width, height)
 
-  // Die Flaeche laeuft von innen nach aussen auf, damit die Station nicht in einem
-  // gleichmaessigen Schleier steht - innen soll es dunkel bleiben.
-  const radius = outer * zoom
-  const fill = ctx.createRadialGradient(point.x, point.y, radius * 0.35, point.x, point.y, radius)
-  fill.addColorStop(0, `rgba(${RGB.cyan},0)`)
-  fill.addColorStop(1, `rgba(${RGB.cyan},${RANGE_RING_FILL * breath})`)
-  ctx.fillStyle = fill
-  ctx.fill()
+  /*
+   * Die Flaeche: ein cyanfarbener Verlauf, der zur Mitte hin auf null laeuft.
+   *
+   * ENTSCHEIDUNG DES SPIELERS (2026-08-07), nicht der Messlatte.
+   *
+   * Zwischenzeitlich stand hier eine unbunte Zone nach dem Vorbild von "The Tower": breite
+   * blaugraue Kante, gleichmaessige additive Anhebung, kein Hof. Sie war streng nach der dort
+   * gemessenen Regel gebaut - unbunt gleich dauerhafte Geometrie, gesaettigt gleich Faehigkeit
+   * mit Laufzeit - und sie war nachweislich besser lesbar. Sie hat sich trotzdem nicht richtig
+   * angefuehlt: Der Ring ist in diesem Spiel nicht nur eine Grenze, er ist der leuchtende
+   * Koerper, in dem die Station lebt, und grau genommen war er nur noch eine Markierung.
+   *
+   * Eine Regel, die aus einem fremden Bild abgelesen ist, schlaegt nicht das Gefuehl fuer das
+   * eigene. Wer hier wieder auf unbunt umstellen will, braucht dafuer einen anderen Grund als
+   * "die Latte macht es so".
+   */
+  ctx.globalCompositeOperation = 'source-over'
+  const mitte = worldToScreen(camera, origin, width, height)
+  const flaeche = ctx.createRadialGradient(mitte.x, mitte.y, 0, mitte.x, mitte.y, outer * zoom)
+  flaeche.addColorStop(0, 'rgba(0,0,0,0)')
+  flaeche.addColorStop(1, `rgba(${RGB.cyan}, ${RANGE_RING_FILL})`)
+  ctx.fillStyle = flaeche
+  ctx.fill('evenodd')
 
-  ctx.globalAlpha = RANGE_RING_ALPHA * breath
+  // Die Kante: ein feiner leuchtender Strich in der Leitfarbe. `lineJoin` rund, damit die
+  // Beulen des Umrisses keine Zipfel nach aussen werfen.
+  ctx.globalAlpha = RANGE_RING_ALPHA
   ctx.strokeStyle = PALETTE.cyan
-  ctx.lineWidth = 1.5
   ctx.shadowColor = PALETTE.cyan
-  ctx.shadowBlur = 12
+  ctx.shadowBlur = RANGE_RING_BLUR
+  ctx.lineWidth = RANGE_RING_WIDTH
+  ctx.lineJoin = 'round'
   ctx.stroke()
 
   ctx.restore()
@@ -986,185 +1726,342 @@ export function drawRangeRing(
 /*
  * Zwischenspeicher des Umrisses.
  *
- * `rangeOutline` rechnet **rein in Weltkoordinaten** - kein Zoom, keine Kamera, keine Zeit
+ * `rangeBlobs` rechnet **rein in Weltkoordinaten** - kein Zoom, keine Kamera, keine Zeit
  * gehen ein. Sein Ergebnis aendert sich also nur, wenn sich die Kreise aendern: wenn gebaut
- * wird, ein Reichweiten-Upgrade faellt oder ein Buff an- oder ausgeht. Trotzdem lief es in
- * **jedem** Bild: 180 Strahlen gegen jeden Kreis, dazu die Glaettung und zwei frische
- * Felder. Bei fuenfzehn Modulen sind das 2700 Kreisdurchstoesse je Bild fuer ein Ergebnis,
- * das minutenlang dasselbe bleibt.
+ * wird, ein Reichweiten-Upgrade faellt oder ein Buff an- oder ausgeht. Zwischendurch bleibt
+ * es minutenlang dasselbe - und es ist deutlich teurer als das fruehere Strahlenverfahren:
+ * ein Gitter statt einer Linie. Ohne diesen Zwischenspeicher waere der Wechsel nicht
+ * bezahlbar.
  *
- * Der Schluessel ist die Kreisliste selbst - Ursprung, Ort und Reichweite je Kreis, flach
+ * Dass er traegt, haengt daran, dass Reichweiten **stufig** sind: Faehigkeiten und Ereignisse
+ * legen ihren Bonus als feste Zahl ab, solange sie laufen (`sim/stats.ts`, `applyTimed`).
+ * Ein Wert, der je Takt ein wenig anders waere, liesse den Schluessel in jedem Bild
+ * verfehlen - dann muesste hier gerundet werden.
+ *
+ * Der Schluessel ist die Kreisliste selbst - Ort und Reichweite je Kreis, flach
  * hintereinander. Ihn Zahl fuer Zahl zu vergleichen kostet drei Vergleiche je Kreis; das ist
  * gegen die Neurechnung nichts. Eine Zeichenkette als Schluessel waere kuerzer zu schreiben
  * und wuerde je Bild eine neue anlegen - genau die Art Muell, die hier weg soll.
  */
-let outlineKey: number[] = []
-let outlineValue: number[] = []
+let blobKey: number[] = []
+let blobValue: BlobLoop[] = []
 
-function cachedOutline(origin: Vec2, circles: readonly RangeCircle[]): number[] {
-  let same = outlineKey.length === circles.length * 3 + 2
-  if (same) same = outlineKey[0] === origin.x && outlineKey[1] === origin.y
+function cachedBlobs(circles: readonly RangeCircle[]): BlobLoop[] {
+  let same = blobKey.length === circles.length * 3
   for (let i = 0; same && i < circles.length; i++) {
     const circle = circles[i] as RangeCircle
     same =
-      outlineKey[2 + i * 3] === circle.center.x &&
-      outlineKey[3 + i * 3] === circle.center.y &&
-      outlineKey[4 + i * 3] === circle.range
+      blobKey[i * 3] === circle.center.x &&
+      blobKey[i * 3 + 1] === circle.center.y &&
+      blobKey[i * 3 + 2] === circle.range
   }
-  if (same) return outlineValue
+  if (same) return blobValue
 
-  outlineKey = [origin.x, origin.y]
+  blobKey = []
   for (const circle of circles) {
-    outlineKey.push(circle.center.x, circle.center.y, circle.range)
+    blobKey.push(circle.center.x, circle.center.y, circle.range)
   }
-  outlineValue = rangeOutline(origin, circles, RANGE_RING_ROUNDING)
-  return outlineValue
+  blobValue = rangeBlobs(circles, RANGE_BLOB_MERGE, RANGE_BLOB_CELL)
+  return blobValue
 }
 
 /**
- * Den Umriss auf den Bildschirm rechnen.
- *
- * Schreibt in ein wiederverwendetes Feld statt in ein neues. Der Umriss hat 180 Punkte, und
- * 180 frische Objekte je Bild sind Muell, den der Speicherbereiniger spaeter in einem Stueck
- * wegraeumt - und dieses eine Stueck sieht man als Ruckler. Das Feld wird sofort gezeichnet
- * und nirgends aufgehoben, also darf es dasselbe bleiben.
- */
-const outlineScratch: Vec2[] = []
-
-function projectOutline(reaches: readonly number[], point: Vec2, zoom: number): Vec2[] {
-  while (outlineScratch.length < reaches.length) outlineScratch.push({ x: 0, y: 0 })
-  outlineScratch.length = reaches.length
-
-  for (let i = 0; i < reaches.length; i++) {
-    const angle = (i / reaches.length) * Math.PI * 2
-    const reach = (reaches[i] as number) * zoom
-    const target = outlineScratch[i] as Vec2
-    target.x = point.x + Math.cos(angle) * reach
-    target.y = point.y + Math.sin(angle) * reach
-  }
-  return outlineScratch
-}
-
-/**
- * Der Umriss als Reichweite je Strahl, gegen den Uhrzeigersinn ab Winkel null.
- *
- * Zwei Schritte: erst die **echte** Vereinigung abtasten, dann die fertige Kurve glaetten.
- *
- * Diese Reihenfolge ist der ganze Trick. Der naheliegende Weg - das Maximum der Kreise
- * gleich weich zu nehmen (`smax` aus der Abstandsfeld-Rechnerei) - rundet die Ecke zwar
- * auch, aber er beult dabei **ueber** beide Kreise hinaus. Ein Turm, der gar nichts
- * erweitert, weil seine Scheibe ganz in der des Kerns liegt, liesse den Umriss dann trotzdem
- * wachsen: nachgemessen um zehn von 220 Einheiten. Genau das soll er nicht - unsichtbar
- * bleiben, bis er wirklich weiter reicht.
- *
- * Ein Mittelwertfilter kann das nicht: Er kommt nie ueber das oertliche Maximum hinaus, und
- * ueber einem gleichbleibenden Stueck aendert er gar nichts. Ein Kreis bleibt ein Kreis,
- * eine Beule bekommt runde Schultern.
- *
- * Rein rechnerisch und ohne Kamera - deshalb liegt die Funktion offen und wird im
- * Selbsttest geprueft. Was gezeichnet wird, ist eine Aussage ueber das Spiel; sie darf
- * nicht nur gut aussehen, sie muss stimmen.
- *
- * `rounding` ist ein Anteil des Vollkreises, kein Abstand: Die Ecke ist ein Winkelknick,
- * und wie weit sie im Bild ausladet, haengt vom Zoom ab.
- */
-export function rangeOutline(
-  origin: Vec2,
-  circles: readonly RangeCircle[],
-  rounding: number,
-  rays: number = RANGE_RING_RAYS,
-): number[] {
-  const exact: number[] = []
-  for (let i = 0; i < rays; i++) {
-    const angle = (i / rays) * Math.PI * 2
-    exact.push(reachAlong(origin, circles, Math.cos(angle), Math.sin(angle)))
-  }
-  return smoothLoop(exact, Math.round(rays * rounding))
-}
-
-/**
- * Wie weit die Vereinigung entlang eines Strahls reicht.
- *
- * Je Kreis der **hintere** Durchstosspunkt des Strahls - das ist die Stelle, an der man
- * diesen Kreis wieder verlaesst. Ein Kreis, den der Strahl gar nicht trifft, traegt nichts
- * bei; er liegt seitlich und hat in dieser Richtung nichts zu sagen.
- */
-function reachAlong(
-  origin: Vec2,
-  circles: readonly RangeCircle[],
-  dx: number,
-  dy: number,
-): number {
-  let reach = 0
-
-  for (const circle of circles) {
-    const ox = circle.center.x - origin.x
-    const oy = circle.center.y - origin.y
-
-    // Abstand des Mittelpunkts laengs und quer zum Strahl. Quer entscheidet, ob getroffen
-    // wird, laengs, wo.
-    const along = ox * dx + oy * dy
-    const across = ox * dy - oy * dx
-    const half = circle.range * circle.range - across * across
-    if (half <= 0) continue
-
-    const hit = along + Math.sqrt(half)
-    if (hit > reach) reach = hit
-  }
-
-  return reach
-}
-
-/**
- * Geschlossene Zahlenreihe glaetten - Dreiecksfenster, damit die Mitte am meisten zaehlt.
- *
- * Geschlossen heisst: Der letzte Wert ist Nachbar des ersten. Ohne das bekaeme der Umriss
- * an Winkel null eine Naht, und ausgerechnet dort faellt sie auf, weil sie stehen bleibt,
- * waehrend sich alles andere dreht.
- */
-function smoothLoop(values: readonly number[], radius: number): number[] {
-  if (radius < 1) return [...values]
-
-  const count = values.length
-  const smoothed: number[] = []
-
-  for (let i = 0; i < count; i++) {
-    let sum = 0
-    let weight = 0
-    for (let offset = -radius; offset <= radius; offset++) {
-      const w = radius + 1 - Math.abs(offset)
-      sum += (values[(i + offset + count) % count] as number) * w
-      weight += w
-    }
-    smoothed.push(sum / weight)
-  }
-
-  return smoothed
-}
-
-/**
- * Geschlossener Linienzug mit weichen Uebergaengen.
+ * Eine Schleife auf den Bildschirm rechnen und als weiche Kurve in den **laufenden** Pfad
+ * legen - ohne `beginPath`, weil mehrere Schleifen zusammen einen Pfad ergeben muessen.
  *
  * Die Kurve laeuft nicht durch die Abtastpunkte, sondern durch die **Mitten** zwischen je
- * zwei benachbarten; der Punkt dazwischen wird zum Kontrollpunkt. Das ist der uebliche
- * Griff fuer eine glatte geschlossene Kurve und kostet nichts - ohne ihn zeigte der Umriss
- * bei starkem Zoom seine Ecken.
+ * zwei benachbarten; der Punkt dazwischen wird zum Kontrollpunkt. Das ist der uebliche Griff
+ * fuer eine glatte geschlossene Kurve und kostet nichts - ohne ihn zeigte der Umriss die
+ * Treppenstufen seines Gitters.
+ *
+ * Gerechnet wird Punkt fuer Punkt und ohne Zwischenfeld: Eine Schleife hat einige hundert
+ * Punkte, und ebenso viele frische Objekte je Bild sind Muell, den der Speicherbereiniger
+ * spaeter in einem Stueck wegraeumt - dieses eine Stueck sieht man als Ruckler.
  */
-function traceLoop(ctx: CanvasRenderingContext2D, points: readonly Vec2[]): void {
-  const count = points.length
+function traceBlob(
+  ctx: CanvasRenderingContext2D,
+  loop: BlobLoop,
+  camera: Camera,
+  width: number,
+  height: number,
+): void {
+  const count = loop.length / 2
   if (count < 3) return
 
-  const first = points[0] as Vec2
-  const last = points[count - 1] as Vec2
+  const zoom = viewZoom(camera)
+  const offsetX = width / 2 - camera.center.x * zoom
+  const offsetY = height / 2 - camera.center.y * zoom
 
-  ctx.beginPath()
-  ctx.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2)
+  const screenX = (i: number): number => (loop[(i % count) * 2] as number) * zoom + offsetX
+  const screenY = (i: number): number => (loop[(i % count) * 2 + 1] as number) * zoom + offsetY
+
+  ctx.moveTo((screenX(count - 1) + screenX(0)) / 2, (screenY(count - 1) + screenY(0)) / 2)
   for (let i = 0; i < count; i++) {
-    const current = points[i] as Vec2
-    const next = points[(i + 1) % count] as Vec2
-    ctx.quadraticCurveTo(current.x, current.y, (current.x + next.x) / 2, (current.y + next.y) / 2)
+    const cx = screenX(i)
+    const cy = screenY(i)
+    ctx.quadraticCurveTo(cx, cy, (cx + screenX(i + 1)) / 2, (cy + screenY(i + 1)) / 2)
   }
   ctx.closePath()
+}
+
+/** Ein geschlossener Umriss in Weltkoordinaten, flach: x0, y0, x1, y1, ... */
+export type BlobLoop = number[]
+
+/**
+ * Der Wirkungsbereich als geschlossene Umrisse - die Kreise zu Tropfen zusammengefuehrt.
+ *
+ * Der Bereich ist die Nulllinie eines Feldes: Jeder Kreis stiftet seinen vorzeichenbehafteten
+ * Abstand (`|p - Mitte| - Reichweite`, innen negativ), und die Kreise werden mit einem
+ * **weichen Minimum** verbunden. Das weiche Minimum ist der ganze Unterschied zum blossen
+ * Uebereinanderlegen: Sind zwei Raender weiter als `merge` voneinander entfernt, liefert es
+ * genau das gewoehnliche Minimum und damit die exakte Vereinigung; kommen sie sich naeher,
+ * zieht es die Flaeche zwischen ihnen zusammen - der Hals eines Tropfens. Mehr als
+ * `merge / 4` traegt es nirgends auf, und das nur genau am Hals.
+ *
+ * Gezogen wird die Nulllinie mit Marching Squares: Das Feld wird auf einem Gitter abgetastet,
+ * je Zelle entstehen aus dem Vorzeichenmuster der vier Ecken null bis zwei Streckenstuecke,
+ * und diese Stuecke werden ueber ihre **Gitterkante** verkettet. Die Kante als Schluessel ist
+ * der Grund, warum das ohne Toleranzen auskommt: Zwei Nachbarzellen rechnen denselben
+ * Durchstoss aus denselben zwei Eckwerten, treffen sich also exakt und nicht nur beinahe.
+ *
+ * Ein Sattel - zwei gegenueberliegende Ecken innen, die beiden anderen aussen - laesst zwei
+ * Verkettungen zu. Entschieden wird er ueber den Mittelwert der vier Ecken: Liegt die
+ * Zellmitte innen, haengen die beiden inneren Ecken zusammen, sonst nicht.
+ *
+ * Das Ergebnis ist eine Liste: Tuerme, die niemanden beruehren, ergeben eigene Tropfen. In
+ * der Praxis haengt alles am Kern, aber die Rechnung setzt das nicht voraus.
+ *
+ * Rein rechnerisch und ohne Kamera - deshalb liegt die Funktion offen und wird im Selbsttest
+ * geprueft. Was gezeichnet wird, ist eine Aussage ueber das Spiel; sie darf nicht nur gut
+ * aussehen, sie muss stimmen.
+ */
+export function rangeBlobs(
+  circles: readonly RangeCircle[],
+  merge: number,
+  cell: number,
+  maxSteps: number = RANGE_BLOB_MAX_STEPS,
+): BlobLoop[] {
+  if (circles.length === 0) return []
+
+  /*
+   * Der Kasten um alle Kreise, plus Rand. Der Rand ist Pflicht und nicht Vorsicht: Der
+   * Zusammenschluss traegt bis zu `merge / 4` nach aussen auf, und der Umriss muss **ganz**
+   * im Gitter liegen. Eine Nulllinie, die den Gitterrand erreicht, bliebe offen - und eine
+   * offene Linie laesst sich nicht zu einer Schleife schliessen.
+   */
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const circle of circles) {
+    minX = Math.min(minX, circle.center.x - circle.range)
+    minY = Math.min(minY, circle.center.y - circle.range)
+    maxX = Math.max(maxX, circle.center.x + circle.range)
+    maxY = Math.max(maxY, circle.center.y + circle.range)
+  }
+
+  const pad = merge + cell
+  minX -= pad
+  minY -= pad
+  maxX += pad
+  maxY += pad
+
+  const step = Math.max(cell, (maxX - minX) / maxSteps, (maxY - minY) / maxSteps)
+  const nx = Math.max(1, Math.ceil((maxX - minX) / step))
+  const ny = Math.max(1, Math.ceil((maxY - minY) / step))
+
+  // Stuetzstellen: eine mehr als Zellen, in beiden Richtungen.
+  const field = new Float64Array((nx + 1) * (ny + 1))
+  for (let j = 0; j <= ny; j++) {
+    const y = minY + j * step
+    for (let i = 0; i <= nx; i++) {
+      field[j * (nx + 1) + i] = blobField(circles, minX + i * step, y, merge)
+    }
+  }
+
+  /*
+   * Kennungen der Gitterkanten. Waagerechte zuerst, senkrechte dahinter - so ist jede Kante
+   * eine Zahl, und zwei Nachbarzellen benennen dieselbe Kante gleich.
+   */
+  const horizontal = nx * (ny + 1)
+  const points = new Map<number, Vec2>()
+  const links = new Map<number, number[]>()
+
+  const crossH = (i: number, j: number): number => {
+    const id = j * nx + i
+    if (!points.has(id)) {
+      const a = field[j * (nx + 1) + i] as number
+      const b = field[j * (nx + 1) + i + 1] as number
+      points.set(id, { x: minX + (i + a / (a - b)) * step, y: minY + j * step })
+    }
+    return id
+  }
+
+  const crossV = (i: number, j: number): number => {
+    const id = horizontal + j * (nx + 1) + i
+    if (!points.has(id)) {
+      const a = field[j * (nx + 1) + i] as number
+      const b = field[(j + 1) * (nx + 1) + i] as number
+      points.set(id, { x: minX + i * step, y: minY + (j + a / (a - b)) * step })
+    }
+    return id
+  }
+
+  const link = (a: number, b: number): void => {
+    const one = links.get(a)
+    if (one) one.push(b)
+    else links.set(a, [b])
+    const other = links.get(b)
+    if (other) other.push(a)
+    else links.set(b, [a])
+  }
+
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const topLeft = field[j * (nx + 1) + i] as number
+      const topRight = field[j * (nx + 1) + i + 1] as number
+      const bottomRight = field[(j + 1) * (nx + 1) + i + 1] as number
+      const bottomLeft = field[(j + 1) * (nx + 1) + i] as number
+
+      let code = 0
+      if (topLeft < 0) code |= 1
+      if (topRight < 0) code |= 2
+      if (bottomRight < 0) code |= 4
+      if (bottomLeft < 0) code |= 8
+      if (code === 0 || code === 15) continue
+
+      // Ein Muster und sein Gegenstueck ergeben dieselbe Trennlinie - innen und aussen sind
+      // vertauscht, die Kante bleibt. Deshalb steht jeder Fall nur einmal da.
+      switch (code) {
+        case 1:
+        case 14:
+          link(crossV(i, j), crossH(i, j))
+          break
+        case 2:
+        case 13:
+          link(crossH(i, j), crossV(i + 1, j))
+          break
+        case 3:
+        case 12:
+          link(crossV(i, j), crossV(i + 1, j))
+          break
+        case 4:
+        case 11:
+          link(crossV(i + 1, j), crossH(i, j + 1))
+          break
+        case 6:
+        case 9:
+          link(crossH(i, j), crossH(i, j + 1))
+          break
+        case 7:
+        case 8:
+          link(crossV(i, j), crossH(i, j + 1))
+          break
+        default: {
+          // Sattel (5 und 10): Die Zellmitte entscheidet, ob die beiden gleichseitigen Ecken
+          // zusammenhaengen oder jede fuer sich abgeschnitten wird.
+          const middle = (topLeft + topRight + bottomRight + bottomLeft) / 4
+          const joined = middle < 0
+          const mainDiagonal = code === 5
+          if (joined === mainDiagonal) {
+            link(crossH(i, j), crossV(i + 1, j))
+            link(crossV(i, j), crossH(i, j + 1))
+          } else {
+            link(crossV(i, j), crossH(i, j))
+            link(crossV(i + 1, j), crossH(i, j + 1))
+          }
+        }
+      }
+    }
+  }
+
+  /*
+   * Aus den Verkettungen Schleifen laufen. Jede Kante hat genau zwei Nachbarn - eine je
+   * angrenzender Zelle -, also fuehrt jeder Weg zurueck zu seinem Anfang.
+   *
+   * Gelaufen wird **ungerichtet**: Der Umlaufsinn spielt keine Rolle, weil gefuellt wird,
+   * ohne ihn zu befragen (Gerade-Ungerade). Das erspart es, im Marching-Squares-Fall auch
+   * noch die Richtung mitzufuehren, und die haette an einem Sattel ohnehin gekippt.
+   */
+  const loops: BlobLoop[] = []
+  const done = new Set<number>()
+
+  for (const start of links.keys()) {
+    if (done.has(start)) continue
+
+    const loop: BlobLoop = []
+    let current: number | undefined = start
+    let previous = -1
+
+    while (current !== undefined && !done.has(current)) {
+      done.add(current)
+      const point = points.get(current) as Vec2
+      loop.push(point.x, point.y)
+
+      let next: number | undefined
+      for (const candidate of links.get(current) as number[]) {
+        if (candidate !== previous && !done.has(candidate)) {
+          next = candidate
+          break
+        }
+      }
+      previous = current
+      current = next
+    }
+
+    // Unter drei Punkten ist es keine Flaeche, sondern ein Rest aus einer Zelle.
+    if (loop.length >= 6) loops.push(loop)
+  }
+
+  return loops
+}
+
+/**
+ * Das Feld an einer Stelle: der weich verbundene Abstand zu allen Kreisen, innen negativ.
+ *
+ * Der Deckel am Ende ist der Grund, warum die Zusage aus `RANGE_BLOB_MERGE` unabhaengig von
+ * der Turmzahl gilt. Das weiche Minimum wird **paarweise gefaltet**, und jede Faltung darf
+ * bis zu `merge / 4` abziehen - wo sich drei oder vier Reichweiten stapeln, summierte sich
+ * das auf. Nachgemessen an einer Station aus fuenf Modulen waren es 15 statt 11 Einheiten,
+ * und mit fuenfzehn Modulen waere daraus ein Vielfaches geworden.
+ *
+ * Gegen den harten Abstand gedeckelt bleibt es bei einem Viertel, egal wie viele Kreise sich
+ * treffen: Der Umriss liegt damit nachweisbar zwischen der echten Vereinigung und ihr plus
+ * `merge / 4` - genau das prueft der Selbsttest.
+ */
+function blobField(
+  circles: readonly RangeCircle[],
+  x: number,
+  y: number,
+  merge: number,
+): number {
+  let hard = Infinity
+  let soft = Infinity
+
+  for (let i = 0; i < circles.length; i++) {
+    const circle = circles[i] as RangeCircle
+    const dx = x - circle.center.x
+    const dy = y - circle.center.y
+    const distance = Math.sqrt(dx * dx + dy * dy) - circle.range
+    if (distance < hard) hard = distance
+    soft = i === 0 ? distance : softMin(soft, distance, merge)
+  }
+
+  return Math.max(soft, hard - merge / 4)
+}
+
+/**
+ * Weiches Minimum zweier Abstaende.
+ *
+ * Ausserhalb der Naht - wenn die beiden Werte weiter als `k` auseinanderliegen - ist es
+ * **exakt** das gewoehnliche Minimum: Ein Turm, der ganz im Bereich eines anderen liegt,
+ * veraendert den Umriss dann um nichts. Erst innerhalb von `k` mischt es die beiden und zieht
+ * dabei um bis zu `k / 4` nach innen, was am Rand als Auswoelbung nach aussen ankommt.
+ */
+function softMin(a: number, b: number, k: number): number {
+  if (k <= 0) return Math.min(a, b)
+  const h = Math.max(0, Math.min(1, 0.5 + (0.5 * (b - a)) / k))
+  return b + (a - b) * h - k * h * (1 - h)
 }
 
 /**
@@ -1252,15 +2149,21 @@ export function drawPickups(
  * also weiterhin hierher. Spaetere Aenderungen an ihnen koennen fehlen.
  * ==========================================================================*/
 /**
- * Der Zerfall eines Gegners.
+ * Der Zerfall eines Gegners - der hellste Augenblick im Feld nach Turm und Muenze.
  *
- * Zwei Ebenen: das Explosionsbild aus dem Anlagensatz und darunter die Druckwelle in
- * **seiner** Farbe. Das Bild gibt dem Tod Koerper, der Ring sagt, wen es getroffen hat -
- * ein zerplatzter Schwarm sieht damit weiter anders aus als ein gefallener Boss, obwohl
- * beide dasselbe Bild benutzen (GDD 07 Abschnitt 3).
+ * Drei Ebenen: die Druckwelle als Ring in **seiner** Farbe, der Kranz aus zerplatzten
+ * Stuecken darauf, und das Explosionsbild aus dem Anlagensatz darueber. Die Farbe sagt, wen
+ * es getroffen hat - ein zerplatzter Schwarm sieht damit weiter anders aus als ein
+ * gefallener Boss, obwohl beide dasselbe Bild benutzen (GDD 07 Abschnitt 3).
  *
- * Liegt das Bild noch nicht vor, bleibt der Ring allein stehen und wird kraeftiger - so
- * fehlt nie der ganze Effekt, nur seine Fuellung.
+ * Der Ring wird **nicht** gedaempft, wenn das Bild vorliegt. Genau das war der Fehler: Das
+ * Sprite laeuft im ersten Drittel hell auf und ist danach fast weg, der heruntergedimmte
+ * Ring trug den Rest der Lebensdauer allein - und trug ihn mit anderthalb Bildpunkten
+ * Strichbreite. Beides zusammen ergab ein Todesereignis, das schwaecher war als eine
+ * liegende Muenze. Bild und Ring erzaehlen dasselbe und duerfen sich addieren.
+ *
+ * Liegt das Bild noch nicht vor, bleiben Ring und Kranz allein stehen - so fehlt nie der
+ * ganze Effekt, nur seine Fuellung.
  */
 export function drawBursts(
   ctx: CanvasRenderingContext2D,
@@ -1279,18 +2182,87 @@ export function drawBursts(
     const center = worldToScreen(camera, burst.pos, width, height)
     const zoom = Math.max(0.6, viewZoom(camera))
     // Schnell auf, langsam aus: Die Welle soll schlagen, nicht wachsen.
-    const radius = burst.radius * (1 + 1.8 * Math.sqrt(progress)) * zoom
+    const radius = burst.radius * (1 + DEATH_RING_GROWTH * Math.sqrt(progress)) * zoom
+    const fade = 1 - progress
 
-    ctx.globalAlpha = (1 - progress) * (hasSprite ? 0.5 : 0.85)
+    /*
+     * Der Hof von Ring und Kranz.
+     *
+     * Die Streuung ist das, was aus gezogenen Linien einen Austritt von Energie macht - ohne
+     * sie ist der Zerfall ein mit dem Lineal gezogener Kreis zwischen lauter leuchtenden
+     * Koerpern. Sie klingt mit dem Zerfall aus; ein Hof, der bleibt, waere ein Fleck.
+     *
+     * Das **Bild** bekommt sie nicht (siehe unten): Es bringt sein Leuchten mit, und eine
+     * Streuung darauf kostet ein Vielfaches von allem anderen in dieser Datei.
+     */
+    ctx.shadowColor = burst.color
+    ctx.shadowBlur = DEATH_BLUR * fade * zoom
+
+    ctx.globalAlpha = fade * 0.85
     ctx.strokeStyle = burst.color
-    ctx.lineWidth = Math.max(1, 2.4 * (1 - progress) * zoom)
+    ctx.lineWidth = Math.max(1.6, 3.2 * fade * zoom)
     ctx.beginPath()
     ctx.arc(center.x, center.y, radius, 0, Math.PI * 2)
     ctx.stroke()
 
+    /*
+     * Der Kranz: die Stuecke, in die der Gegner zerfaellt.
+     *
+     * Alle Kreise liegen in **einem** Pfad und werden in einem Zug gezogen. Das ist kein
+     * Geiz, sondern die einzige Fassung, die im Belastungsfall traegt: Ein eigener Strich je
+     * Kreis waere bei sechzehn Druckwellen mal vierzehn Stuecken auch zweihundert
+     * Streuungsdurchgaenge je Bild. Der Hof folgt trotzdem jedem einzelnen Kreis - die
+     * Streuung kennt die Form des Pfades, nicht die Zahl der Aufrufe.
+     *
+     * Der Versatz kommt aus dem Ort des Todes: Derselbe Zerfall sieht immer gleich aus,
+     * zwei nebeneinander aber nie gleich ausgerichtet. Zufall braucht es dafuer nicht, und
+     * das Zeichnen zieht ohnehin keinen (`core/rng.ts` gehoert der Simulation).
+     */
+    const nodes = Math.min(
+      DEATH_NODES_MAX,
+      Math.max(DEATH_NODES_MIN, Math.round(DEATH_NODES_MIN + burst.radius / 8)),
+    )
+    const phase = burst.pos.x * 0.11 + burst.pos.y * 0.17
+    const nodeRadius = DEATH_NODE_PX * (1 - 0.25 * progress) * zoom
+
+    ctx.beginPath()
+    for (let i = 0; i < nodes; i++) {
+      const angle = phase + (i / nodes) * Math.PI * 2
+      const x = center.x + Math.cos(angle) * radius
+      const y = center.y + Math.sin(angle) * radius
+      ctx.moveTo(x + nodeRadius, y)
+      ctx.arc(x, y, nodeRadius, 0, Math.PI * 2)
+    }
+    // Erst der weiche Aussenstrich, dann der heisse Kern auf derselben Kontur - dieselbe
+    // Roehre wie beim Gegner, nur zerrissen. Der Kern haelt laenger durch als der Ring:
+    // Das Stueck glueht noch, wenn die Welle schon verlaufen ist.
+    ctx.globalAlpha = fade
+    ctx.lineWidth = Math.max(1.4, 1.8 * zoom)
+    ctx.stroke()
+
+    ctx.strokeStyle = THEME.enemyCoreHot
+    ctx.shadowColor = THEME.enemyCoreHot
+    ctx.globalAlpha = Math.pow(fade, 0.4)
+    ctx.lineWidth = Math.max(1.5, 1.4 * zoom)
+    ctx.stroke()
+
+    ctx.strokeStyle = burst.color
+    ctx.shadowColor = burst.color
+
     if (hasSprite) {
-      // Das Bild laeuft ueber seine Lebensdauer genau einmal durch - es ist der Zerfall
-      // selbst, nicht eine Schleife, die zufaellig endet.
+      /*
+       * Das Bild laeuft ueber seine Lebensdauer genau einmal durch - es ist der Zerfall
+       * selbst, nicht eine Schleife, die zufaellig endet.
+       *
+       * Und es laeuft **ohne** Streuung. Nicht aus Geschmack: Der Blast am Wellenende setzt
+       * Druckwellen mit Radius 660, das Bild misst davon das Neunfache, und eine Streuung
+       * auf einer Flaeche dieser Groesse laesst das Bild von 1,2 auf 48 Millisekunden
+       * fallen - nachgemessen im Belastungsfall mit sechzehn gleichzeitigen Druckwellen.
+       * Der Effekt, der den Abschuss feiern soll, wuerde das Spiel genau in dem Augenblick
+       * anhalten, in dem am meisten stirbt. Verloren geht dabei nichts: Das Leuchten steckt
+       * im Bild selbst, und der Hof des Ereignisses steht schon unter ihm.
+       */
+      ctx.shadowBlur = 0
       ctx.globalAlpha = 1
       drawFrame(
         ctx,
@@ -1299,7 +2271,7 @@ export function drawBursts(
         0,
         center.x,
         center.y,
-        burst.radius * 4.5 * zoom,
+        burst.radius * DEATH_SPRITE_SCALE * zoom,
       )
     }
   }
@@ -1345,6 +2317,145 @@ export function drawGains(
 }
 
 /**
+ * Schadenszahlen ueber dem Feld (GDD 13 Abschnitt 10).
+ *
+ * Sie sind die Rueckmeldung, ohne die ein Turm-Upgrade eine Behauptung im Menue bleibt: Man
+ * sieht am Einschlag, **wie viel** er gebracht hat, und nicht nur, dass ein Balken kuerzer
+ * wird. Bis zu vierundsechzig stehen gleichzeitig - das ist viel Text ueber einem Bild, das
+ * lesbar bleiben soll. Drei Griffe halten ihn im Zaum, und jeder loest ein anderes Problem:
+ *
+ *   *Kuerze*      Jede Zahl laeuft ueber `formatNumber` und ist damit hoechstens sieben
+ *                 Zeichen lang - "111.5K" statt "111543". Ohne die Abkuerzung waere eine
+ *                 Zahl in der spaeten Wellenhoehe breiter als die Station.
+ *
+ *   *Kontur*      Eine harte schwarze Linie unter jeder Glyphe. Sie ist der Grund, warum die
+ *                 Zahl ueber einem Gegner, einem Muenzstapel und dem hellen Kern gleich gut
+ *                 lesbar ist. Ein Kasten darunter taete dasselbe und deckte das Feld zu.
+ *
+ *   *Rangfolge*   Nur **zwei** Zahlen tragen diese Kontur und volle Deckkraft. Alle uebrigen
+ *                 stehen unbunt und blass dahinter. Damit hat das Bild einen Vordergrund -
+ *                 das, was gerade eben passiert ist - und einen Hintergrund, der sagt, dass
+ *                 es weitergeht. Ohne diese zwei Stufen waeren zwanzig gleich helle Zahlen
+ *                 ein Teppich, in dem keine mehr etwas bedeutet.
+ *
+ * Ueber die zwei Plaetze entscheidet nicht `seq` allein, sondern das Paar (`crit`, `seq`).
+ * Nach dem Alter allein fiel ausgerechnet der kritische Treffer zurueck, sobald danach ein
+ * paar gewoehnliche Ticks einschlugen - und der Krit ist die einzige Zahl, die eine
+ * Entscheidung des Spielers belohnt. Nachgemessen im Standbild von Welle 12: Die Zahl des
+ * Krits stand blass bei RGB(112,122,137) ueber Untergrund RGB(19,40,74), Kontrast 3,38:1 und
+ * ohne Kontur, waehrend zwei Ticks von je 3 Schaden in Weiss mit schwarzer Kontur davor
+ * lagen. Ein Ausreisser, den man suchen muss, ist keiner.
+ *
+ * Deshalb: Solange ein kritischer Treffer lebt, haelt er einen der beiden Plaetze - bei
+ * mehreren der juengste von ihnen. Der zweite Platz geht an die juengste Zahl ueberhaupt.
+ * Ohne Krit im Bild sind es wie bisher die zwei juengsten. Es bleiben in jedem Fall genau
+ * zwei.
+ *
+ * Das Alter kommt aus `seq` und nicht aus `age`: Zwei Zahlen desselben Ticks haben dasselbe
+ * Alter, aber nie dieselbe laufende Nummer.
+ *
+ * Gezeichnet wird in zwei Durchgaengen, damit die frischen oben liegen, ohne dass dafuer
+ * sortiert werden muesste - Sortieren hiesse, je Bild eine Liste anzulegen.
+ */
+export function drawDamageNumbers(
+  ctx: CanvasRenderingContext2D,
+  numbers: readonly DamageNumber[],
+  camera: Camera,
+  width: number,
+  height: number,
+): void {
+  const zoom = Math.max(0.6, camera.zoom)
+
+  // Ein Durchgang, drei Zahlen: die beiden juengsten und der juengste lebende Krit. Mehr
+  // braucht die Rangfolge nicht, und mehr als drei Vergleiche je Zahl kostet sie nicht.
+  let firstSeq = -1
+  let secondSeq = -1
+  let critSeq = -1
+  for (const number of numbers) {
+    if (!number.active) continue
+    if (number.crit && number.seq > critSeq) critSeq = number.seq
+    if (number.seq > firstSeq) {
+      secondSeq = firstSeq
+      firstSeq = number.seq
+    } else if (number.seq > secondSeq) {
+      secondSeq = number.seq
+    }
+  }
+  if (firstSeq < 0) return
+
+  // Die zwei Plaetze. Steht der Krit ohnehin schon vorn, bleibt alles wie gehabt; sonst
+  // verdraengt er die aeltere der beiden - die juengste Zahl behaelt ihren Platz.
+  let frontSeq = firstSeq
+  let backSeq = secondSeq
+  if (critSeq >= 0 && critSeq !== firstSeq && critSeq !== secondSeq) {
+    frontSeq = critSeq
+    backSeq = firstSeq
+  }
+
+  const size = Math.max(DAMAGE_SIZE_MIN, Math.round(DAMAGE_SIZE * zoom))
+  const sizeCrit = Math.round((size * DAMAGE_SIZE_CRIT) / DAMAGE_SIZE)
+  const fontPlain = `${size}px ${THEME.numberFont}`
+  const fontCrit = `${sizeCrit}px ${THEME.numberFont}`
+  // Die Kontur waechst mit der Schrift, nicht mit dem Zoom: Sie muss zur Strichbreite der
+  // Glyphe passen, und die haengt an der gesetzten Schriftgroesse.
+  const outlinePlain = DAMAGE_OUTLINE * size
+  const outlineCrit = DAMAGE_OUTLINE * sizeCrit
+
+  ctx.save()
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  // Kein Schein: Ein weicher Rand um die Glyphe hellte genau die Zwischenraeume auf, die
+  // die Kontur schwarz halten soll - der Schein hebt die Kontur auf.
+  ctx.shadowBlur = 0
+  ctx.lineJoin = 'round'
+  ctx.miterLimit = 2
+  ctx.strokeStyle = THEME.damageOutline
+
+  let font = ''
+  for (let pass = 0; pass < 2; pass++) {
+    const drawFresh = pass === 1
+    for (const number of numbers) {
+      if (!number.active) continue
+      const fresh = number.seq === frontSeq || number.seq === backSeq
+      if (fresh !== drawFresh) continue
+
+      const progress = Math.min(1, number.age / number.life)
+      // Schnell hoch, dann langsamer: Die Zahl springt ins Auge und legt sich hin -
+      // dieselbe Bewegung wie beim Gewinn, damit beide zusammengehoeren.
+      const eased = 1 - (1 - progress) * (1 - progress)
+      const point = worldToScreen(
+        camera,
+        {
+          x: number.pos.x + number.drift * DAMAGE_DRIFT * eased,
+          y: number.pos.y - DAMAGE_RISE * eased + ((number.seq % 3) - 1) * DAMAGE_STAGGER,
+        },
+        width,
+        height,
+      )
+
+      const next = number.crit ? fontCrit : fontPlain
+      if (next !== font) {
+        ctx.font = next
+        font = next
+      }
+
+      const faded = DAMAGE_FADED_ALPHA * Math.min(1, (1 - progress) / (1 - DAMAGE_HOLD))
+      ctx.globalAlpha = fresh ? 1 : faded
+      ctx.fillStyle = fresh ? THEME.damageFresh : THEME.damageFaded
+      writePixelText(
+        ctx,
+        t('hud.damage', { amount: formatNumber(Math.round(number.value)) }),
+        point.x,
+        point.y,
+        fresh ? (number.crit ? outlineCrit : outlinePlain) : 0,
+      )
+    }
+  }
+
+  ctx.restore()
+}
+
+/**
  * Kurzes Aufblitzen dort, wo Schaden ankam.
  *
  * Drei Faelle, drei Bilder - der Spieler soll am Einschlag sehen, was passiert ist, ohne
@@ -1370,6 +2481,20 @@ export function drawHits(
     const progress = Math.min(1, hit.age / hit.life)
     const center = worldToScreen(camera, hit.pos, width, height)
     const zoom = Math.max(0.6, viewZoom(camera))
+    const color = hit.kind === 'station' ? THEME.hitStation : THEME.hitEnemy
+
+    /*
+     * Der Einschlag leuchtet, statt gezeichnet zu sein.
+     *
+     * Ohne Streuung ist ein Treffer ein matter Strich mit harter Kante - ein Ring, der
+     * aussieht, als waere er mit dem Lineal gezogen worden, und in einem Bild aus
+     * brennenden Neonroehren wie ein Fremdkoerper wirkt. Der Hof ist genau das, was aus
+     * dem Strich einen **Aufschlag** macht: Energie, die an einer Stelle austritt.
+     *
+     * Er klingt mit dem Blitz aus. Ein Hof, der bleibt, waere ein Fleck.
+     */
+    ctx.shadowColor = color
+    ctx.shadowBlur = HIT_BLUR * (1 - progress * 0.7)
 
     const strip = hit.crit ? SPRITES.spark : SPRITES.impact
     if (hit.kind === 'enemy' && strip.ready()) {
@@ -1381,14 +2506,13 @@ export function drawHits(
         0,
         center.x,
         center.y,
-        (hit.crit ? 46 : 30) * zoom,
+        (hit.crit ? CRIT_SPRITE_PX : HIT_SPRITE_PX) * zoom,
       )
       continue
     }
 
     const scale = hit.crit ? 1.7 : 1
     const radius = (4 + progress * 12) * scale * zoom
-    const color = hit.kind === 'station' ? THEME.hitStation : THEME.hitEnemy
 
     ctx.globalAlpha = 1 - progress
     ctx.strokeStyle = color

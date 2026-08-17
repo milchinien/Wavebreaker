@@ -58,7 +58,7 @@ function rig(): GameState {
 function playedRun(): GameState {
   const state = rig()
   state.run.wave = 42
-  state.run.waveRecord = 57
+  state.run.waveRecords = [57]
   state.run.gold = 4321
   state.run.goldEarned = 98765
   state.run.towersBought = 6
@@ -192,7 +192,7 @@ export function prestigeSuite(): void {
     const state = rig()
     state.run.goldEarned = 0
     const at = (wave: number): number => {
-      state.run.waveRecord = wave
+      state.run.waveRecords = [wave]
       return prestigePoints(state)
     }
     // GDD 10 Abschnitt 5 nennt 5-10 / 50-100 / 500 als Richtwerte und die Formel
@@ -206,7 +206,7 @@ export function prestigeSuite(): void {
     const state = rig()
     state.run.goldEarned = 0
     const at = (wave: number): number => {
-      state.run.waveRecord = wave
+      state.run.waveRecords = [wave]
       return prestigePoints(state)
     }
     // Doppelte Welle muss mehr als das Doppelte bringen (GDD 10 Abschnitt 5).

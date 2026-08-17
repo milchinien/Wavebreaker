@@ -13,6 +13,8 @@ import {
   circumradius,
   edgesOf,
   EPS,
+  interiorAngle,
+  MAX_MODULE_SIDES,
   MODULE_SIDE,
   pointInPolygon,
   polygonAt,
@@ -24,8 +26,9 @@ import {
 import { dist, type Vec2 } from '../../core/vec.ts'
 import { START_CORE_ID, START_TOWER_SLOTS } from '../../data/balance.ts'
 import { CORES, coreById } from '../../data/cores.ts'
+import { RARITY_RANGE, rarityRank } from '../../data/rarities.ts'
 import { TOWERS, towerById } from '../../data/towers.ts'
-import type { Rarity } from '../../data/types.ts'
+import { FOOTPRINT_SIDES, type Rarity } from '../../data/types.ts'
 import {
   adjacency,
   canMove,
@@ -35,6 +38,7 @@ import {
   CORE_UID,
   createStation,
   detached,
+  fittingShapes,
   freeEdges,
   isConnected,
   moduleAt,
@@ -42,6 +46,7 @@ import {
   nearestFreeEdge,
   neighbors,
   newModule,
+  notchShapes,
   place,
   previewPolygon,
   remove,
@@ -53,7 +58,9 @@ import {
 } from '../../sim/station.ts'
 
 const ORIGIN: Vec2 = { x: 0, y: 0 }
-const SIDES = [3, 4, 5, 6] as const
+
+/** Erfragt statt aufgezaehlt - siehe die gleichlautende Stelle in `suites/geometry.ts`. */
+const SIDES = FOOTPRINT_SIDES
 
 function station(slots = 9): Station {
   return createStation(START_CORE_ID, slots)
@@ -144,13 +151,147 @@ export function stationSuite(): void {
     }
   })
 
+  /*
+   * Die Formleiter: mehr Kanten heisst staerkerer Turm (`data/towers.ts`).
+   *
+   * Geprueft wird sie gegen die Raritaetsuntergrenze, weil das die einzige Zahl im Spiel
+   * ist, die "wie stark ist diese Turmart" schon beantwortet - und die, die der Spieler als
+   * Rahmenfarbe vor sich hat. Buff-Tuerme sind ausgenommen: bei ihnen sind Kanten keine
+   * Staerke, sondern Funktion, und der Verstaerker faellt ab Common.
+   */
+  check('eine seltenere Turmart hat nie weniger Kanten als eine haeufigere', () => {
+    const ladder = TOWERS.filter((tower) => tower.category !== 'buff')
+    for (const rarer of ladder) {
+      for (const common of ladder) {
+        const floorRare = RARITY_RANGE[rarer.id]?.min
+        const floorCommon = RARITY_RANGE[common.id]?.min
+        if (!floorRare || !floorCommon) continue
+        if (rarityRank(floorRare) <= rarityRank(floorCommon)) continue
+        assert(
+          rarer.sides >= common.sides,
+          `${rarer.name} (${floorRare}+, ${rarer.sides} Kanten) hat weniger Kanten als ` +
+            `${common.name} (${floorCommon}+, ${common.sides} Kanten)`,
+        )
+      }
+    }
+  })
+
+  check('jede zugelassene Form liegt im 30-Grad-Raster', () => {
+    for (const sides of FOOTPRINT_SIDES) {
+      const angle = interiorAngle(sides)
+      assertClose(angle % 30, 0, 1e-9, `${sides}-Eck hat ${angle} Grad Innenwinkel`)
+    }
+  })
+
+  check('keine Form ist groesser als MAX_MODULE_SIDES', () => {
+    // Sonst nimmt die Grobpruefung in `polygonsOverlap` einen zu kleinen Umkreis an und
+    // laesst Module ineinander bauen, ohne dass irgendwo ein Fehler auftritt.
+    for (const sides of FOOTPRINT_SIDES) {
+      assert(sides <= MAX_MODULE_SIDES, `${sides}-Eck ist groesser als ${MAX_MODULE_SIDES}`)
+    }
+  })
+
+  /*
+   * Der eigentliche Beweis hinter der Formauswahl (Herleitung bei `FootprintSides`).
+   *
+   * Eine Ecke der Station schliesst sich, wenn die Innenwinkel der anliegenden Module 360
+   * Grad ergeben. Der Test baut alle Winkelsummen auf, die um einen Punkt herum ueberhaupt
+   * entstehen koennen, und fragt fuer jede: Laesst sich der Rest bis 360 aus denselben
+   * Formen wieder zusammensetzen?
+   *
+   * Bei 3, 4 und 6 lautet die Antwort ueberall ja - mit **einer** Ausnahme, den 30 Grad aus
+   * Quadrat neben Sechseck neben Sechseck (90 + 120 + 120 = 330). Diesem Rest kann der
+   * Spieler ausweichen. Kommt hier eine Form dazu, die das Raster verlaesst - ein Fuenfeck
+   * mit 108 Grad etwa -, wird aus der einen Ausnahme eine lange Liste, und der Test nennt
+   * sie. Genau das war der Zustand, in dem eine Station Restluecken hatte, an denen jede
+   * Karte die Sperrfarbe bekam.
+   */
+  check('nur eine einzige Restluecke bleibt unfuellbar - die 30 Grad', () => {
+    const angles = FOOTPRINT_SIDES.map(interiorAngle)
+
+    const reachable = new Set<number>([0])
+    let frontier = [0]
+    while (frontier.length > 0) {
+      const next: number[] = []
+      for (const sum of frontier) {
+        for (const angle of angles) {
+          const total = sum + angle
+          if (total > 360 || reachable.has(total)) continue
+          reachable.add(total)
+          next.push(total)
+        }
+      }
+      frontier = next
+    }
+
+    const unfillable = new Set<number>()
+    for (const sum of reachable) {
+      if (sum >= 360) continue
+      if (!reachable.has(360 - sum)) unfillable.add(360 - sum)
+    }
+
+    const listed = [...unfillable].sort((a, b) => a - b).join(', ')
+    assertEqual(
+      listed,
+      '30',
+      'unfuellbare Restluecken (Grad) - jede davon ist eine Ecke, in die der Spieler ' +
+        'nichts mehr setzen kann',
+    )
+  })
+
+  check('an einer frischen Station passt jede Form und es gibt keine Luecke', () => {
+    const st = station()
+    const shapes = fittingShapes(st)
+    for (const sides of FOOTPRINT_SIDES) {
+      assert(shapes.has(sides), `${sides}-Eck passt nicht einmal an den nackten Kern`)
+    }
+    assertEqual(notchShapes(st).size, 0, 'am nackten Kern nimmt jede Kante alles')
+  })
+
+  /*
+   * Die Luecke, um die es beim Bauen geht - und der Beweis, dass es sie wirklich gibt.
+   *
+   * Zwei Quadrate an benachbarte Kernkanten: An der geteilten Ecke stehen 120 + 90 + 90 =
+   * 300 Grad, es bleiben genau 60. Das ist der Innenwinkel des Dreiecks, also passt dort ein
+   * Dreieck **exakt** - und sonst nichts. Genau diese Lage soll sich gut anfuehlen, und
+   * genau sie beantwortet `notchShapes`.
+   */
+  check('zwischen zwei Quadraten bleibt ein Keil, in den nur ein Dreieck geht', () => {
+    const st = station()
+    place(st, give(st, 'cryo'), coreEdge(st, 0))
+    place(st, give(st, 'cryo'), coreEdge(st, 1))
+
+    assertEqual(towerById('cryo').sides, 4, 'der Test braucht ein Quadrat')
+    assertEqual([...notchShapes(st)].join(', '), '3', 'in den 60-Grad-Keil geht nur das Dreieck')
+  })
+
+  check('was fittingShapes zusagt, laesst canPlace auch zu', () => {
+    const st = station(12)
+    // Erst eckig werden lassen - an einer nackten Station passt trivial alles.
+    for (const defId of ['amplifier', 'autocannon', 'cannon', 'cryo']) {
+      const module = newModule(st, defId, 'common')
+      st.inventory.push(module)
+      const spot = freeEdges(st).find((edge) => canPlace(st, defId, edge) === null)
+      if (spot) place(st, module.uid, spot)
+    }
+
+    for (const sides of fittingShapes(st)) {
+      const def = TOWERS.find((tower) => tower.sides === sides)
+      assert(def !== undefined, `keine Turmart mit ${sides} Kanten`)
+      assert(
+        freeEdges(st).some((edge) => canPlace(st, def.id, edge) === null),
+        `${sides}-Eck gilt als passend, canPlace laesst es nirgends zu`,
+      )
+    }
+  })
+
   suite('core/geometry · Andocken')
 
   check('apothem(6) entspricht der Formel', () => {
     assertClose(apothem(6), (MODULE_SIDE * Math.sqrt(3)) / 2, 1e-9)
   })
 
-  check('ein angedocktes Modul enthaelt die Andockkante (n = 3..6)', () => {
+  check('ein angedocktes Modul enthaelt die Andockkante (n = 3, 4, 6)', () => {
     const core = corePoly()
     const edge = edgesOf(core)[0] as Edge
     for (const sides of SIDES) {
@@ -162,14 +303,14 @@ export function stationSuite(): void {
     }
   })
 
-  check('ein angedocktes Modul ist positiv orientiert (n = 3..6)', () => {
+  check('ein angedocktes Modul ist positiv orientiert (n = 3, 4, 6)', () => {
     const core = corePoly()
     for (const sides of SIDES) {
       assert(signedArea(attachedTo(sides, core, 0)) > 0, `${sides}-Eck`)
     }
   })
 
-  check('Beruehrung zaehlt nicht als Ueberlappung (n = 3..6)', () => {
+  check('Beruehrung zaehlt nicht als Ueberlappung (n = 3, 4, 6)', () => {
     const core = corePoly()
     for (const sides of SIDES) {
       assert(!polygonsOverlap(attachedTo(sides, core, 0), core), `${sides}-Eck`)
@@ -266,12 +407,59 @@ export function stationSuite(): void {
   })
 
   check('eine Platzierung in einen zu engen Keil wird abgelehnt', () => {
+    /*
+     * Der Keil aus zwei Quadraten an benachbarten Kernkanten: 120 + 90 + 90 = 300 Grad, es
+     * bleiben 60. Ein Sechseck braucht 120 und muss deshalb abgelehnt werden.
+     *
+     * Vorher stand hier dieselbe Lage mit zwei Autokanonen und einem Verstaerker. Die Lage
+     * gibt es nicht mehr: Die Autokanone ist heute ein Dreieck, damit bleiben 240 Grad, und
+     * das Sechseck passt hinein. Der Test hat also nicht die Ablehnung verloren - die Lage
+     * war nur keine enge mehr.
+     */
     const st = station(10)
-    place(st, give(st, 'autocannon'), coreEdge(st, 0))
-    place(st, give(st, 'autocannon'), coreEdge(st, 1))
-    // In den entstandenen Keil passt kein Fuenfeck mehr.
+    place(st, give(st, 'cryo'), coreEdge(st, 0))
+    place(st, give(st, 'cryo'), coreEdge(st, 1))
+
     const blocked = freeEdges(st).filter((e) => canPlace(st, 'amplifier', e) === 'overlap')
     assert(blocked.length > 0, 'keine einzige Kante wurde als overlap erkannt')
+
+    // Gegenprobe, und der eigentliche Sinn der Sache: Das Dreieck geht genau dort hinein.
+    assert(
+      blocked.some((e) => canPlace(st, 'autocannon', e) === null),
+      'in den 60-Grad-Keil muss ein Dreieck passen',
+    )
+  })
+
+  /*
+   * Was mit einem Spielstand von **vor** der Formumstellung passiert.
+   *
+   * Das Vieleck wird aus `sides` abgeleitet und nie gespeichert (Zustandsmodell im Kopf von
+   * `sim/station.ts`). Gespeichert ist nur Mittelpunkt und Drehung - und die stammen aus der
+   * alten Form: Der Verstaerker sass als Fuenfeck apothem(5) = 38,5 vor der Kernkante, als
+   * Sechseck braucht er 48,5. Sein Vieleck teilt die Andockkante damit nicht mehr, das Modul
+   * haengt an nichts, und `sanitizeStation` legt es zurueck ins Lager.
+   *
+   * Das gilt fuer **jede** geaenderte Turmart, weil sich mit der Kantenzahl immer auch das
+   * Apothem aendert: Ein alter Spielstand verliert seine Anordnung, aber keinen Turm. Und
+   * weil jedes geaenderte Modul zurueckgelegt wird, kann auch keine Ueberlappung
+   * ueberleben - die uebrigen Module sind unveraendert und waren vorher gueltig.
+   */
+  check('ein Spielstand mit alter Grundflaeche heilt sich beim Laden', () => {
+    const st = station()
+    const at = coreEdge(st, 0)
+    const uid = give(st, 'amplifier')
+    assertEqual(place(st, uid, at), null, 'erst regulaer setzen')
+
+    const module = st.placed.find((m) => m.uid === uid)
+    assert(module !== undefined, 'das Modul muss platziert sein')
+    module.placement = attachTo(5, at.edge) // die alte Fuenfeck-Lage
+
+    sanitizeStation(st)
+    assertEqual(st.placed.length, 0, 'das Modul muss den Verbund verlassen')
+    assert(
+      st.inventory.some((m) => m.uid === uid),
+      'und im Lager wieder auftauchen, nicht verschwinden',
+    )
   })
 
   check('das Platzlimit greift', () => {

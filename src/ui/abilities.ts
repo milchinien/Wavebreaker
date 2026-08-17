@@ -20,7 +20,7 @@ import { ABILITIES, type AbilityDef } from '../data/abilities.ts'
 import { t } from '../data/strings.ts'
 import { buyAbility, toggleAbilitySlot } from '../app/actions.ts'
 import type { GameState } from '../app/state.ts'
-import { isEquipped, isUnlocked, slotCount } from '../sim/abilities.ts'
+import { abilityUnlockCost, isEquipped, isUnlocked, slotCount } from '../sim/abilities.ts'
 import { abilityIcon, icon } from './icons.ts'
 
 export type AbilityPanel = {
@@ -75,7 +75,8 @@ function card(state: GameState, ability: AbilityDef, onChange: () => void): HTML
   const id = ability.id
   const unlocked = isUnlocked(state, id)
   const equipped = isEquipped(state, id)
-  const affordable = state.run.gold >= ability.unlockCost
+  const cost = abilityUnlockCost(ability)
+  const affordable = state.run.gold >= cost
 
   const button = document.createElement('button')
   button.type = 'button'
@@ -101,7 +102,7 @@ function card(state: GameState, ability: AbilityDef, onChange: () => void): HTML
     ? equipped
       ? t('abilities.equipped')
       : t('abilities.equip')
-    : t('hud.costs', { amount: formatNumber(ability.unlockCost) })
+    : t('hud.costs', { amount: formatNumber(cost) })
 
   button.append(head, text, foot)
   button.addEventListener('click', () => {

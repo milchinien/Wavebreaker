@@ -1,16 +1,19 @@
 /**
  * Symbole und Raritaetsrahmen der Oberflaeche.
  *
- * Quelle sind die Pixel-Symbole aus `assets/raw` - benutzt werden sie aber **als Maske**,
- * nicht als Bild: Die Datei liefert nur die Form, die Farbe kommt aus der Palette. Damit
- * traegt ein Symbol immer genau die Farbe seiner Bedeutung (Kern cyan, Station gold,
- * Verstaerker violett) und nicht die Farbe, die der Zeichner zufaellig gewaehlt hat.
+ * Die Symbole werden **als Maske** benutzt, nicht als Bild: Die Datei liefert nur die Form,
+ * die Farbe kommt aus der Palette. Damit traegt ein Symbol immer genau die Farbe seiner
+ * Bedeutung (Kern cyan, Station gold, Verstaerker violett) und nicht die Farbe, die der
+ * Zeichner zufaellig gewaehlt hat.
  *
- * Die Raritaetsrahmen dagegen kommen unveraendert aus dem Rahmensatz - sie sind bereits in
- * den fuenf Stufenfarben gezeichnet (GDD 13 Abschnitt 7).
+ * Die Raritaetsrahmen dagegen sind Bilder und tragen ihre Farbe selbst - sie sind in den
+ * fuenf Stufenfarben gezeichnet (GDD 13 Abschnitt 7).
  *
- * Benutzte Dateien liegen in `public/`, damit sie der Auslieferung beiliegen. `assets/raw`
- * bleibt die unangetastete Quelle.
+ * Beides liegt als Strichzeichnung in `public/icons/` und `public/frames/`, gezeichnet auf
+ * einem gemeinsamen Raster: gleiche Strichstaerke, gleiche Rundungen, gleicher Rand. Der
+ * gelieferte Anlagensatz enthaelt keinen Symbolsatz, der die Begriffe dieses Spiels trifft
+ * (`docs/anlagen.md`), und ein geborgtes Zeichen, das nur ungefaehr passt, kostet mehr als
+ * es einbringt: Wer eine Lupe fuer "Reichweite" sieht, liest sie als Suche.
  */
 
 import { TOWERS } from '../data/towers.ts'
@@ -32,8 +35,6 @@ export type IconName =
   | 'cannon'
   | 'amplifier'
   | 'boss'
-  // Aus der Game-UI-Sammlung (`docs/anlagen.md`) - klare Linienzeichen, die auch gross
-  // sauber bleiben. Die Pixel-Skillicons daneben zerfallen ueber 32 Pixel.
   | 'coin'
   | 'prev'
   | 'next'
@@ -42,32 +43,20 @@ export type IconName =
   | 'gear'
   | 'crosshair'
   | 'bullet'
-
-/**
- * Symbole, die aus der Game-UI-Sammlung stammen. Sie sind aus Vektoren gerechnet und
- * duerfen deshalb jede Groesse annehmen - die Pixel-Skillicons duerfen das nicht.
- */
-const SMOOTH: ReadonlySet<IconName> = new Set<IconName>([
-  'coin',
-  'prev',
-  'next',
-  'combat',
-  'base',
-  'gear',
-  'crosshair',
-  'bullet',
-])
+  /** Zwei Pfeile im Kreis - "diese Karte hat eine Rueckseite" (`ui/cards.ts`). */
+  | 'flip'
 
 /**
  * Ein Symbol als Baustein fuer `innerHTML`.
  *
- * Die Pixelvorlagen sind 32 Pixel breit; jede Groesse dazwischen zerlegt das Raster und
- * macht die Kanten weich. Deshalb rasten sie auf 16 oder 32 ein. Die glatten Zeichen aus
- * der Game-UI-Sammlung haben dieses Problem nicht und nehmen die Groesse, die dasteht.
+ * Alle Zeichen sind Strichzeichnungen auf demselben 24er-Raster (`public/icons/*.svg`) und
+ * nehmen deshalb die Groesse, die dasteht. Frueher standen hier Pixelvorlagen in gemischten
+ * Kantenlaengen - 24, 28 und 56 Pixel nebeneinander -, und weil ein Pixelbild nur bei ganzen
+ * Vielfachen sauber bleibt, rastete diese Funktion jede Groesse auf 16 oder 32. Zwei Zeichen
+ * derselben Zeile trugen damit verschiedene Strichstaerken und sassen verschieden hoch.
  */
 export function icon(name: IconName, size = 16): string {
-  const exact = SMOOTH.has(name) ? size : size >= 24 ? 32 : 16
-  return `<i class="pix" style="--icon:url('/icons/${name}.png');--pix-size:${exact}px"></i>`
+  return `<i class="pix" style="--icon:url('/icons/${name}.svg');--pix-size:${size}px"></i>`
 }
 
 /**
@@ -89,7 +78,7 @@ export function moduleTile(
   const frame = rarity ?? 'common'
   const color = tone ?? (rarity ? RARITY_COLOR[rarity] : PALETTE.edge)
   return (
-    `<span class="tile" style="--frame:url('/frames/${frame}.png');color:${color}">` +
+    `<span class="tile" style="--frame:url('/frames/${frame}.svg');color:${color}">` +
     `${icon(name, size)}</span>`
   )
 }

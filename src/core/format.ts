@@ -41,6 +41,24 @@ export function formatNumber(value: number): string {
   return `${sign}${shown.toFixed(1)}${SUFFIXES[tier]}`
 }
 
+/**
+ * Dieselbe Zahl, aber **ohne Nachkommastelle** unterhalb der Abkuerzungsschwelle.
+ *
+ * Fuer alles, was der Spieler als Menge liest und nicht als Messwert: Schaden ueber dem
+ * Feld, Huelle, Gold, Reichweite. "12 dmg" ist eine Aussage, "12.3 dmg" eine Behauptung von
+ * Genauigkeit, die in einem Spiel mit Zufallskritik niemandem hilft
+ * (`docs/upgrade-umbau.md` Abschnitt 3.3).
+ *
+ * Ab 10.000 aendert sich nichts: Dort kuerzt `formatNumber` ohnehin ab, und "12.5K" ist
+ * genau die Genauigkeit, die man auf dieser Groessenordnung noch lesen kann.
+ */
+export function formatInt(value: number): string {
+  if (!Number.isFinite(value)) return '-'
+  const n = Math.abs(value)
+  if (n >= ABBREVIATE_FROM) return formatNumber(value)
+  return (value < 0 ? '-' : '') + groupThousands(Math.round(n))
+}
+
 function groupThousands(value: number): string {
   const [whole = '0', fraction] = String(value).split('.')
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')

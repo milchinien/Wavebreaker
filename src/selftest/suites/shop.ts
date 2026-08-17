@@ -11,8 +11,9 @@
 
 import { assert, assertClose, assertEqual, check, suite } from '../../core/assert.ts'
 import { createRng } from '../../core/rng.ts'
-import { MELT_COST, TOWER_BASE_COST, TOWER_COST_FACTOR } from '../../data/balance.ts'
+import { GOLD_SCALE, MELT_COST, TOWER_BASE_COST, TOWER_COST_FACTOR } from '../../data/balance.ts'
 import { RARITY_CHANCE, rarityWeights, TRAIT_SLOTS } from '../../data/rarities.ts'
+import { towerById } from '../../data/towers.ts'
 import { traitById } from '../../data/traits.ts'
 import { RARITIES, type Rarity } from '../../data/types.ts'
 import { createInitialState, type GameState } from '../../app/state.ts'
@@ -28,7 +29,7 @@ import {
   takeTowerOffer,
   towerCost,
 } from '../../sim/shop.ts'
-import { newModule } from '../../sim/station.ts'
+import { CORE_UID, freeEdges, newModule, notchShapes, place } from '../../sim/station.ts'
 
 function rig(gold = 100000): GameState {
   resetStationViewCache()
@@ -69,25 +70,85 @@ export function shopSuite(): void {
 
   check('der Preis folgt Grundpreis x 1,5 je gekauftem Turm', () => {
     const state = rig()
+    const base = TOWER_BASE_COST * GOLD_SCALE
     for (const bought of [0, 1, 2, 3, 8]) {
       state.run.towersBought = bought
       assertEqual(
         towerCost(state),
-        Math.round(TOWER_BASE_COST * Math.pow(TOWER_COST_FACTOR, bought)),
+        Math.round(base * Math.pow(TOWER_COST_FACTOR, bought)),
         `nach ${bought} Kaeufen`,
       )
     }
   })
 
-  check('die Reihe entspricht der Tabelle des GDD', () => {
-    // GDD 06 Abschnitt 2 nennt 100 / 150 / 225 / 337.
+  check('die Reihe entspricht der Tabelle des GDD im Goldmassstab', () => {
+    /*
+     * GDD 06 Abschnitt 2 nennt 100 / 150 / 225 / 337. Verbindlich daran ist laut GDD der
+     * **Faktor 1,5**, nicht die Betraege - und die Betraege stehen seit dem Goldmassstab
+     * (`GOLD_SCALE`) ein Fuenftel tiefer. Geprueft wird deshalb beides getrennt: die Reihe
+     * gegen den gerechneten Grundpreis und der Faktor gegen die GDD-Zahlen.
+     */
     const state = rig()
     const seen: number[] = []
     for (let i = 0; i < 4; i++) {
       state.run.towersBought = i
       seen.push(towerCost(state))
     }
-    assertEqual(seen.join(','), '100,150,225,338', 'die letzte Stelle rundet auf statt ab')
+    assertEqual(seen.join(','), '20,30,45,68', 'die letzte Stelle rundet auf statt ab')
+
+    /*
+     * Die Toleranz ist keine Bequemlichkeit, sondern ausgerechnet: Der Preis wird im
+     * kleinen Massstab auf ganze Zahlen gerundet, eine halbe Einheit dort ist
+     * `0,5 / GOLD_SCALE` hier - dazu die halbe Einheit, um die das GDD selbst abrundet
+     * (337 statt 337,5).
+     */
+    const tolerance = 0.5 / GOLD_SCALE + 0.5
+    for (const [i, gdd] of [100, 150, 225, 337].entries()) {
+      assertClose(
+        (seen[i] as number) / GOLD_SCALE,
+        gdd,
+        tolerance,
+        `Stelle ${i} muss die GDD-Reihe treffen`,
+      )
+    }
+  })
+
+  /*
+   * Das Angebot bedient die Luecke (GDD 06 Abschnitt 1, `sim/shop.ts`).
+   *
+   * Aufgebaut wird die Lage aus GDD 03: zwei Quadrate an benachbarte Kernkanten, dazwischen
+   * ein 60-Grad-Keil, in den nur ein Dreieck geht. Der Startbestand kennt drei Turmarten -
+   * zwei Dreiecke und ein Sechseck -, ein freier Wurf zeigt also in etwa jedem neunten Fall
+   * zwei Sechsecke und damit nichts fuer den Keil. Ueber 200 Wuerfe darf das kein einziges
+   * Mal passieren.
+   */
+  check('jedes Angebot enthaelt eine Karte, die in eine offene Luecke passt', () => {
+    const state = rig()
+    const st = state.run.station
+    st.slots = 12
+
+    for (const edgeIndex of [0, 1]) {
+      const module = newModule(st, 'cryo', 'common')
+      st.inventory.push(module)
+      const edge = freeEdges(st).find(
+        (candidate) => candidate.ownerUid === CORE_UID && candidate.edgeIndex === edgeIndex,
+      )
+      assert(edge !== undefined, `Kernkante ${edgeIndex} muss frei sein`)
+      assertEqual(place(st, module.uid, edge), null, 'das Quadrat muss sich setzen lassen')
+    }
+
+    const notches = notchShapes(st)
+    assert(notches.size > 0, 'die aufgebaute Station muss eine Luecke haben')
+
+    const rng = createRng(4242)
+    for (let i = 0; i < 200; i++) {
+      const offer = rollTowerOffer(state, rng)
+      assert(offer.length > 0, `Wurf ${i} war leer`)
+      assert(
+        offer.some((card) => notches.has(towerById(card.defId).sides)),
+        `Wurf ${i}: ${offer.map((card) => card.defId).join(' + ')} passt in keine Luecke`,
+      )
+    }
   })
 
   check('der Preis steigt erst mit der Annahme, nicht mit dem Angebot', () => {

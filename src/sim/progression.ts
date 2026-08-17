@@ -244,7 +244,9 @@ export function perkStatBonus(state: GameState, key: StatKey): number {
   for (const id of state.run.perks) {
     if (!isKnownPerk(id)) continue
     const effect = perkById(id).effect
-    if (effect.kind === 'stat' && effect.stat === key) total += effect.amount
+    // Seit E7 laufen Perks durch dieselbe Union wie der Katalog. Ihr Ziel ist immer
+    // `modules` - Kern und Turrets zugleich -, deshalb braucht diese Summe kein Modul.
+    if (effect.kind === 'percent' && effect.stat === key) total += effect.amount
   }
   return total
 }
@@ -255,7 +257,7 @@ export function perkGlobalBonus(state: GameState, key: PerkGlobal): number {
   for (const id of state.run.perks) {
     if (!isKnownPerk(id)) continue
     const effect = perkById(id).effect
-    if (effect.kind === 'global' && effect.global === key) total += effect.amount
+    if (effect.kind === 'global' && effect.key === key) total += effect.amount
   }
   return total
 }

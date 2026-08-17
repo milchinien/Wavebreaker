@@ -9,6 +9,7 @@
  */
 
 import { computeBuffs, type BuffResult } from '../sim/buffs.ts'
+import { specialSum, ruleActive } from '../data/upgrades.ts'
 import { freeEdges, stationModules, type FreeEdge, type PlacedModule } from '../sim/station.ts'
 import type { GameState } from './state.ts'
 
@@ -30,7 +31,14 @@ export function stationView(state: GameState): StationView {
   cached = {
     modules,
     freeEdges: freeEdges(state.run.station),
-    buffs: computeBuffs(state.run.station),
+    // Der Buff-Kontext wird **hier** gebildet und nicht in `sim/buffs.ts`: Dort steht
+    // Geometrie, hier steht der Run. Weil die Sicht am Zaehler `runtime.revision` haengt,
+    // muss ein Upgrade-Kauf sie ungueltig machen - das tut `buyUpgrade`.
+    buffs: computeBuffs(state.run.station, {
+      power: specialSum(state.run.upgrades, 'buffPower'),
+      wide: ruleActive(state.run.upgrades, 'wideChorus'),
+      relay: specialSum(state.run.upgrades, 'supportNeighbourDamage'),
+    }),
     polys: modules.map((module) => module.poly),
   }
   cachedRevision = state.runtime.revision

@@ -22,9 +22,10 @@
 
 import type { GameState } from '../app/state.ts'
 import { stepAbilities } from './abilities.ts'
-import { dockedDamage, stepEffects, stepEnemyStates } from './combat.ts'
+import { dockedDamage, regenStation, stepEffects, stepEnemyStates } from './combat.ts'
 import { releaseStaleDocks, stepEnemies, stepEnemyAbilities } from './enemies.ts'
 import { maybeTriggerEvent, stepEvents } from './events.ts'
+import { pruneOverdrive, stepOverdrive } from './overdrive.ts'
 import { stepDrones } from './drones.ts'
 import { stepHelpers } from './helpers.ts'
 import { stepProgression } from './progression.ts'
@@ -50,9 +51,11 @@ export function syncStation(
 
   combat.modules = modules
   combat.buffs = buffs
-  // Nach einem Umbau mitten im Kampf zeigen Gegner und Nachladezeiten ins Leere.
+  // Nach einem Umbau mitten im Kampf zeigen Gegner, Nachladezeiten und laufende
+  // Overdrive-Zustaende ins Leere.
   releaseStaleDocks(state)
   pruneCooldowns(state)
+  pruneOverdrive(state)
 }
 
 export function stepBattle(state: GameState, dt: number): void {
@@ -100,6 +103,9 @@ export function stepBattle(state: GameState, dt: number): void {
   // diesem Takt toetet, soll die Station nicht mehr treffen.
   stepEnemyStates(state, dt)
   dockedDamage(state, dt)
+  // Erst der Schaden, dann die Reparatur: Wer in diesem Takt getroffen wird, soll den
+  // Treffer auch sehen, bevor die Huelle wieder anfaengt zuzuwachsen.
+  regenStation(state, dt)
 
   // Faellt die Stations-HP auf 0, beginnt dieselbe Welle erneut - ohne Verlust von
   // Tuermen oder Fortschritt (GDD 07 Abschnitt 13). Kein Game Over.
@@ -108,6 +114,9 @@ export function stepBattle(state: GameState, dt: number): void {
     return
   }
 
+  // Overdrive altert **vor** dem Schiessen: Ein Zustand, der in diesem Takt ablaeuft, soll
+  // den Schuss dieses Takts nicht mehr verstaerken.
+  stepOverdrive(state, dt)
   stepTowers(state, dt)
   stepDrones(state, dt)
   stepProjectiles(state, dt)

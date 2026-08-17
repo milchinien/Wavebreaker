@@ -16,10 +16,12 @@ import { loadSettings, saveSettings } from './app/settings.ts'
 import { createInitialState, markDirty } from './app/state.ts'
 import { invalidateStationView, stationView } from './app/view.ts'
 import { stepBattle, syncStation } from './sim/battle.ts'
-import { resetHints } from './sim/hints.ts'
+import { resetHints, settleHints } from './sim/hints.ts'
 import { simulateOffline } from './sim/offline.ts'
 import { availableSpeeds, syncUnlocks } from './sim/prestige.ts'
 import { startWave } from './sim/waves.ts'
+import { mountBoot } from './ui/boot.ts'
+import { mountCoinFlight } from './ui/coinflight.ts'
 import { mountHints } from './ui/hints.ts'
 import { mountHud } from './ui/hud.ts'
 import { mountOutcome } from './ui/outcome.ts'
@@ -36,7 +38,7 @@ import {
 import { render as renderScene } from './render/scene.ts'
 import { THEME } from './render/theme.ts'
 import { attachInput } from './ui/input.ts'
-import type { SettingsControls } from './ui/settings.ts'
+import { toggleMute, type SettingsControls } from './ui/settings.ts'
 import { mountShell, type ShellTargets } from './ui/shell.ts'
 import { runSelfTests, summarize } from './selftest/index.ts'
 
@@ -47,10 +49,38 @@ const dock = document.getElementById('dock')
 
 if (!app || !stage || !overlay || !dock) throw new Error('Buehne oder Bedienflaeche fehlt in index.html')
 
-if (new URLSearchParams(location.search).has('selftest')) {
+const query = new URLSearchParams(location.search)
+
+if (query.has('selftest')) {
   showSelfTestReport(stage, app)
 } else {
-  startGame(stage, { app, overlay, dock })
+  boot(stage, { app, overlay, dock })
+}
+
+/**
+ * Vor dem Spiel steht der Startbildschirm (`ui/boot.ts`).
+ *
+ * Er ist ein **Riegel**, keine Zwischenblende: `startGame` laeuft erst, wenn der Spieler
+ * gedrueckt hat. Liefe die Schleife schon dahinter, verginge die erste Welle, waehrend das
+ * Plakat noch steht - und die Abwesenheitsrechnung (`simulateOffline`) verbuchte eine Zeit,
+ * die der Spieler gerade zusieht.
+ *
+ * Die Bewegungsdaempfung wird hier **vorgezogen**. Sie steht sonst erst in `startGame`, und
+ * damit liefe der Startbildschirm als einziger Teil der Oberflaeche noch mit voller
+ * Bewegung - bei jemandem, der sie abbestellt hat, ausgerechnet als erstes Bild.
+ *
+ * `?noboot` ueberspringt ihn. Das ist fuer die Entwicklung: Wer eine Zeile aendert und neu
+ * laedt, will das Spiel sehen und nicht das Plakat - dieselbe Bauart wie `?debug`.
+ */
+function boot(canvas: HTMLCanvasElement, targets: ShellTargets): void {
+  applyMotion(targets.app, loadSettings().motion)
+
+  if (query.has('noboot')) {
+    startGame(canvas, targets)
+    return
+  }
+
+  mountBoot(targets.app, { onStart: () => startGame(canvas, targets) })
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +99,12 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
   // Nach dem Laden werden beide Sichten einmal gleichgezogen - ein Spielstand aus der Zeit
   // vor E13 kennt seine Freischaltungen sonst nicht.
   syncUnlocks(state)
+
+  // Dieselbe Bewegung fuer die Hinweisreihe: Was dieser Spielstand nachweislich hinter sich
+  // hat, gilt als gelernt. Ohne diese Zeile bekaeme ein Spielstand aus der Zeit vor den
+  // Hinweisen - oder einer mit leerem Merkzettel - auf Welle 40 die Anfaengerreihe von
+  // vorn vorgespielt. Nur nach dem Laden, nie im laufenden Spiel (siehe `settleHints`).
+  if (loaded) settleHints(state)
 
   const loop = createLoop({ tickRate: TICK_RATE })
 
@@ -97,7 +133,7 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
    * gesichert wird, ist der Regler, der bei einem Absturz verloren geht.
    */
   const preferences = loadSettings()
-  const audio = mountAudio(preferences.volume)
+  const audio = mountAudio(preferences.mix)
   applyMotion(targets.app, preferences.motion)
 
   const remember = (): void => saveSettings(preferences)
@@ -133,10 +169,10 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
       applyMotion(targets.app, on)
       remember()
     },
-    volume: () => preferences.volume,
-    setVolume(value) {
-      preferences.volume = value
-      audio.setVolume(value)
+    busLevel: (bus) => preferences.mix[bus],
+    setBusLevel(bus, value) {
+      preferences.mix = { ...preferences.mix, [bus]: value }
+      audio.setLevel(bus, value)
       remember()
     },
     resetHints: () => resetHints(state),
@@ -147,8 +183,26 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
   }
 
   const shell = mountShell(state, targets, controls)
-  const hud = mountHud(state, { overlay: targets.overlay }, controls)
+  // Der freie Platz in der Faehigkeitenschiene fuehrt dorthin, wo belegt wird. Den Weg
+  // kennt die Huelle, nicht das HUD - deshalb wird er hier gereicht.
+  const hud = mountHud(
+    state,
+    {
+      overlay: targets.overlay,
+      manageAbilities: () => shell.goTo('upgrades'),
+      openSettings: () => shell.goTo('settings'),
+    },
+    controls,
+  )
   const hints = mountHints(state, targets.overlay)
+  // Der Weg der Muenze endet erst im Goldschild, nicht unter dem Zeiger. Ziel und Einschlag
+  // werden beide gereicht statt gesucht - siehe `Hud.goldTarget` und `Hud.goldArrived`.
+  mountCoinFlight(
+    targets.overlay,
+    hud.goldTarget,
+    canvas.parentElement ?? targets.overlay,
+    hud.goldArrived,
+  )
   // Hängt sich an `prestige.done` und tut sonst nichts - wie der Klang ein Anschluss,
   // kein Einbau.
   mountSurge(targets.overlay)
@@ -212,7 +266,7 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
       return
     }
     if (event.key === 'b' || event.key === 'B') controls.setBuffLines(!controls.buffLines())
-    if (event.key === 'm' || event.key === 'M') controls.setVolume(controls.volume() > 0 ? 0 : 0.5)
+    if (event.key === 'm' || event.key === 'M') toggleMute(controls)
     if (event.key === 'f' || event.key === 'F') controls.resetCamera()
     if (event.key === '+') zoomBy(camera, 1.15)
     if (event.key === '-') zoomBy(camera, 1 / 1.15)
@@ -253,7 +307,7 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
       })
       stepCamera(camera, frameSeconds)
       hud.update(frameSeconds)
-      shell.update()
+      shell.update(viewTime)
       hints.update()
 
       devbar.update(
@@ -272,7 +326,12 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
   // Das Canvas loest kein Nachladen einer Schrift aus - es zeichnet mit dem, was da ist.
   // Ohne diesen Anstoss traegt der erste Muenzstapel die Ersatzschrift, bis das DOM die
   // Pixelschrift geholt hat. Fehlt die Schnittstelle, bleibt es bei der Ersatzschrift.
-  void document.fonts?.load(`16px ${THEME.numberFont.split(',')[0]}`)
+  //
+  // Der Fehlschlag wird **abgefangen**: Liegt die Schriftdatei nicht vor, meldet der Browser
+  // einen Netzfehler, und ein unbehandeltes Versprechen faerbt die Entwicklerkonsole rot -
+  // bei jedem Start und ohne dass irgendetwas kaputt waere. Eine fehlende Schrift ist ein
+  // hinnehmbarer Zustand, genau wie ein fehlendes Geraeusch (`app/audio.ts`).
+  void document.fonts?.load(`16px ${THEME.numberFont.split(',')[0]}`).catch(() => {})
 
   // Erster Bildaufbau ohne Fahrt: die Station steht sofort richtig im Bild.
   invalidateStationView(state)
@@ -286,6 +345,10 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
       state,
       camera,
       loop,
+      // Nur wegen `musicVoices()`: Ob mit Musik auf null wirklich nichts mehr laeuft, muss
+      // sich am **laufenden Spiel** nachsehen lassen und nicht nur an einer Messseite
+      // (`public/musikmessung.html`).
+      audio,
       shell,
       hud,
       size: () => ({ width: viewWidth, height: viewHeight }),

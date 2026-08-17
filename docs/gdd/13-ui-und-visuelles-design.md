@@ -274,17 +274,88 @@ Anschlusskanten — daran erkennt der Spieler, ob ein Buff-Turm überhaupt etwas
 
 ### Upgrade-Menü
 
-Zeigt den aktuellen Turm, seine Werte und seine Verbesserungen mit Stufe und Effekt:
+> **Neufassung vom 10.08.2026.** Hier stand eine Liste aus Zeilen mit Name, Stufe und
+> Prozentzahl. Sie beschrieb ein Menü mit einer Handvoll Pfaden; mit sechzig wird daraus eine
+> Tabelle, die niemand überfliegt. Der Katalog steht in `docs/upgrade-umbau.md`.
+
+Das Panel sitzt **dauerhaft unten in der Kampfansicht** — Verbessern ist die Handlung, die
+der Spieler während einer Welle ständig ausführt, und sie soll keinen Bereichswechsel kosten.
+
+#### Das Raster
+
+**Zwei Reihen zu zehn, und niemals eine Rollleiste.** Ein Menü, in dem man scrollen muss, um
+zu sehen, was es gibt, ist kein Ladenregal, sondern eine Liste — und die Frage „was kann ich
+mir gerade leisten?" beantwortet man nur mit einem Blick auf alles.
+
+Die Spaltenzahl steht fest, die Kachelgröße geht mit der Fensterbreite mit. Unterschreitet
+sie 44 px, bricht das Raster auf fünf Spalten und vier Reihen um: Alle zwanzig bleiben
+sichtbar, nur die Form des Blocks ändert sich. Ein Bild, das man erkennt, ist mehr wert als
+eine Reihe, die man zählen kann.
+
+#### Die Kachel
+
+**Auf ihr steht nichts außer Bild und Rahmen.** Kein Wert, kein Preis, keine Stufe.
+
+Der Grund ist die Zahl der Kacheln: Zwanzig lassen einer Kachel rund achtzig Pixel Kante. Ein
+Name, ein Wert und ein Preis darin wären drei Zeilen Kleinstschrift nebeneinander — lesbar
+erst, wenn man nah herangeht, und dann liest man ohnehin nur eine. Ein Bild ist auf achtzig
+Pixeln genau richtig, und der Rahmen sagt in derselben Fläche noch, ob man kaufen kann.
+
+Fünf Zustände trägt der Rahmen:
+
+| Zustand | Rahmen | Bild |
+|---|---|---|
+| gesperrt | dunkel, geschlossen | Schattenriss |
+| kaufbar, zu teuer | schlicht, matt | gedimmt |
+| kaufbar, leistbar | leuchtet in der Farbe der **Art** | voll |
+| teilweise gekauft | dazu ein Fortschrittsbalken am unteren Rand | voll |
+| ausgekauft | **golden**, geschlossen | voll |
+
+Die Rahmenfarbe ist die **Art** des Upgrades (Endless, Extension, Charge, Directive) und
+nicht sein Ziel. Beim Überfliegen eines Fensters sucht man nicht „was trifft meine Türme",
+sondern „wo liegen die vier teuren Entscheidungen".
+
+#### Der Hinweis
+
+Er trägt alles, was von der Kachel verschwunden ist, und bei **jeder** Kachel in derselben
+Form:
 
 ```
-Schaden:        Level 5   +25%
-Angriffstempo:  Level 3   +15%
-Reichweite:     Level 4   +20%
+HAMMERFALL                              Endless
+Every core shot lands heavier.
+
+Per level     +2 dmg
+Total         +20 dmg
+Level         10
+Cost          $ 107
 ```
 
-Bereiche: Hauptturm · Türme · Fähigkeiten · Helfer (nur sichtbar, wenn freigeschaltet).
+Gezeigt wird der **Zuwachs**, nicht der Endwert. Der Endwert wäre ehrlicher, ist aber nur
+dort zu bilden, wo genau *ein* Wert gemeint ist — „alle Kinetic-Türme +4 %" hat je Turm einen
+anderen. Ein Hinweis, der bei einem Drittel der Kacheln eine Zeile wegließe, wäre schlechter
+als einer, der überall dasselbe sagt.
 
-Upgrade-Kategorien: Offensive (Schaden, Angriffstempo, Krit) · Projektil (Durchschuss, Abpraller, Geschwindigkeit) · Elementar (Feuer, Gift, Explosion) · Utility (Reichweite, Goldbonus, XP-Bonus).
+Die letzte Zeile nennt bei gesperrten Kacheln **den Grund**: fehlende Voraussetzung,
+gegenseitiger Ausschluss, verschlossenes Fenster oder fehlender Prestige-Knoten. „Kein Preis"
+nennt keinen davon.
+
+#### Die Reiterleiste
+
+Sechs Reiter links neben dem Panel:
+
+```
+[ Base ] [ Foundation ] [ Systems ] [ Doctrine ] [ 🔒 ] [ Prestige ]
+```
+
+- **Die vier Upgrade-Reiter *sind* die Kampfansicht.** Wer einen wählt, sieht oben das
+  Spielfeld und unten das gewählte Fenster. Ein eigener Knopf für den Kampf entfällt — er
+  wäre der Reiter „Kampfansicht ohne Upgrades".
+- Ein Fensterwechsel ist **kein Bereichswechsel**: Er tauscht die Kacheln, ohne dass die
+  Kamera ruckt oder Panels wandern.
+- **Gesperrte Fenster stehen sichtbar in der Leiste**, mit Schloss. Was man noch nicht hat,
+  muss man sehen können, sonst ist das Tor keine Belohnung, sondern eine Überraschung.
+- **Die Einstellungen** sitzen als Zahnrad in der Ressourcenzeile — sie sind der einzige
+  Bereich, den man während des Spiels nie braucht.
 
 ### Level-Up-Fenster
 

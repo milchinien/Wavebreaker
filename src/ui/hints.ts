@@ -68,7 +68,15 @@ export function mountHints(state: GameState, overlay: HTMLElement): HintPanel {
 
   return {
     update() {
+      /*
+       * Dass ein stehender Zettel nicht abgeloest wird, entscheidet die Reihe selbst
+       * (`sim/hints.ts`) und nicht diese Datei: Er haelt seinen Platz, bis er weggeklickt
+       * ist. Frueher stand die Regel hier - als Vergleich mit dem zuletzt gezeigten Satz -
+       * und galt damit nur fuer das Bild. Ein Hinweis, den man zweimal anfangen muss zu
+       * lesen, ist aber kein Anzeigefehler, sondern einer in der Reihe.
+       */
       const hint = pendingHint(state)
+
       const id = hint?.id ?? ''
       if (id === shownId) return
       shownId = id

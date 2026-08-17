@@ -28,9 +28,15 @@ import {
   polygonAt,
   signedArea,
 } from '../../core/geometry.ts'
+import { FOOTPRINT_SIDES } from '../../data/types.ts'
 
 const ORIGIN: Vec2 = { x: 0, y: 0 }
-const SIDES = [3, 4, 5, 6] as const
+
+/**
+ * Die zugelassenen Formen werden **erfragt**, nicht aufgezaehlt: Sonst prueft diese Datei
+ * nach dem Freigeben einer Form weiter die alte Liste, und das faellt niemandem auf.
+ */
+const SIDES = FOOTPRINT_SIDES
 
 export function geometrySuite(): void {
   suite('core/vec')

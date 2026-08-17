@@ -51,6 +51,19 @@ export type BuffResult = {
   raw: Partial<Record<StatKey, number>>
   /** Tatsaechlich wirksame Boni **nach** dem Deckel. */
   applied: Partial<Record<StatKey, number>>
+  /**
+   * Fester Schadenszuschlag aus der Nachbarschaft (`Relay`).
+   *
+   * Er steht **neben** `applied` und nicht darin, weil er anders wirkt: `applied` sind
+   * Anteile und werden multipliziert, dies ist ein Betrag und wird addiert - und zwar
+   * **vor** den Anteilen, wie ueberall sonst in der Kette. Ohne das eigene Feld muesste
+   * `applyBuffs` raten, was eine Zahl bedeutet.
+   *
+   * Er kommt nicht vom Verstaerker, sondern von **jedem** Support-Modul: Schildgenerator und
+   * Drohnenbucht geben ihn ebenso. Genau das macht `Relay` zu einem Upgrade, das die
+   * Bauform belohnt statt eines Turms.
+   */
+  flatDamage: number
   /** Werte, die am Deckel haengen - die Anzeige soll das zeigen. */
   capped: StatKey[]
   sources: BuffSource[]
@@ -71,7 +84,50 @@ export function displayName(module: PlacedModule): string {
   return module.kind === 'core' ? coreById(module.defId).name : towerById(module.defId).name
 }
 
-export function computeBuffs(station: Station): Map<string, BuffResult> {
+/**
+ * Was der Upgrade-Katalog zu den Buffs beitraegt (`docs/upgrade-umbau.md` Abschnitt 9.3).
+ *
+ * Bewusst ein **schmaler Satz Zahlen** und nicht der `GameState`: Diese Datei rechnet
+ * Geometrie und hat mit einem laufenden Run nichts zu tun. Die Selbsttests bauen Stationen
+ * ohne Spielstand, und das soll so bleiben - wer hier den ganzen Zustand hereinreicht, macht
+ * aus einer Geometriefunktion eine Spielfunktion.
+ */
+export type BuffContext = {
+  /** `Choir`: Zuschlag auf die Staerke jedes Verstaerkers, additiv zu seinen Eigenschaften. */
+  power: number
+  /** `Wide Chorus`: Verstaerker erreichen auch die Nachbarn ihrer Nachbarn. */
+  wide: boolean
+  /** `Relay`: fester Schaden, den jedes Support-Modul jedem Nachbar-Turret gibt. */
+  relay: number
+}
+
+const NO_CONTEXT: BuffContext = { power: 0, wide: false, relay: 0 }
+
+/**
+ * Wen ein Verstaerker erreicht.
+ *
+ * Ohne `Wide Chorus` sind das seine Kantennachbarn - die Regel aus GDD 03 Abschnitt 9, an
+ * der sich die ganze Bauform entscheidet. Mit dem Directive kommen deren Nachbarn dazu,
+ * aber **nicht weiter**: Eine Reichweite, die sich durch die ganze Station fortsetzt, waere
+ * am Bild nicht mehr ablesbar, und die Bauform verloere ihren Sinn.
+ */
+function reachOf(adj: Map<string, string[]>, uid: string, wide: boolean): string[] {
+  const direct = adj.get(uid) ?? []
+  if (!wide) return direct
+
+  const reached = new Set(direct)
+  for (const neighbour of direct) {
+    for (const second of adj.get(neighbour) ?? []) {
+      if (second !== uid) reached.add(second)
+    }
+  }
+  return [...reached]
+}
+
+export function computeBuffs(
+  station: Station,
+  ctx: BuffContext = NO_CONTEXT,
+): Map<string, BuffResult> {
   const modules = stationModules(station)
   const adj = adjacency(station)
   const results = new Map<string, BuffResult>()
@@ -86,7 +142,29 @@ export function computeBuffs(station: Station): Map<string, BuffResult> {
       neighborCount: (adj.get(module.uid) ?? []).length,
       edgeCount: module.sides,
       boosted: 0,
+      flatDamage: 0,
     })
+  }
+
+  /*
+   * `Relay` (`data/upgrades.ts`): Jedes **Support-Modul** gibt jedem Kantennachbarn, der
+   * kein Support-Modul ist, festen Schaden.
+   *
+   * Es laeuft ueber die Kategorie und nicht ueber die Turmklasse: Gefragt ist, was auf dem
+   * Feld steht und nicht schiesst - Verstaerker, Schildgenerator, Drohnenbucht. Genau
+   * dieselbe Abgrenzung benutzt der Buff selbst eine Schleife weiter unten.
+   */
+  if (ctx.relay > 0) {
+    for (const module of modules) {
+      const category = categoryOf(module)
+      if (category !== 'buff' && category !== 'support') continue
+      for (const targetUid of adj.get(module.uid) ?? []) {
+        const target = modules.find((m) => m.uid === targetUid)
+        if (!target || categoryOf(target) === 'buff' || categoryOf(target) === 'support') continue
+        const result = results.get(targetUid)
+        if (result) result.flatDamage += ctx.relay
+      }
+    }
   }
 
   // Buff-Module wirken auf ihre Kantennachbarn - aber nie auf andere Buff-Module.
@@ -100,10 +178,10 @@ export function computeBuffs(station: Station): Map<string, BuffResult> {
     // Die Raritaet als Faktor, die Eigenschaften additiv obendrauf: dieselbe Ordnung wie
     // bei Kampfwerten, wo die Raritaet die Grundwerte skaliert und alles Weitere aufsetzt.
     const strength =
-      (module.rarity ? RARITY_MULT[module.rarity] : 1) * (1 + buffPowerOf(module))
+      (module.rarity ? RARITY_MULT[module.rarity] : 1) * (1 + buffPowerOf(module) + ctx.power)
     let boosted = 0
 
-    for (const targetUid of adj.get(module.uid) ?? []) {
+    for (const targetUid of reachOf(adj, module.uid, ctx.wide)) {
       const target = modules.find((m) => m.uid === targetUid)
       if (!target || categoryOf(target) === 'buff') continue
 

@@ -91,14 +91,20 @@ Starke Builds entstehen durch Kombination:
 
 ## 4. Perks vs. Upgrades
 
-| | Turm-Upgrade | Level-Perk |
+| | Upgrade | Level-Perk |
 |---|---|---|
-| Erwerb | mit Gold gekauft | bei Levelaufstieg gewählt |
-| Zufall | keiner | zufällige Auswahl |
-| Wirkung | ein bestimmter Turm | die gesamte Basis / der ganze Run |
-| Beispiel | +20 % Schaden für ein Maschinengewehr | alle Türme +10 % Schaden |
+| Erwerb | mit Gold **gekauft** | bei Levelaufstieg **gewählt** |
+| Zufall | keiner | zufällige Auswahl aus drei |
+| Wirkung | ein Ziel: Core, eine Turmart, eine Klasse, die Station | **alle Module** zugleich |
+| Beispiel | *Warhead* — alle Kinetic-Türme +4 % Schaden | *Damage +8 %* — Core und alle Turrets |
 
 Beide Systeme existieren gleichzeitig und ergänzen sich.
+
+> **Seit dem Upgrade-Umbau (10.08.2026) beschreiben beide ihre Wirkung in derselben Form.**
+> Ein Perk ist damit technisch ein Upgrade ohne Preis, das auf *alle Module* zielt — und der
+> Unterschied steht nur noch dort, wo er hingehört: gekauft gegen gewählt. Praktisch heißt
+> das, dass ein Perk künftig auch eine Turmklasse heben oder einen Sonderwert wie die
+> Overdrive-Dauer verlängern kann; mit der alten Perk-Form war beides nicht ausdrückbar.
 
 ---
 

@@ -23,11 +23,12 @@
 
 import { emit } from '../core/events.ts'
 import { abilityById, isKnownAbility, type AbilityDef } from '../data/abilities.ts'
-import { MAX_ABILITY_SLOTS } from '../data/balance.ts'
+import { GOLD_SCALE, MAX_ABILITY_SLOTS } from '../data/balance.ts'
 import type { StatKey } from '../data/types.ts'
 import { spendGold } from '../app/rewards.ts'
 import { markDirty, type GameState } from '../app/state.ts'
 import { blastEnemies } from './combat.ts'
+import { hasRule } from './stats.ts'
 import { CORE_CENTER } from './station.ts'
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,17 @@ export function slotCount(state: GameState): number {
 }
 
 /**
+ * Was das Freischalten kostet - `unlockCost` im Goldmassstab (GDD 09 Abschnitt 7).
+ *
+ * Sie steht hier und nicht in `data/abilities.ts`, damit Kauf und Anzeige **dieselbe**
+ * Zahl bekommen: Ein Preisschild, das den Rohwert zeigt, waehrend abgebucht wird, waere
+ * der schlimmste denkbare Fehler an dieser Stelle.
+ */
+export function abilityUnlockCost(def: AbilityDef): number {
+  return Math.max(1, Math.round(def.unlockCost * GOLD_SCALE))
+}
+
+/**
  * Freischalten gegen Gold (GDD 09 Abschnitt 7). Gibt `false` zurueck, wenn die Faehigkeit
  * unbekannt ist, schon freigeschaltet ist oder das Gold nicht reicht - dann aendert sich
  * nichts.
@@ -58,7 +70,8 @@ export function unlockAbility(state: GameState, id: string): boolean {
   if (!isKnownAbility(id) || isUnlocked(state, id)) return false
 
   const def = abilityById(id)
-  if (!spendGold(state, def.unlockCost)) return false
+  const cost = abilityUnlockCost(def)
+  if (!spendGold(state, cost)) return false
 
   state.run.abilities.push(id)
   // Der erste freigeschaltete Zauber wandert gleich auf einen freien Slot. Sonst haette
@@ -66,7 +79,7 @@ export function unlockAbility(state: GameState, id: string): boolean {
   if (state.run.equipped.length < slotCount(state)) state.run.equipped.push(id)
 
   markDirty(state)
-  emit('ability.unlocked', { id, cost: def.unlockCost })
+  emit('ability.unlocked', { id, cost })
   return true
 }
 
@@ -134,7 +147,10 @@ export function activateAbility(state: GameState, id: string): boolean {
   const def = abilityById(id)
   const runtime = state.runtime.abilities
 
-  runtime.cooldowns.set(id, def.cooldown)
+  // `Ascendant` halbiert die Abklingzeit (`data/upgrades.ts`). Sie wird beim **Zuenden**
+  // festgelegt und nicht beim Ablaufen: Wer das Directive mitten in einer laufenden
+  // Abklingzeit kauft, wartet diese noch aus - danach gilt es.
+  runtime.cooldowns.set(id, hasRule(state, 'ascendant') ? def.cooldown / 2 : def.cooldown)
   if (def.duration > 0) runtime.active.set(id, def.duration)
 
   applyInstant(state, def)

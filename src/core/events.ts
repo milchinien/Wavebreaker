@@ -37,15 +37,39 @@ export type EventMap = {
   'station.destroyed': { wave: number }
   /** Ein Modul hat geschossen. Jeder Schuss wird gemeldet - der Klang duennt sich selbst aus. */
   'tower.fired': { uid: string; defId: string; crit: boolean }
+  /**
+   * Ein Gegner hat Schaden genommen. Gemeldet wird, was **angekommen** ist - nach Schild
+   * und nach dem kritischen Zuschlag; genau diese Zahl steht auch ueber dem Feld.
+   *
+   * Schaden ueber Zeit meldet sich hier **nicht**: Eine Verbrennung tickt sechzigmal je
+   * Sekunde, und sechzig Meldungen fuer einen einzigen Flammentreffer waeren keine
+   * Auskunft mehr, sondern Rauschen (`DamageFlags.overTime` in `sim/combat.ts`).
+   */
+  'enemy.damaged': { amount: number; crit: boolean; x: number; y: number }
   /** `x`/`y` ist der Ort des Todes - der Klang soll spaeter von dort kommen koennen. */
   'enemy.killed': { defId: string; gold: number; xp: number; x: number; y: number }
   'gold.spent': { amount: number }
-  'gold.collected': { amount: number }
+  /**
+   * `coins` ist die Zahl der aufgehobenen Muenzen, nicht der Betrag: Die Anzeige laesst
+   * genau so viele ins Goldschild fliegen, wie der Spieler eben vom Feld genommen hat.
+   */
+  'gold.collected': { amount: number; coins: number }
   'upgrade.bought': { path: string; level: number; cost: number }
   'wave.autoModeChanged': { on: boolean }
   'boss.spawned': { wave: number }
   /** Der Boss dieser Welle ist gefallen - eigene Zaesur, nicht nur ein Gegner weniger. */
   'boss.killed': { wave: number }
+
+  /**
+   * Der Spieler hat die Liga gewechselt (docs/liga-system.md Abschnitt 4.3).
+   *
+   * `from` und `to` stehen beide dabei, weil ein Wechsel nach oben und einer nach unten
+   * verschiedene Ereignisse fuer Auge und Ohr sind - und der Empfaenger die Richtung nicht
+   * aus dem Spielstand nachschlagen koennen soll, den es beim Melden schon nicht mehr gibt.
+   */
+  'league.changed': { from: number; to: number; wave: number }
+  /** Eine neue Liga steht offen. Faellt genau einmal je Liga. */
+  'league.unlocked': { league: number }
 
   /** Eine Stufe ist erreicht. Wird je Stufe einmal gemeldet, auch wenn mehrere zugleich fallen. */
   'level.up': { level: number }
@@ -98,6 +122,82 @@ export type EventMap = {
 }
 
 export type EventName = keyof EventMap
+
+/**
+ * Dieselben Namen noch einmal - diesmal zur Laufzeit.
+ *
+ * `EventMap` ist ein Typ und damit nach dem Uebersetzen verschwunden. Wer wissen will, ob
+ * **jedes** Ereignis irgendwo ankommt, braucht die Namen aber als Werte: Ohne diese Liste
+ * kann keine Pruefung ueber alle Ereignisse laufen, und ein Ereignis, das niemand hoert,
+ * faellt genau deshalb nie auf - es fehlt ja nichts, es passiert nur nichts.
+ *
+ * Die Liste kann nicht veralten. Fehlt hier ein Name aus `EventMap`, schlaegt
+ * {@link eventListIsComplete} beim Uebersetzen fehl; steht hier ein Name zu viel, schlaegt
+ * das `satisfies` fehl. Beides ist ein Typfehler und keine Frage der Aufmerksamkeit.
+ */
+export const EVENT_NAMES = [
+  'loop.speedChanged',
+  'reward.granted',
+  'save.written',
+  'save.loaded',
+  'save.cleared',
+  'save.corrupt',
+  'view.changed',
+  'module.placed',
+  'module.moved',
+  'module.removed',
+  'wave.started',
+  'wave.cleared',
+  'wave.lost',
+  'station.damaged',
+  'station.destroyed',
+  'tower.fired',
+  'enemy.damaged',
+  'enemy.killed',
+  'gold.spent',
+  'gold.collected',
+  'upgrade.bought',
+  'wave.autoModeChanged',
+  'boss.spawned',
+  'boss.killed',
+  'league.changed',
+  'league.unlocked',
+  'level.up',
+  'perk.chosen',
+  'ability.unlocked',
+  'ability.equipped',
+  'ability.activated',
+  'ability.ready',
+  'tower.offered',
+  'tower.bought',
+  'tower.melted',
+  'event.triggered',
+  'event.resolved',
+  'pod.dropped',
+  'pod.collected',
+  'trader.arrived',
+  'trader.opened',
+  'trader.bought',
+  'trader.left',
+  'hint.seen',
+  'offline.resolved',
+  'prestige.spent',
+  'prestige.nodeBought',
+  'prestige.done',
+] as const satisfies readonly EventName[]
+
+/** Was in {@link EVENT_NAMES} fehlt - im Idealfall nichts. */
+type UnlistedEvent = Exclude<EventName, (typeof EVENT_NAMES)[number]>
+
+/**
+ * Die Vollzaehligkeit als Zuweisung: Bleibt ein Ereignis ungenannt, ist der Typ auf der
+ * rechten Seite kein `true` mehr, und der Uebersetzer nennt den fehlenden Namen.
+ */
+const eventListIsComplete: UnlistedEvent extends never
+  ? true
+  : { fehltInEventNames: UnlistedEvent } = true
+void eventListIsComplete
+
 export type EventHandler<K extends EventName> = (payload: EventMap[K]) => void
 export type Unsubscribe = () => void
 

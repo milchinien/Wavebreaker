@@ -70,3 +70,64 @@ export function showTooltip(
 export function hideTooltip(): void {
   if (element) element.hidden = true
 }
+
+/**
+ * Einem Bedienelement eine Beschreibung geben, die beim Darueberfahren erscheint.
+ *
+ * Das ist der allgemeine Weg fuer alles, was **keine** Karte ist: Anzeigen in der Kopfleiste,
+ * Knoepfe der Navigation, Zahlen im HUD. Karten bringen ihre Auskunft auf der Rueckseite mit
+ * (`ui/cards.ts`), Anzeigen koennen das nicht - eine Zahl hat keine zweite Seite.
+ *
+ * Warum nicht einfach `title`: Der native Hinweis des Browsers kommt nach gut einer Sekunde,
+ * traegt die Schrift des Betriebssystems statt die des Spiels, laesst sich nicht gestalten
+ * und erscheint auf einem Finger-Geraet ueberhaupt nicht. Er wird hier deshalb **entfernt** -
+ * stuenden beide, saehe man nach einer Sekunde zwei Hinweise uebereinander.
+ *
+ * Der Text kommt entweder fest oder als Funktion. Die Funktion ist der Regelfall fuer alles,
+ * was sich aendert: Sie wird beim Darueberfahren ausgewertet, nicht beim Anmelden, und zeigt
+ * deshalb den Stand von jetzt statt den vom Aufbau des Bildschirms.
+ *
+ * Mehrfaches Anmelden am selben Knoten tauscht nur den Text - die Zuhoerer haengen einmal.
+ * Das ist die Voraussetzung dafuer, dass eine Anzeige, die sich je Bild neu beschriftet,
+ * nicht mit jedem Bild einen weiteren Zuhoerer ansammelt.
+ */
+const beschreibungen = new WeakMap<HTMLElement, () => string>()
+
+export function describe(node: HTMLElement, text: string | (() => string)): void {
+  const holen = typeof text === 'function' ? text : () => text
+  const erstmals = !beschreibungen.has(node)
+  beschreibungen.set(node, holen)
+
+  /*
+   * Der native Hinweis weicht - aber sein Text darf nicht verloren gehen. Traegt der Knoten
+   * ohnehin sichtbaren Text, ist er schon benannt; eine Marke obendrauf wuerde die
+   * Vorlesehilfe die Zahl darunter verschlucken lassen. Nur ein Knoten ohne eigenen Text
+   * bekommt die Beschreibung als Marke.
+   */
+  if (node.title) {
+    const stumm = node.textContent?.trim().length === 0
+    if (stumm && !node.getAttribute('aria-label')) node.setAttribute('aria-label', node.title)
+    node.removeAttribute('title')
+  }
+
+  if (!erstmals) return
+
+  const zeigen = (): void => {
+    const inhalt = beschreibungen.get(node)?.()
+    if (!inhalt) return
+    const box = node.getBoundingClientRect()
+    showTooltip({ x: box.left + box.width / 2, y: box.bottom }, inhalt, {
+      center: true,
+      clear: { top: box.top, bottom: box.bottom },
+    })
+  }
+
+  node.addEventListener('pointerenter', zeigen)
+  node.addEventListener('pointerleave', hideTooltip)
+  // Wer drueckt, hat sich entschieden - der Hinweis hat seine Arbeit getan und geht aus dem
+  // Weg. Ohne das bliebe er nach einem Klick unter dem stehenden Zeiger liegen.
+  node.addEventListener('pointerdown', hideTooltip)
+  // Mit der Tastatur bedient bekommt dieselbe Auskunft, wer nie einen Zeiger bewegt.
+  node.addEventListener('focus', zeigen)
+  node.addEventListener('blur', hideTooltip)
+}

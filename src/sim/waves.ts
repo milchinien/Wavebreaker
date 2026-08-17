@@ -11,11 +11,21 @@
 
 import { emit } from '../core/events.ts'
 import type { Rng } from '../core/rng.ts'
-import { markDirty, type GameState } from '../app/state.ts'
+import { grantReward } from '../app/rewards.ts'
+import {
+  leagueWaveOf,
+  markDirty,
+  raiseWaveRecord,
+  rememberLeagueWave,
+  waveRecord,
+  type GameState,
+} from '../app/state.ts'
 import {
   BOSS_WAVE_INTERVAL,
+  effectiveWave,
+  LEAGUE_ADVANCE_WAVE,
   MAX_SPEED_SCALE,
-  REWARD_SCALING,
+  rewardScaleFor,
   WAVE_BASE_COUNT,
   WAVE_COUNT_GROWTH,
   WAVE_DAMAGE_SCALING,
@@ -25,10 +35,12 @@ import {
   WAVE_SPEED_SCALING,
 } from '../data/balance.ts'
 import { enemiesForWave, type EnemyDef } from '../data/enemies.ts'
+import { MAX_LEAGUE } from '../data/leagues.ts'
 import { collapseStation } from './combat.ts'
 import { maybeMakeElite, releaseEnemy, spawnBoss, spawnEnemy } from './enemies.ts'
+import { resetOverdrive } from './overdrive.ts'
 import { releaseProjectile } from './projectiles.ts'
-import { maxStationHp } from './stats.ts'
+import { globalValue, maxStationHp } from './stats.ts'
 
 export type WaveSpawn = {
   defId: string
@@ -39,12 +51,24 @@ export type WaveSpawn = {
 }
 
 export type WavePlan = {
+  /** Die **angezeigte** Welle - die Zahl, die im HUD steht. */
   wave: number
+  /** Die Liga, in der diese Welle laeuft. */
+  league: number
+  /**
+   * Die Welle, mit der gerechnet wurde (`wave + Ligaversatz`).
+   *
+   * Steht im Plan, statt bei Bedarf neu gerechnet zu werden: Jeder, der eine Welle
+   * bewertet - Elitewurf, Ereignisbetrag, Bestwert -, braucht dieselbe Zahl, und zwei
+   * Rechenwege fuer denselben Wert sind ein Wert zu viel.
+   */
+  effectiveWave: number
   spawns: WaveSpawn[]
   /** Faktoren, mit denen die Grundwerte der Gegnerarten multipliziert werden. */
   hpScale: number
   damageScale: number
   speedScale: number
+  /** Enthaelt bereits den Ligafaktor - Gold und XP brauchen keinen zweiten Multiplikator. */
   rewardScale: number
 }
 
@@ -64,9 +88,19 @@ export function scaleFor(wave: number, factor: number): number {
 /**
  * Erzeugt den vollstaendigen Ablauf einer Welle. Rein - keine Nebenwirkung, kein Zugriff
  * auf den Spielzustand.
+ *
+ * Gerechnet wird mit der **effektiven** Welle (`data/balance.ts`), angezeigt die kleine.
+ * Liga 3 Welle 1 ergibt deshalb dieselben Skalen und dieselbe Gegnerauswahl wie Liga 1
+ * Welle 51 - bis auf zwei gewollte Ausnahmen:
+ *
+ *   - `enemyCount` folgt der **angezeigten** Welle. Sonst begaenne Liga 3 mit 83 Gegnern
+ *     statt mit 8, und die Welle 1 einer neuen Liga waere kein Anfang.
+ *   - `rewardScale` traegt zusaetzlich den Ligafaktor - er ist der einzige Grund
+ *     aufzusteigen (docs/liga-system.md Abschnitt 2.1).
  */
-export function buildWave(wave: number, rng: Rng): WavePlan {
-  const available = enemiesForWave(wave)
+export function buildWave(wave: number, league: number, rng: Rng): WavePlan {
+  const effective = effectiveWave(wave, league)
+  const available = enemiesForWave(effective)
   const count = enemyCount(wave)
   const spawns: WaveSpawn[] = []
 
@@ -85,11 +119,13 @@ export function buildWave(wave: number, rng: Rng): WavePlan {
 
   return {
     wave,
+    league,
+    effectiveWave: effective,
     spawns,
-    hpScale: scaleFor(wave, WAVE_SCALING),
-    damageScale: scaleFor(wave, WAVE_DAMAGE_SCALING),
-    speedScale: Math.min(MAX_SPEED_SCALE, scaleFor(wave, WAVE_SPEED_SCALING)),
-    rewardScale: scaleFor(wave, REWARD_SCALING),
+    hpScale: scaleFor(effective, WAVE_SCALING),
+    damageScale: scaleFor(effective, WAVE_DAMAGE_SCALING),
+    speedScale: Math.min(MAX_SPEED_SCALE, scaleFor(effective, WAVE_SPEED_SCALING)),
+    rewardScale: rewardScaleFor(effective, league),
   }
 }
 
@@ -121,25 +157,134 @@ function pickWeighted(candidates: readonly EnemyDef[], rng: Rng): EnemyDef {
  */
 export function startWave(state: GameState, wave: number): void {
   const combat = state.runtime.combat
+  const league = state.run.league
+  const effective = effectiveWave(wave, league)
 
   state.run.wave = wave
-  if (wave > state.run.waveRecord) state.run.waveRecord = wave
-  if (wave > state.permanent.bestWaveEver) state.permanent.bestWaveEver = wave
+  raiseWaveRecord(state, wave)
+  // Der Bestwert zaehlt **effektiv**: Welle 50 in Liga 8 ist ungleich weiter als Welle 50
+  // in Liga 1, und ein ligenblinder Bestwert waere keiner.
+  if (effective > state.permanent.bestWaveEver) state.permanent.bestWaveEver = effective
+  checkLeagueUnlock(state)
 
   clearField(state)
-  combat.plan = buildWave(wave, state.runtime.rng.fork(wave))
+  /*
+   * Der Zufall wird aus der **effektiven** Welle abgeleitet, nicht aus der angezeigten.
+   *
+   * Aus der angezeigten haetten Liga 1 Welle 12 und Liga 7 Welle 12 dieselbe
+   * Zusammensetzung und dieselben Anflugwinkel - bei gleichem Gegnervorrat (bis Welle 50
+   * gibt es ohnehin nur drei Arten) waere ein Ligenwechsel derselbe Kampf mit groesseren
+   * Zahlen.
+   *
+   * Aus der effektiven folgt beides richtig: Jede Liga wuerfelt eigene Wellen, und Liga 1
+   * bleibt Zeichen fuer Zeichen die von heute (`effectiveWave(w, 1) === w`) - ein
+   * bestehender Spielstand findet seine Wellen unveraendert vor. Dass Liga 2 Welle 1
+   * dieselbe Zusammensetzung hat wie Liga 1 Welle 26, ist kein Nebeneffekt, sondern genau
+   * die Aussage des Systems: Es **ist** dieselbe Welle.
+   */
+  combat.plan = buildWave(wave, league, state.runtime.rng.fork(effective))
   combat.spawnIndex = 0
   combat.timer = 0
   combat.phase = 'running'
   combat.killsThisWave = 0
   combat.bossId = null
   healStationFull(state)
+  // Jede Welle beginnt ohne laufenden Overdrive, und `Last Stand` darf wieder anschlagen.
+  resetOverdrive(state)
 
   // Der Boss erscheint sofort, waehrend die normalen Gegner weiter nachstroemen.
-  if (isBossWave(wave)) spawnBoss(state, wave)
+  if (isBossWave(wave)) spawnBoss(state, wave, effective)
 
   markDirty(state)
   emit('wave.started', { wave })
+}
+
+// ---------------------------------------------------------------------------
+// Ligensteuerung (docs/liga-system.md)
+// ---------------------------------------------------------------------------
+
+/*
+ * Die Liga steht hier und nicht in einer eigenen Datei, weil sie **die zweite Achse
+ * derselben Steuerung** ist: Welle vor und zurueck, Liga hoch und runter. Dieselben Regeln
+ * gelten fuer beide - vorwaerts nur bis zum Erreichten, zurueck immer.
+ *
+ * Eine eigene `sim/leagues.ts` haette `startWave` gebraucht und `startWave` sie - ein Kreis
+ * zwischen zwei Dateien fuer einen Begriff, der ohnehin hierher gehoert.
+ */
+
+/**
+ * Darf der Spieler diese Liga betreten?
+ *
+ * Die Antwort ist eine **Datenabfrage** auf `permanent.leagueUnlocked` und keine
+ * Verzweigung im Code (GDD 16 Abschnitt 2) - dieselbe Bauart wie `isUnlocked` im
+ * Prestige-Baum.
+ */
+export function canEnterLeague(state: GameState, league: number): boolean {
+  if (!Number.isInteger(league)) return false
+  return league >= 1 && league <= Math.min(MAX_LEAGUE, state.permanent.leagueUnlocked)
+}
+
+/**
+ * Auf welcher Welle diese Liga wieder beginnt.
+ *
+ * Nicht auf Welle 1, ausser man war nie dort: Ein Rueckweg, der einen bei Welle 1 absetzt,
+ * waere eine Strafe fuer das Zurueckgehen - und genau das soll es nicht sein
+ * (docs/liga-system.md Abschnitt 4.3).
+ */
+export function resumeWave(state: GameState, league: number): number {
+  if (league === state.run.league) return state.run.wave
+  return leagueWaveOf(state.run, league)
+}
+
+/**
+ * Die Liga wechseln (docs/liga-system.md Abschnitt 4.1).
+ *
+ * **Kein Reset, sondern ein Ortswechsel.** Tuerme, Lager, Gold, Level, Upgrades und
+ * Faehigkeiten bleiben unangetastet; nur die Welle beginnt neu. Deshalb steht hier auch
+ * keine Kostenrechnung und keine Sperre: Der Wechsel ist folgenlos und darf sich auch so
+ * anfuehlen.
+ *
+ * Selbstbegrenzend ist er trotzdem - wer zu hoch einsteigt, toetet nichts und bekommt
+ * folglich nichts. Eine Regel, die das verboete, waere eine Regel zuviel.
+ */
+export function enterLeague(state: GameState, league: number): boolean {
+  if (!canEnterLeague(state, league)) return false
+  const from = state.run.league
+  if (league === from) return false
+
+  // Erst merken, wo man geht - danach kennt `run.wave` nur noch die neue Liga.
+  rememberLeagueWave(state)
+  state.run.league = league
+
+  const wave = leagueWaveOf(state.run, league)
+  startWave(state, wave)
+  emit('league.changed', { from, to: league, wave })
+  return true
+}
+
+/**
+ * Die naechste Liga freischalten, sobald die Schwelle faellt.
+ *
+ * Zwei Bedingungen, und beide sind noetig:
+ *
+ *   - Der Rekord **dieser** Liga hat `LEAGUE_ADVANCE_WAVE` erreicht.
+ *   - Gespielt wird gerade die **hoechste** freigeschaltete Liga. Sonst schaltete ein Run
+ *     in Liga 2 die Liga 3 frei, obwohl der Spieler in Liga 5 laengst weiter ist - die
+ *     Leiter waere keine Leiter mehr.
+ *
+ * Freigeschaltet wird **einmal und dauerhaft** (`permanent`). Ob der Spieler wechselt,
+ * entscheidet er danach; diese Funktion oeffnet nur die Tuer.
+ */
+export function checkLeagueUnlock(state: GameState): boolean {
+  const league = state.run.league
+  if (league !== state.permanent.leagueUnlocked) return false
+  if (league >= MAX_LEAGUE) return false
+  if (waveRecord(state) < LEAGUE_ADVANCE_WAVE) return false
+
+  state.permanent.leagueUnlocked = league + 1
+  markDirty(state)
+  emit('league.unlocked', { league: league + 1 })
+  return true
 }
 
 // ---------------------------------------------------------------------------
@@ -159,25 +304,52 @@ export function setAutoMode(state: GameState, on: boolean): void {
 }
 
 /**
- * Vorwaerts nur bis zur hoechsten **in diesem Run** erreichten Welle - kein Sprung in
- * unerreichten Inhalt. Zurueck ist immer erlaubt: Es ist eine Sicherheitsoption, keine
- * Abkuerzung, denn die Belohnungen haengen an der gespielten Welle, nicht am Rekord.
+ * Vorwaerts nur bis zur hoechsten **in dieser Liga und in diesem Run** erreichten Welle -
+ * kein Sprung in unerreichten Inhalt. Zurueck ist immer erlaubt: Es ist eine
+ * Sicherheitsoption, keine Abkuerzung, denn die Belohnungen haengen an der gespielten
+ * Welle, nicht am Rekord.
+ *
+ * Je Liga, weil ein gemeinsamer Rekord den Sprung in einer neuen Liga sofort bis Welle 50
+ * erlaubte - also genau in den unerreichten Inhalt, den diese Regel fernhaelt.
  */
 export function canSkipTo(state: GameState, wave: number): boolean {
-  return wave >= 1 && wave <= state.run.waveRecord
+  return wave >= 1 && wave <= waveRecord(state)
 }
 
 export function nextWave(state: GameState): boolean {
   const target = state.run.wave + 1
   // Eine Welle weiter als der Rekord ist genau der naechste, noch ungespielte Schritt -
   // er ist erlaubt, sonst kaeme der Run nie voran.
-  if (target > state.run.waveRecord + 1) return false
+  if (target > waveRecord(state) + 1) return false
   startWave(state, target)
   return true
 }
 
 export function previousWave(state: GameState): boolean {
   const target = state.run.wave - 1
+  if (!canSkipTo(state, target)) return false
+  startWave(state, target)
+  return true
+}
+
+/**
+ * Auf eine beliebige Welle springen, statt sich Schritt fuer Schritt hinzuklicken.
+ *
+ * Die Erlaubnis ist **dieselbe** wie beim Schritt zurueck (`canSkipTo`) und nicht etwa eine
+ * grosszuegigere: Ein Sprung geht auf jede Welle, die dieser Run schon erreicht hat, und auf
+ * keine dahinter. Wer bei Rekord 40 steht, waehlt jede Zahl bis 40; die 41 gibt es nur,
+ * indem er die 40 spielt. Damit ist der Sprung genau das, was der Rueckweg auch ist - eine
+ * **Abkuerzung durch Bekanntes**, keine Abkuerzung in unbekannten Inhalt.
+ *
+ * Der Sonderfall "dieselbe Welle" wird abgewiesen und nicht durchgereicht. `startWave` heilt
+ * die Station voll, und ein Sprung auf die Zahl, die ohnehin dasteht, waere sonst eine
+ * Vollheilung mitten in der laufenden Welle - dafuer gibt es den Weg ueber die Nachbarwelle
+ * schon lange, aber er kostet wenigstens die Welle.
+ */
+export function skipToWave(state: GameState, wave: number): boolean {
+  if (!Number.isFinite(wave)) return false
+  const target = Math.floor(wave)
+  if (target === state.run.wave) return false
   if (!canSkipTo(state, target)) return false
   startWave(state, target)
   return true
@@ -251,7 +423,7 @@ export function stepWave(state: GameState, dt: number): void {
     // **Jeder** normale Gegner kann beim Erscheinen zum Elite werden (GDD 07 Abschnitt 6).
     // Deshalb steht das hier und nicht in der Wellenerzeugung: Der Plan sagt, *was*
     // erscheint, der Wurf entscheidet erst beim Erscheinen, *wie stark*.
-    maybeMakeElite(state, enemy, plan.wave)
+    maybeMakeElite(state, enemy, plan.effectiveWave)
     combat.spawnIndex += 1
   }
 
@@ -259,6 +431,17 @@ export function stepWave(state: GameState, dt: number): void {
     combat.phase = 'pause'
     combat.timer = WAVE_PAUSE_SECONDS
     combat.lostAttempts = 0
+
+    /*
+     * `Toll of War`: Eine geschaffte Welle zahlt aus (`data/upgrades.ts`).
+     *
+     * Direkt gutgeschrieben statt als Muenze ins Feld gelegt: Es ist kein Gegner gefallen,
+     * an dessen Stelle sie liegen koennte, und eine Muenze in der Mitte des leeren Feldes
+     * waere eine Behauptung ueber ein Ereignis, das es nicht gab.
+     */
+    const toll = globalValue(state, 'goldPerWave')
+    if (toll > 0) grantReward(state, { gold: toll }, 'wave.cleared')
+
     markDirty(state)
     emit('wave.cleared', { wave: state.run.wave })
   }

@@ -40,7 +40,7 @@ import {
 import { t } from '../data/strings.ts'
 import type { Rarity } from '../data/types.ts'
 import { buyPrestigeNode, performPrestige } from '../app/actions.ts'
-import type { GameState } from '../app/state.ts'
+import { waveRecord, type GameState } from '../app/state.ts'
 import {
   canPrestige,
   goldLostOnPrestige,
@@ -102,6 +102,14 @@ export function mountPrestigePanel(
   root: HTMLElement,
   state: GameState,
   onChange: () => void,
+  /**
+   * Das Fach in der unteren Leiste, an dem im Kampf die Kachelwand steht (`ui/shell.ts`).
+   *
+   * Der Ausloeser steht **dort** und nicht mehr im Panel. Er ist die einzige Handlung des
+   * Bereichs - alles andere hier ist Auskunft darueber, was sie kostet und was sie bringt -,
+   * und im Panel stand er am Ende einer Spalte aus Hinweiszeilen, wo man ihn suchen musste.
+   */
+  action: HTMLElement,
 ): PrestigePanel {
   let last = ''
 
@@ -111,7 +119,7 @@ export function mountPrestigePanel(
       state.permanent.prestigeNodes.join(','),
       state.permanent.prestigeCount,
       Math.floor(state.run.goldEarned),
-      state.run.waveRecord,
+      waveRecord(state),
     ].join('|')
     if (signature === last) return
     last = signature
@@ -120,7 +128,8 @@ export function mountPrestigePanel(
     // ueber dem neuen Baum und zeigte den alten Preis.
     hideTooltip()
 
-    root.replaceChildren(head(state), reset(state, onChange), wall(state, onChange))
+    root.replaceChildren(head(state), reset(state), wall(state, onChange))
+    action.replaceChildren(trigger(state, onChange))
   }
 
   update()
@@ -147,13 +156,13 @@ function head(state: GameState): HTMLElement {
 }
 
 /**
- * Der Auslöser samt Bestaetigung.
+ * Was das Zuruecksetzen kostet und was es bringt - der Knopf dazu steht woanders.
  *
- * Bewusst zweistufig: Ein Klick zeigt, was passiert, der zweite tut es. Prestige ist die
- * einzige Handlung im Spiel, die Fortschritt vernichtet - sie darf nicht aus Versehen
- * geschehen.
+ * Die Trennung ist die Aussage: Hier steht die **Rechnung**, unten in der Leiste die
+ * **Handlung**. Vorher stand beides in derselben Spalte, und der Knopf war die letzte von
+ * sechs Zeilen - man las drei Hinweise, bevor man das fand, weswegen man hergekommen war.
  */
-function reset(state: GameState, onChange: () => void): HTMLElement {
+function reset(state: GameState): HTMLElement {
   const box = document.createElement('section')
   box.className = 'panel prestige-reset'
 
@@ -190,11 +199,23 @@ function reset(state: GameState, onChange: () => void): HTMLElement {
     }
   }
 
+  return box
+}
+
+/**
+ * Der Ausloeser samt Bestaetigung.
+ *
+ * Bewusst zweistufig: Ein Klick zeigt, was passiert, der zweite tut es. Prestige ist die
+ * einzige Handlung im Spiel, die Fortschritt vernichtet - sie darf nicht aus Versehen
+ * geschehen. Der Knopf traegt die Warnfarbe und liegt gross im Fach unten rechts, wo im
+ * Kampf gekauft wird: Es ist derselbe Griff, nur teurer.
+ */
+function trigger(state: GameState, onChange: () => void): HTMLElement {
   const button = document.createElement('button')
   button.type = 'button'
-  button.className = 'wide-button danger'
+  button.className = 'wide-button danger action-button'
   setSlideLabel(button, t('prestige.confirm'))
-  button.disabled = !ready
+  button.disabled = !canPrestige(state)
   button.addEventListener('click', () => {
     if (!button.classList.contains('armed')) {
       button.classList.add('armed')
@@ -202,9 +223,7 @@ function reset(state: GameState, onChange: () => void): HTMLElement {
     }
     if (performPrestige(state)) onChange()
   })
-  box.appendChild(button)
-
-  return box
+  return button
 }
 
 /**

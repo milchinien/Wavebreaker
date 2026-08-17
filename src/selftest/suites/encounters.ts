@@ -584,6 +584,7 @@ export function encountersSuite(): void {
         {
           defId: def.id,
           perkId: def.effect.kind === 'perk' ? 'perk.damage.1' : null,
+          upgradeId: def.effect.kind === 'upgrade' ? 'f1.hammerfall' : null,
           price: 1,
           sold: false,
         },
@@ -602,6 +603,13 @@ export function encountersSuite(): void {
         case 'upgrade': {
           const after = Object.values(state.run.upgrades).reduce((sum, level) => sum + level, 0)
           assertEqual(after, before.upgrades + def.effect.levels, def.id)
+          // Und zwar auf **dem** Pfad, der auf der Karte stand (E7): Vorher wuerfelte erst
+          // der Kauf, und die Karte konnte gar nichts versprechen.
+          assertEqual(
+            state.run.upgrades['f1.hammerfall'],
+            def.effect.levels,
+            `${def.id} liefert nicht das benannte Upgrade`,
+          )
           break
         }
         case 'boon':
@@ -623,7 +631,7 @@ export function encountersSuite(): void {
     const state = ready()
     const trader = landed(state, 30)
     state.run.gold = 1e9
-    trader.stock = [{ defId: 'trade.boonDamage', perkId: null, price: 1, sold: false }]
+    trader.stock = [{ defId: 'trade.boonDamage', perkId: null, upgradeId: null, price: 1, sold: false }]
 
     buyFromTrader(state, 0)
     assertEqual(state.runtime.combat.eventBonus.damage, 0.4)
@@ -637,7 +645,7 @@ export function encountersSuite(): void {
     const trader = landed(state, 45)
     state.run.gold = 1e9
     state.run.towerOffer = [{ defId: 'autocannon', rarity: 'common', traits: [] }]
-    trader.stock = [{ defId: 'trade.tower', perkId: null, price: 1, sold: false }]
+    trader.stock = [{ defId: 'trade.tower', perkId: null, upgradeId: null, price: 1, sold: false }]
 
     const before = JSON.stringify(state.run.towerOffer)
     buyFromTrader(state, 0)

@@ -15,11 +15,13 @@
 import { createRng, randomSeed, type Rng } from '../core/rng.ts'
 import type { Vec2 } from '../core/vec.ts'
 import type { Rarity } from '../data/types.ts'
+import type { UpgradeWindow } from '../data/upgrades.ts'
 import {
   START_ABILITY_SLOTS,
   START_CORE_ID,
   START_GOLD,
   START_INVENTORY,
+  START_LEAGUE,
   START_LEVEL,
   START_TOWER_IDS,
   START_TOWER_SLOTS,
@@ -43,7 +45,22 @@ export type PermanentState = {
   unlockedCores: string[]
   /** Einmalige Hinweise, die der Spieler schon gesehen hat (GDD 14 Abschnitt 4a). */
   seenHints: string[]
+  /**
+   * Hoechste **effektive** Welle, die dieser Spielstand je gesehen hat.
+   *
+   * Effektiv und nicht angezeigt, weil Welle 50 in Liga 8 ungleich weiter ist als Welle 50
+   * in Liga 1 - ein ligenblinder Bestwert waere kein Bestwert.
+   */
   bestWaveEver: number
+  /**
+   * Hoechste freigeschaltete Liga (docs/liga-system.md Abschnitt 4.4).
+   *
+   * Sie liegt in `permanent` und nicht im Run: Muesste man die Ligen nach jedem Prestige
+   * neu erklettern, waere die Liga eine zweite Prestige-Schleife - und wuerde die erste
+   * verdraengen. **Wo** man spielt, ist eine Ortsfrage; **was** man besitzt, sagt der
+   * Prestige-Baum.
+   */
+  leagueUnlocked: number
   prestigeCount: number
   totalPlaySeconds: number
 }
@@ -57,8 +74,40 @@ export type RunState = {
   /** Hauptturm, platzierte Module, Inventar und Turmplaetze. */
   station: Station
   wave: number
-  /** Hoechste in diesem Run erreichte Welle - begrenzt das Vorspulen (E9). */
-  waveRecord: number
+  /**
+   * Die gerade gespielte Liga (docs/liga-system.md).
+   *
+   * Im Run und nicht in `permanent`: Nach dem Prestige steht ein frischer Bau in Liga 1,
+   * und der haelt Liga 5 nicht aus. Was der Spieler behaelt, ist die **Erlaubnis**
+   * (`permanent.leagueUnlocked`) - er darf sofort wieder hochwechseln, sobald der Bau es
+   * traegt.
+   */
+  league: number
+  /**
+   * Hoechste in diesem Run erreichte Welle **je Liga** - Index `liga - 1`.
+   *
+   * Je Liga und nicht einmal fuer alles: Ein gemeinsamer Rekord machte die Skip-Grenze in
+   * jeder hoeheren Liga sinnlos (man duerfte sofort auf Welle 50 springen), und der Rueckweg
+   * in eine niedrige Liga setzte den Spieler auf Welle 1 statt dorthin, wo er dort stand.
+   * Genau dieser Rueckweg ist aber die bleibende Rolle der niedrigen Ligen: sofort wieder
+   * volles Einkommen, wenn man **jetzt** Gold braucht.
+   *
+   * Gelesen wird die Liste nie direkt, sondern ueber `waveRecord` und `raiseWaveRecord` -
+   * sonst muesste jeder Aufrufer die Indexverschiebung und die Luecken selbst kennen.
+   */
+  waveRecords: number[]
+  /**
+   * Die Welle, auf der jede Liga **verlassen** wurde - Index `liga - 1`.
+   *
+   * Der Rueckweg soll dort ankommen, wo man war, und nicht auf Welle 1: Wer in Liga 1 auf
+   * Welle 20 zurueckgegangen ist, um in Ruhe zu sammeln, will nach einem Abstecher genau
+   * dort weitermachen. Der Rekord taugt dafuer nicht - er zeigt die tiefste Welle, nicht
+   * die zuletzt gespielte.
+   *
+   * Fuer die **gerade gespielte** Liga steht die Wahrheit in `wave`; dieser Eintrag wird
+   * erst beim Verlassen geschrieben (`enterLeague` in `sim/waves.ts`).
+   */
+  leagueWaves: number[]
   gold: number
   /**
    * Alles Gold, das dieser Run **insgesamt** eingebracht hat - unabhaengig davon, was davon
@@ -163,6 +212,15 @@ export type Trader = {
 export type TraderOffer = {
   defId: string
   perkId: string | null
+  /**
+   * Bei Upgrade-Ware das **benannte** Upgrade, das dahintersteht.
+   *
+   * Dieselbe Ueberlegung wie bei `perkId`, nur eine Etappe spaeter: Vorher verschenkte die
+   * Ware "eine Stufe auf einem zufaelligen Pfad", und gewuerfelt wurde beim **Kauf**. Auf
+   * der Karte stand damit eine Behauptung - man sah erst hinterher, was man bekommen hatte.
+   * Seit E7 steht es beim Landen fest und auf der Karte.
+   */
+  upgradeId: string | null
   price: number
   sold: boolean
 }
@@ -216,6 +274,19 @@ export type RuntimeState = {
   dirty: boolean
   view: View
   /**
+   * Welches Upgrade-Fenster gerade offen ist (`docs/upgrade-umbau.md` Abschnitt 8.5).
+   *
+   * Es steht **neben** `view` und nicht darin, und das ist die Entscheidung, an der die
+   * ganze Leiste haengt: Ein Wechsel zwischen zwei Fenstern ist **kein** Bereichswechsel.
+   * Er tauscht die Kacheln unter dem Spielfeld aus, sonst nichts - keine Wanderung, kein
+   * Neuaufbau der Anzeigen, kein Ruck an der Kamera. Waeren die vier Fenster vier `View`s,
+   * bekaeme jeder Reiterklick die volle Bereichsbewegung (`ui/flip.ts`), und das Panel
+   * spraenge bei jedem Blick in ein anderes Fenster.
+   *
+   * Nicht im Spielstand: Welcher Reiter offen war, ist Anzeigezustand.
+   */
+  upgradeWindow: UpgradeWindow
+  /**
    * Eingestelltes Spieltempo. Es steht hier, weil die Simulation bei x4 viermal so viele
    * Takte je echter Sekunde bekommt: Optische Effekte messen ihre Lebensdauer in
    * Simulationszeit und waeren sonst viermal so kurz und viermal so haeufig. Mit diesem
@@ -261,6 +332,32 @@ export type RuntimeState = {
    * spaeter zwanzig Klaenge.
    */
   announcedLevel: number
+  /**
+   * Der Hinweiszettel, der gerade am Rand steht - oder `null`.
+   *
+   * Er haelt den Platz: Was einmal steht, wird von keinem spaeteren Zettel abgeloest, bis
+   * der Spieler es weggeklickt hat (`sim/hints.ts`). Ein Satz, den man zweimal anfangen
+   * muss zu lesen, ist schlechter als keiner.
+   *
+   * Nicht im Spielstand, aus demselben Grund wie `announcedLevel`: **Was** gelesen wurde,
+   * steht in `permanent.seenHints`; dass gerade einer offen liegt, ist Anzeigezustand und
+   * ueberdauert keinen Programmstart.
+   */
+  hintId: string | null
+  /**
+   * Seit wann der Zettel oben am Rand steht - in gespielter Zeit
+   * (`permanent.totalPlaySeconds`), gueltig nur solange `hintId` gesetzt ist.
+   *
+   * Der Platzhalter braucht eine Uhr, sonst haelt er ewig: Ein stehender Zettel wird von
+   * keinem spaeteren abgeloest, und wer nie wegklickt, saehe damit genau einen der acht
+   * Saetze. Nach `HINT_READ_SECONDS` legt `sim/hints.ts` ihn stumm ab und die Reihe geht
+   * weiter.
+   *
+   * Gespielte Zeit und nicht Simulationszeit: Sie zaehlt echte Sekunden (`main.ts`), der
+   * Zettel steht bei Tempo x4 also genauso lange wie bei x1 - Lesen wird nicht schneller,
+   * nur weil die Wellen es werden.
+   */
+  hintSince: number
   /**
    * Laufende und abklingende Faehigkeiten (GDD 09 Teil B).
    *
@@ -364,9 +461,66 @@ export function createInitialPermanent(): PermanentState {
     unlockedCores: [START_CORE_ID],
     seenHints: [],
     bestWaveEver: 0,
+    leagueUnlocked: START_LEAGUE,
     prestigeCount: 0,
     totalPlaySeconds: 0,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Wellenrekord je Liga (docs/liga-system.md Abschnitt 7.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Der Wellenrekord der **gerade gespielten** Liga.
+ *
+ * Diese drei Funktionen sind die einzige Auskunftsstelle ueber `run.waveRecords`. Sie
+ * stehen hier, weil die Datei das Feld definiert - wer die Form kennt, kennt auch die
+ * Indexverschiebung und die Luecken.
+ */
+export function waveRecord(state: GameState): number {
+  return waveRecordOf(state.run, state.run.league)
+}
+
+/**
+ * Der Wellenrekord einer beliebigen Liga.
+ *
+ * `START_WAVE` fuer jede Liga, in der noch nichts gespielt wurde - sie ist damit sofort
+ * betretbar, aber nur auf Welle 1.
+ */
+export function waveRecordOf(run: RunState, league: number): number {
+  return run.waveRecords[league - 1] ?? START_WAVE
+}
+
+/**
+ * Den Platz dieser Liga in einer der beiden Listen sichern.
+ *
+ * Das Auffuellen ist kein Schoenheitsschritt: Ein Sprung in Liga 4, waehrend die Liste nur
+ * einen Eintrag hat, hinterliesse sonst Loecher an 1 und 2 - und `JSON.stringify` macht aus
+ * einem Loch `null`, das beim Laden als Zahl durchginge.
+ */
+function slotFor(list: number[], league: number): number {
+  const index = Math.max(0, league - 1)
+  while (list.length <= index) list.push(START_WAVE)
+  return index
+}
+
+/** Rekord der gespielten Liga anheben. Senken kann er sich nie. */
+export function raiseWaveRecord(state: GameState, wave: number): void {
+  const list = state.run.waveRecords
+  const index = slotFor(list, state.run.league)
+  if (wave > (list[index] as number)) list[index] = wave
+}
+
+/** Merken, auf welcher Welle die gespielte Liga gerade steht - vor dem Verlassen. */
+export function rememberLeagueWave(state: GameState): void {
+  const list = state.run.leagueWaves
+  list[slotFor(list, state.run.league)] = state.run.wave
+}
+
+/** Auf welcher Welle diese Liga zuletzt verlassen wurde. Nie betreten: Welle 1. */
+export function leagueWaveOf(run: RunState, league: number): number {
+  return run.leagueWaves[league - 1] ?? START_WAVE
 }
 
 export function createInitialStation(): Station {
@@ -383,7 +537,9 @@ export function createInitialRun(seed: number = randomSeed()): RunState {
     rngState: seed,
     station: createInitialStation(),
     wave: START_WAVE,
-    waveRecord: START_WAVE,
+    league: START_LEAGUE,
+    waveRecords: [START_WAVE],
+    leagueWaves: [START_WAVE],
     gold: START_GOLD,
     goldEarned: 0,
     towersBought: 0,
@@ -429,6 +585,7 @@ export function createRuntime(run: RunState): RuntimeState {
     dirty: false,
     // Der Kampf laeuft von selbst weiter - er ist der Ausgangspunkt (GDD 02).
     view: 'combat',
+    upgradeWindow: 1,
     speedFactor: 1,
     buildUid: null,
     dragUid: null,
@@ -438,6 +595,8 @@ export function createRuntime(run: RunState): RuntimeState {
     pointer: null,
     revision: 0,
     announcedLevel: -1,
+    hintId: null,
+    hintSince: 0,
     abilities: createAbilityRuntime(),
     boons: [],
     helpers: [],

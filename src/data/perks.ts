@@ -18,20 +18,37 @@
  */
 
 import type { Rarity, StatKey } from './types.ts'
-
-/** Worauf ein Perk wirkt, das nicht ein einzelner Kampfwert ist. */
-export type PerkGlobal = 'stationHp' | 'goldBonus' | 'collectRadius' | 'xpBonus'
+import type { GlobalKey, UpgradeEffect, UpgradeTarget } from './upgrades.ts'
 
 /**
- * Wirkung eines Perks. Zwei Formen, mehr braucht es nicht:
+ * Worauf ein Perk wirkt, das nicht ein einzelner Kampfwert ist.
  *
- *   `stat`    ein Kampfwert **aller** Module - fliesst in `sim/stats.ts` in dieselbe
- *             Kette wie Upgrades und Buffs
- *   `global`  eine Groesse des Runs - Stations-HP, Gold, Sammelradius, Erfahrung
+ * Seit E7 ist das ein Ausschnitt aus `GlobalKey` und keine eigene Aufzaehlung mehr: Perks,
+ * Prestige-Baum und Katalog drehen an denselben vier Groessen, und drei Listen davon waeren
+ * drei Gelegenheiten, sie auseinanderlaufen zu lassen.
  */
-export type PerkEffect =
-  | { kind: 'stat'; stat: StatKey; amount: number }
-  | { kind: 'global'; global: PerkGlobal; amount: number }
+export type PerkGlobal = Extract<
+  GlobalKey,
+  'stationHp' | 'goldBonus' | 'collectRadius' | 'xpBonus'
+>
+
+/**
+ * Wirkung eines Perks - **dieselbe Union wie beim Upgrade-Katalog** (`data/upgrades.ts`).
+ *
+ * Vorher war es eine eigene, kleinere Form (`stat` und `global`). Sie sagte dasselbe wie die
+ * grosse, nur in anderen Worten - und damit brauchte jede Stelle, die beide anfasst, zwei
+ * Fallunterscheidungen: `sim/stats.ts` beim Rechnen, `ui/dialogs.ts` beim Anzeigen,
+ * `ui/icons.ts` beim Zeichen. Ein Perk, der eine Turmklasse hebt oder einen Sonderwert wie
+ * die Overdrive-Dauer, war gar nicht ausdrueckbar.
+ *
+ * Was ein Perk von einem Upgrade unterscheidet, steht jetzt nur noch dort, wo es hingehoert:
+ * Er wird **gewaehlt** statt gekauft, und er zielt auf `modules` - Kern und Turrets zugleich
+ * (GDD 09 Abschnitt 4).
+ */
+export type PerkEffect = UpgradeEffect
+
+/** Das Ziel jedes Kampfwert-Perks: alles, was schiesst. */
+const MODULES: UpgradeTarget = { kind: 'modules' }
 
 export type PerkDef = {
   id: string
@@ -59,7 +76,13 @@ function stat(
   key: StatKey,
   amount: number,
 ): PerkDef {
-  return { id, label, rarity, weight, effect: { kind: 'stat', stat: key, amount } }
+  return {
+    id,
+    label,
+    rarity,
+    weight,
+    effect: { kind: 'percent', target: MODULES, stat: key, amount },
+  }
 }
 
 function global(
@@ -70,7 +93,7 @@ function global(
   key: PerkGlobal,
   amount: number,
 ): PerkDef {
-  return { id, label, rarity, weight, effect: { kind: 'global', global: key, amount } }
+  return { id, label, rarity, weight, effect: { kind: 'global', key, amount } }
 }
 
 /*
@@ -128,8 +151,22 @@ export const PERKS: readonly PerkDef[] = [
  */
 export type PerkInfoKey = `perk.info.${StatKey | PerkGlobal}`
 
+/**
+ * Der Schluessel zur Erklaerung eines Perks.
+ *
+ * Er wird aus der **Wirkung** gebildet und nicht aus der Kennung: "Damage +8%" und
+ * "Damage +80%" tun dasselbe, nur verschieden stark - sie brauchen einen Erklaerungstext und
+ * nicht einundzwanzig.
+ *
+ * Der Rueckfall auf `damage` fuer Formen, die es unter den Perks heute nicht gibt (Regeln,
+ * Sonderwerte), ist Absicht: Die Union kann seit E7 mehr, als die Perk-Liste benutzt. Ein
+ * Wurf, der hier hereinliefe, faellt in `selftest/suites/progression.ts` auf - dort wird zu
+ * **jedem** Perk der Text nachgeschlagen.
+ */
 export function perkInfoKey(effect: PerkEffect): PerkInfoKey {
-  return `perk.info.${effect.kind === 'stat' ? effect.stat : effect.global}`
+  if (effect.kind === 'percent' || effect.kind === 'flat') return `perk.info.${effect.stat}`
+  if (effect.kind === 'global') return `perk.info.${effect.key as PerkGlobal}`
+  return 'perk.info.damage'
 }
 
 const BY_ID = new Map(PERKS.map((perk) => [perk.id, perk]))

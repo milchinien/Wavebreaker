@@ -26,6 +26,7 @@ import {
   HELPER_RADIUS_PER_LEVEL,
   HELPER_SPEED_PER_LEVEL,
 } from '../data/balance.ts'
+import { specialSum } from '../data/upgrades.ts'
 import type { GameState, Helper } from '../app/state.ts'
 import { collectAt } from './economy.ts'
 import { collectPodsAt } from './events.ts'
@@ -34,14 +35,22 @@ import { CORE_CENTER } from './station.ts'
 import { upgradeLevel } from './stats.ts'
 
 /** Der Pfad, mit dem der Helfer im Upgrade-Menue gekauft wird (GDD 12 Abschnitt 10). */
-export const COLLECTOR_PATH = 'global.collector'
+export const COLLECTOR_PATH = 'f2.collector'
 /** Der Prestige-Knoten, der diesen Pfad ueberhaupt sichtbar macht. */
 export const COLLECTOR_NODE = 'helper.collector'
 
-/** Gekaufte Stufe des Goldsammlers. 0 heisst: nicht gekauft. */
+/**
+ * Gekaufte Stufe des Goldsammlers. 0 heisst: nicht gekauft.
+ *
+ * Gelesen wird der **Sonderwert** und nicht der Pfad: Damit haengt der Helfer an seiner
+ * Wirkung und nicht an einer Kennung, und ein Verschieben der Kachel in ein anderes Fenster
+ * fasst diese Datei nicht an. Die Knotenpruefung bleibt trotzdem stehen - sie ist die erste
+ * Stufe der zweistufigen Freischaltung und gilt auch dann, wenn eine Stufe auf anderem Weg
+ * in den Spielstand gelangt waere.
+ */
 export function collectorLevel(state: GameState): number {
   if (!isUnlocked(state, COLLECTOR_NODE)) return 0
-  return upgradeLevel(state.run.upgrades, COLLECTOR_PATH)
+  return specialSum(state.run.upgrades, 'collectorLevel')
 }
 
 /**

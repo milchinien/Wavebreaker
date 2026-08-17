@@ -13,14 +13,17 @@
 import { assert, assertClose, assertEqual, check, suite } from '../../core/assert.ts'
 import {
   BOSS_WAVE_INTERVAL,
+  GOLD_SCALE,
   MAX_COINS,
-  UPGRADE_COST_EXPONENT,
-  upgradeCost,
+  UPGRADE_KIND_EXPONENT,
+  UPGRADE_WINDOW_FACTOR,
+  upgradeStepCost,
 } from '../../data/balance.ts'
 import { bossForWave, enemiesForWave } from '../../data/enemies.ts'
-import { upgradeById, UPGRADES } from '../../data/upgrades.ts'
+import { upgradeById } from '../../data/upgrades.ts'
+import { COLLECTOR_NODE, COLLECTOR_PATH } from '../../sim/helpers.ts'
 import { buyUpgrade, nextUpgradeCost } from '../../app/actions.ts'
-import { createInitialState, type GameState } from '../../app/state.ts'
+import { createInitialState, waveRecord, type GameState } from '../../app/state.ts'
 import { resetStationViewCache, stationView, invalidateStationView } from '../../app/view.ts'
 import { syncStation } from '../../sim/battle.ts'
 import { createCombatState } from '../../sim/combat.ts'
@@ -160,52 +163,43 @@ export function economySuite(): void {
 
   suite('sim/stats · Upgrades')
 
+  /*
+   * Was hier steht, ist der **Zuschnitt** der Upgrades: auf wen sie wirken und auf wen
+   * nicht. Ob ein einzelner Eintrag ueberhaupt etwas bewegt, prueft `suites/upgrades.ts`
+   * Pfad fuer Pfad; ob der Katalog wohlgeformt ist, prueft `suites/catalog.ts`.
+   */
+
   check('die Kostenkurve folgt der Formel', () => {
-    // GDD 08 Abschnitt 6: Kosten = Basiswert x Stufe^1,15
+    // Preis = Grundpreis x Goldmassstab x Fensterfaktor x Stufe^Steigung (`data/balance.ts`).
+    const def = upgradeById('f1.drumfire')
+    const base = def.baseCost * GOLD_SCALE * UPGRADE_WINDOW_FACTOR[def.window]
     for (const level of [1, 2, 5, 20]) {
-      assertEqual(upgradeCost(100, level), Math.round(100 * Math.pow(level, UPGRADE_COST_EXPONENT)))
+      assertEqual(
+        upgradeStepCost(def, level),
+        Math.round(base * Math.pow(level, UPGRADE_KIND_EXPONENT[def.kind])),
+        `Stufe ${level}`,
+      )
     }
-    assertEqual(upgradeCost(100, 1), 100, 'die erste Stufe kostet den Basiswert')
+    assertEqual(upgradeStepCost(def, 1), Math.round(base), 'die erste Stufe kostet den Grundpreis')
   })
 
-  check('die Kosten steigen mit jeder Stufe', () => {
-    let previous = 0
-    for (let level = 1; level <= 30; level++) {
-      const cost = upgradeCost(80, level)
-      assert(cost > previous, `Stufe ${level} muss teurer sein`)
-      previous = cost
-    }
-  })
-
-  check('ein Upgrade kostet Gold und wirkt sofort', () => {
-    const state = rig()
-    const path = 'core.damage'
-    const cost = nextUpgradeCost(state, path) as number
-    state.run.gold = cost
-
-    const core = state.runtime.combat.modules[0]!
-    const before = moduleStats(core, undefined, state).final.damage
-
-    assertEqual(buyUpgrade(state, path), true)
-    assertEqual(state.run.gold, 0, 'das Gold ist ausgegeben')
-    assertEqual(upgradeLevel(state.run.upgrades, path), 1)
-
-    const after = moduleStats(core, undefined, state).final.damage
-    assertClose(after, before * (1 + upgradeById(path).amount), 1e-9)
-  })
-
-  check('ohne genug Gold passiert nichts', () => {
-    const state = rig()
-    state.run.gold = 1
-    assertEqual(buyUpgrade(state, 'core.damage'), false)
-    assertEqual(upgradeLevel(state.run.upgrades, 'core.damage'), 0)
-    assertEqual(state.run.gold, 1)
+  check('die Art bestimmt die Steigung der Kurve', () => {
+    // Ein endloser Pfad muss steiler steigen als ein Ausbau - sonst bremst ihn nichts.
+    assert(
+      UPGRADE_KIND_EXPONENT.endless > UPGRADE_KIND_EXPONENT.extension,
+      'endlose Pfade steigen nicht steiler als Ausbauten',
+    )
+    assert(
+      UPGRADE_KIND_EXPONENT.charge > UPGRADE_KIND_EXPONENT.endless,
+      'knappe Pfade steigen nicht am steilsten',
+    )
   })
 
   check('ein unbekannter Pfad wird abgelehnt', () => {
     const state = rig()
     state.run.gold = 1e9
     assertEqual(buyUpgrade(state, 'gibt.es.nicht'), false)
+    assertEqual(nextUpgradeCost(state, 'gibt.es.nicht'), null)
   })
 
   check('ein Turm-Upgrade wirkt auf ALLE Tuerme dieses Typs', () => {
@@ -221,7 +215,7 @@ export function economySuite(): void {
     const before = uids.map(damageOf)
 
     state.run.gold = 1e9
-    assertEqual(buyUpgrade(state, 'tower.autocannon.damage'), true)
+    assertEqual(buyUpgrade(state, 'f1.rally'), true)
 
     const after = uids.map(damageOf)
     for (let i = 0; i < uids.length; i++) {
@@ -235,7 +229,7 @@ export function economySuite(): void {
     const cannonBefore = moduleStats({ ...dummy('cannon') }, undefined, state).final.damage
 
     state.run.gold = 1e9
-    buyUpgrade(state, 'tower.autocannon.damage')
+    buyUpgrade(state, 'f1.rally')
 
     const cannonAfter = moduleStats({ ...dummy('cannon') }, undefined, state).final.damage
     assertEqual(cannonAfter, cannonBefore)
@@ -245,15 +239,35 @@ export function economySuite(): void {
     const state = rig()
     const before = moduleStats(dummy('autocannon'), undefined, state).final.damage
     state.run.gold = 1e9
-    buyUpgrade(state, 'core.damage')
+    buyUpgrade(state, 'f1.hammerfall')
     assertEqual(moduleStats(dummy('autocannon'), undefined, state).final.damage, before)
   })
 
-  check('das globale HP-Upgrade hebt die gemeinsame Leiste', () => {
+  check('ein Klassen-Upgrade trifft die Klasse und sonst niemanden', () => {
+    // Der Zuschnitt, den es vor dem Katalog gar nicht gab: eine Gruppe von Turmarten.
+    const state = rig()
+    state.run.gold = 1e9
+    const kineticBefore = moduleStats(dummy('cannon'), undefined, state).final.damage
+    const elementalBefore = moduleStats(dummy('flamer'), undefined, state).final.damage
+
+    assertEqual(buyUpgrade(state, 'f1.warhead'), true)
+
+    assert(
+      moduleStats(dummy('cannon'), undefined, state).final.damage > kineticBefore,
+      'die Siege Cannon ist kinetisch und muss profitieren',
+    )
+    assertEqual(
+      moduleStats(dummy('flamer'), undefined, state).final.damage,
+      elementalBefore,
+      'der Flame Projector ist elementar und darf nichts bekommen',
+    )
+  })
+
+  check('das Huellen-Upgrade hebt die gemeinsame Leiste sofort', () => {
     const state = rig()
     const before = maxStationHp(state)
     state.run.gold = 1e9
-    assertEqual(buyUpgrade(state, 'global.stationHp'), true)
+    assertEqual(buyUpgrade(state, 'f1.bulkhead'), true)
     assert(maxStationHp(state) > before, 'die Stations-HP muessen steigen')
     assertEqual(
       state.runtime.combat.maxStationHp,
@@ -262,64 +276,21 @@ export function economySuite(): void {
     )
   })
 
-  check('das Sammelradius-Upgrade vergroessert den Radius', () => {
-    const state = rig()
-    const before = collectRadius(state)
-    state.run.gold = 1e9
-    buyUpgrade(state, 'global.collectRadius')
-    assert(collectRadius(state) > before, 'der Sammelradius muss wachsen')
-  })
-
-  check('am Maximum kostet nichts mehr und laesst sich nichts mehr kaufen', () => {
-    const state = rig()
-    const def = upgradeById('global.collectRadius')
-    state.run.upgrades[def.id] = def.maxLevel
-    state.run.gold = 1e9
-
-    assertEqual(nextUpgradeCost(state, def.id), null)
-    assertEqual(buyUpgrade(state, def.id), false)
-  })
-
-  check('jeder Upgrade-Pfad hat eine Wirkung und eine Obergrenze', () => {
-    for (const def of UPGRADES) {
-      /*
-       * `amount` ist der Zuwachs je Stufe als Multiplikator. Genau ein Pfad hat dort eine
-       * Null: der Goldsammler. Seine Stufe wird nicht multipliziert, sondern von
-       * `sim/helpers.ts` gelesen - Radius und Tempo des Helfers haengen daran.
-       *
-       * Ausgenommen wird deshalb **dieser eine Pfad namentlich** und nicht "alle mit
-       * amount 0". Sonst waere ein vergessener Zuwachs bei einem neuen Pfad kein Fehler
-       * mehr, sondern eine stille Ausnahme - und genau davor soll diese Zusicherung
-       * schuetzen.
-       */
-      if (def.id !== 'global.collector') {
-        assert(def.amount > 0, `${def.id} hat keine Wirkung`)
-      }
-      assert(def.maxLevel > 0, `${def.id} hat keine Obergrenze`)
-      assert(def.baseCost > 0, `${def.id} ist umsonst`)
-    }
-  })
-
   check('der Goldsammler ist hinter seinem Prestige-Knoten verschlossen', () => {
     const state = createInitialState(7)
     state.run.gold = 1e9
+    // Sein Fenster oeffnen - sonst haenge die Sperre am Tor und nicht am Knoten, und die
+    // Pruefung bewiese das Falsche.
+    assertEqual(buyUpgrade(state, 'f1.secondarray'), true, 'das Tor zu Fenster 2')
 
-    // Ohne den Knoten gibt es den Pfad nicht - auch nicht ueber einen Umweg am Menue vorbei.
-    assertEqual(nextUpgradeCost(state, 'global.collector'), null)
-    assertEqual(buyUpgrade(state, 'global.collector'), false)
+    assertEqual(nextUpgradeCost(state, COLLECTOR_PATH), null, 'ohne den Knoten')
+    assertEqual(buyUpgrade(state, COLLECTOR_PATH), false, 'auch nicht am Menue vorbei')
 
-    state.permanent.prestigeNodes.push('helper.collector')
-    assert(nextUpgradeCost(state, 'global.collector') !== null, 'jetzt muss er kaufbar sein')
-    assertEqual(buyUpgrade(state, 'global.collector'), true)
+    state.permanent.prestigeNodes.push(COLLECTOR_NODE)
+    assert(nextUpgradeCost(state, COLLECTOR_PATH) !== null, 'jetzt muss er kaufbar sein')
+    assertEqual(buyUpgrade(state, COLLECTOR_PATH), true, 'der Kauf')
   })
 
-  check('Buff-Module haben keine Kampfwert-Upgrades', () => {
-    // Sie haben keine eigenen Kampfwerte - solche Pfade waeren wirkungslos.
-    assert(
-      !UPGRADES.some((def) => def.defId === 'amplifier'),
-      'der Amplifier darf keine Schadens-Upgrades haben',
-    )
-  })
 
   suite('sim/waves · Steuerung und Bosse')
 
@@ -378,7 +349,7 @@ export function economySuite(): void {
   check('Skippen ueber den Rekord hinaus wird abgelehnt', () => {
     const state = rig()
     startWave(state, 5) // Rekord 5
-    assertEqual(state.run.waveRecord, 5)
+    assertEqual(waveRecord(state), 5)
 
     // Eine Welle weiter ist der naechste Schritt - erlaubt.
     assertEqual(nextWave(state), true)
@@ -410,7 +381,7 @@ export function economySuite(): void {
     startWave(state, 3)
     const lowReward = state.runtime.combat.plan?.rewardScale ?? 0
 
-    assertEqual(state.run.waveRecord, 30, 'der Rekord bleibt')
+    assertEqual(waveRecord(state), 30, 'der Rekord bleibt')
     assert(lowReward < highReward, 'Welle 3 muss Welle-3-Ertraege geben')
   })
 

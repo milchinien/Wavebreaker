@@ -17,12 +17,12 @@ import {
 import { ENEMIES, enemiesForWave } from '../../data/enemies.ts'
 import { buildWave, enemyCount, scaleFor } from '../../sim/waves.ts'
 
-function plan(wave: number, seed = 1) {
-  return buildWave(wave, createRng(seed))
+function plan(wave: number, seed = 1, league = 1) {
+  return buildWave(wave, league, createRng(seed))
 }
 
-function kinds(wave: number, seed = 1): string[] {
-  return [...new Set(plan(wave, seed).spawns.map((spawn) => spawn.defId))].sort()
+function kinds(wave: number, seed = 1, league = 1): string[] {
+  return [...new Set(plan(wave, seed, league).spawns.map((spawn) => spawn.defId))].sort()
 }
 
 export function wavesSuite(): void {
@@ -45,7 +45,7 @@ export function wavesSuite(): void {
     // Rein heisst: zweimal aufrufen aendert nichts an der Welt.
     const rng = createRng(7)
     const before = rng.state()
-    buildWave(5, createRng(7))
+    buildWave(5, 1, createRng(7))
     assertEqual(rng.state(), before)
   })
 

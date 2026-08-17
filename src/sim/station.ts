@@ -24,7 +24,7 @@ import {
 import type { Vec2 } from '../core/vec.ts'
 import { coreById } from '../data/cores.ts'
 import { towerById } from '../data/towers.ts'
-import type { FootprintSides, Rarity } from '../data/types.ts'
+import { FOOTPRINT_SIDES, type FootprintSides, type Rarity } from '../data/types.ts'
 
 // ---------------------------------------------------------------------------
 // Modell
@@ -237,6 +237,62 @@ export function previewPolygon(
   const def = towerById(defId)
   const { center, rotation } = attachTo(def.sides, at.edge)
   return { poly: polygonAt(def.sides, center, rotation), center, rotation }
+}
+
+/**
+ * Fuer jede freie Kante: welche Grundflaechen sich dort ansetzen lassen.
+ *
+ * **Ohne Ruecksicht auf Turmplaetze.** Gefragt ist die Form, nicht der Platz - ob noch ein
+ * Slot frei ist, ist eine andere Auskunft und steht in `canPlace`.
+ */
+function shapesPerEdge(station: Station): FootprintSides[][] {
+  const modules = stationModules(station)
+  return freeEdges(station).map((at) =>
+    FOOTPRINT_SIDES.filter((sides) => {
+      const { center, rotation } = attachTo(sides, at.edge)
+      const poly = polygonAt(sides, center, rotation)
+      return modules.every((module) => !polygonsOverlap(poly, module.poly))
+    }),
+  )
+}
+
+/**
+ * Welche Grundflaechen an dieser Station ueberhaupt noch irgendwohin passen.
+ *
+ * Das Sicherheitsnetz: Solange hier eine Form drinsteht, gibt es fuer sie einen Platz. Ein
+ * Angebot aus lauter Formen, die nirgends hingehen, ist der schlechteste Zustand, den ein
+ * Angebot haben kann - das Gold ist beim Wurf schon weg (`sim/shop.ts`).
+ */
+export function fittingShapes(station: Station): Set<FootprintSides> {
+  const result = new Set<FootprintSides>()
+  for (const shapes of shapesPerEdge(station)) {
+    for (const sides of shapes) result.add(sides)
+  }
+  return result
+}
+
+/**
+ * Welche Grundflaechen in eine **Luecke** passen - die eigentliche Frage.
+ *
+ * Eine Luecke ist eine freie Kante, an der **nicht** jede Form Platz hat: der Keil zwischen
+ * zwei Quadraten, in den genau ein Dreieck geht, oder die Nische, die ein Sechseck nicht
+ * mehr nimmt. Sie ist der Grund, warum das Bauen ueberhaupt eine Entscheidung ist, und der
+ * Moment, in dem eine Station nach Konstruktion aussieht statt nach Anbau.
+ *
+ * Warum das nicht dasselbe ist wie `fittingShapes`: Solange eine Station irgendwo nach
+ * aussen offen ist, passt ein Sechseck **irgendwohin** - und damit haelt `fittingShapes`
+ * jedes Angebot fuer brauchbar, waehrend der Keil offen bleibt und der Spieler nichts hat,
+ * was hineingeht. Erst diese Funktion beantwortet, was er gerade braucht.
+ *
+ * Leer heisst: keine Luecke, jede Kante nimmt alles - dann gibt es nichts zu bevorzugen.
+ */
+export function notchShapes(station: Station): Set<FootprintSides> {
+  const result = new Set<FootprintSides>()
+  for (const shapes of shapesPerEdge(station)) {
+    if (shapes.length === 0 || shapes.length === FOOTPRINT_SIDES.length) continue
+    for (const sides of shapes) result.add(sides)
+  }
+  return result
 }
 
 /** Freie Kante, die einem Weltpunkt am naechsten liegt. `maxDistance` ist der Fangradius. */

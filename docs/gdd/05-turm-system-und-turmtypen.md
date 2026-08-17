@@ -35,6 +35,14 @@ Jeder Turm besteht aus:
 
 ## 3. Turm-Kategorien
 
+Jeder Turm trägt **zwei** Einordnungen, und sie beantworten verschiedene Fragen. Sie
+auseinanderzuhalten ist wichtig genug für einen eigenen Abschnitt: Wer sie zusammenlegt,
+ändert eine Balanceregel, sobald er ein Upgrade umbenennt.
+
+### 3.1 Kategorie — die Kampfregel
+
+Sie entscheidet, **wer buffen darf und wer gebufft wird** (→ [03, Abschnitt 9](03-modulare-basis-und-bauregeln.md)).
+
 | Kategorie | Aufgabe | Beispiele |
 |---|---|---|
 | Angriffstürme | direkter Schaden | Maschinengewehr, Kanone, Sniper, Laser, Tesla |
@@ -42,6 +50,26 @@ Jeder Turm besteht aus:
 | Spezialtürme | besondere Mechaniken | Laser, Drohnen, Kontrolle |
 | Buff-Türme | andere Türme verbessern | Buff-Modul |
 | Unterstützungs-Türme | Utility | Schildgenerator, XP-/Gold-Boni |
+
+### 3.2 Klasse — die Vokabel des Spielers
+
+> **Neu am 10.08.2026**, mit dem Upgrade-Katalog (→ [08, Abschnitt 5.2](08-ressourcen-oekonomie-und-upgrades.md)).
+
+Sie steht in Upgrades und Hinweisen und **sonst nirgends**. Jeder Turm gehört genau einer an.
+
+| Klasse | Türme | Was sie eint |
+|---|---|---|
+| **Kinetic** | Autocannon, Siege Cannon, Marksman, Rocket Battery | verschießt Materie |
+| **Elemental** | Laser, Tesla, Flammen, Cryo, Plasma, Void | verschießt Energie |
+| **Support** | Verstärker, Schildgenerator, Drohnenbucht | schießt gar nicht |
+
+Sie ist der Grund, warum das Upgrade-Menü nicht in sechzig Einzelpfade zerfällt: *„Alle
+Elemental-Türme +5 % Schaden"* verbindet sechs Turmarten zu **einer** Entscheidung.
+
+**Die beiden sind bewusst nicht deckungsgleich.** Der Flammenturm ist ein
+Flächenschaden-Turm und elementar; der Laser ein Spezialturm und ebenso elementar. Gäbe es zu
+jeder Klasse genau eine Kategorie, wäre die Klasse nur eine Umbenennung — und wer sie später
+änderte, verschöbe unbemerkt, wer wen buffen darf.
 
 ---
 
@@ -80,14 +108,17 @@ Spezielle Türme können abweichen:
 
 > **Hinweis zur Form:** Die angegebene Form ist keine reine Optik. Sie legt über ihre Kantenzahl
 > fest, wie viele Nachbarn ein Turm haben kann — und damit, wie viele Buff-Verbindungen möglich
-> sind. Dreieck 3, Quadrat 4, Pentagon 5, Hexagon 6 → [03, Abschnitt 7](03-modulare-basis-und-bauregeln.md).
-> Die Form eines neuen Turms ist deshalb eine Balance-Entscheidung, keine Geschmacksfrage.
+> sind. Es gibt genau drei Formen: Dreieck 3, Quadrat 4, Hexagon 6. Warum kein Pentagon, und warum
+> die Kantenzahl der **Raritätsuntergrenze** folgt (Common → Dreieck, Rare/Epic → Quadrat,
+> Legendary/Mythic → Hexagon), steht in → [03, Abschnitt 7](03-modulare-basis-und-bauregeln.md).
+> Die Form eines neuen Turms ist deshalb eine Balance-Entscheidung, keine Geschmacksfrage — und sie
+> ist keine freie Wahl mehr, sondern ergibt sich aus der Rarität.
 
 > **Hinweis zu den Upgrade-Pfaden:** Alle folgenden Upgrades gelten **pro Turmtyp**, nicht pro einzelnem Turm. Wer den Maschinengewehr-Pfad ausbaut, verstärkt damit alle seine Maschinengewehre gleichzeitig. Individualität entsteht über Rarität und zufällige Eigenschaften → [06](06-turmerwerb-inventar-raritaeten.md), [08, Abschnitt 5.2](08-ressourcen-oekonomie-und-upgrades.md).
 
 ### Maschinengewehr
 
-**Form:** Quadrat · **Kategorie:** Angriff · **Rarität:** Common – Mythic
+**Form:** Dreieck · **Kategorie:** Angriff · **Rarität:** Common – Mythic
 
 Automatisches Schnellfeuer-Geschütz, der Standardturm für hohes Angriffstempo.
 
@@ -116,7 +147,7 @@ Automatisches Schnellfeuer-Geschütz, der Standardturm für hohes Angriffstempo.
 
 ### Kanone / Geschütz
 
-**Form:** Quadrat · **Kategorie:** Angriff · **Rarität:** Common – Legendary
+**Form:** Dreieck · **Kategorie:** Angriff · **Rarität:** Common – Legendary
 
 Langsames Geschütz mit hoher Feuerkraft.
 
@@ -159,7 +190,7 @@ Langsames Geschütz mit hoher Feuerkraft.
 
 ### Laser-Turm
 
-**Form:** Dreieck / Spezialform · **Kategorie:** Spezial · **Rarität:** Epic+ · **Freischaltung:** Prestige-Baum (250 Punkte)
+**Form:** Quadrat · **Kategorie:** Spezial · **Rarität:** Epic+ · **Freischaltung:** Prestige-Baum (250 Punkte)
 
 Feuert einen konzentrierten Energielaser mit kontinuierlichem Schaden.
 
@@ -172,7 +203,7 @@ Feuert einen konzentrierten Energielaser mit kontinuierlichem Schaden.
 
 ### Raketen-Turm
 
-**Form:** Dreieck / Spezialform · **Kategorie:** Flächenschaden · **Rarität:** Rare+ · **Freischaltung:** Prestige-Baum (150 Punkte)
+**Form:** Quadrat · **Kategorie:** Flächenschaden · **Rarität:** Rare+ · **Freischaltung:** Prestige-Baum (150 Punkte)
 
 Feuert explosive Raketen.
 
@@ -185,7 +216,7 @@ Feuert explosive Raketen.
 
 ### Tesla-Turm
 
-**Form:** Hexagon · **Kategorie:** Spezial · **Rarität:** Epic+ · **Freischaltung:** Prestige-Baum (500 Punkte)
+**Form:** Quadrat · **Kategorie:** Spezial · **Rarität:** Epic+ · **Freischaltung:** Prestige-Baum (500 Punkte)
 
 Elektrische Energie springt zwischen Gegnern.
 
@@ -198,7 +229,7 @@ Elektrische Energie springt zwischen Gegnern.
 
 ### Flammen-Turm
 
-**Form:** Dreieck · **Kategorie:** Schaden über Zeit · **Rarität:** Rare+
+**Form:** Quadrat · **Kategorie:** Schaden über Zeit · **Rarität:** Rare+
 
 Verbrennt Gegner dauerhaft.
 
@@ -230,7 +261,7 @@ Erzeugt kleine Kampfdrohnen, die Gegner angreifen, den Hauptturm unterstützen u
 
 ### Schildgenerator
 
-**Form:** Hexagon · **Kategorie:** Support · **Rarität:** Epic+
+**Form:** Quadrat · **Kategorie:** Support · **Rarität:** Epic+
 
 Verstärkt die Verteidigung der gesamten Station.
 
@@ -240,7 +271,7 @@ Verstärkt die Verteidigung der gesamten Station.
 
 ### Plasma-Turm
 
-**Form:** Spezialform (Grundfläche Pentagon, 5 Kanten) · **Kategorie:** Endgame · **Rarität:** Legendary+ · **Freischaltung:** Prestige-Baum (10.000 Punkte)
+**Form:** Spezialform (Grundfläche Hexagon, 6 Kanten) · **Kategorie:** Endgame · **Rarität:** Legendary+ · **Freischaltung:** Prestige-Baum (10.000 Punkte)
 
 Feuert instabile Plasmaenergie; Projektile explodieren.
 
@@ -250,7 +281,7 @@ Feuert instabile Plasmaenergie; Projektile explodieren.
 
 ### Void-Turm
 
-**Rarität:** Mythic
+**Form:** Hexagon · **Kategorie:** Spezial · **Rarität:** Mythic
 
 Erzeugt schwarze Energiekugeln. Besonderheit: verlangsamt Gegner.
 
@@ -258,7 +289,7 @@ Erzeugt schwarze Energiekugeln. Besonderheit: verlangsamt Gegner.
 
 ### Buff-Turm
 
-**Form:** Pentagon · **Kategorie:** Support · **Rarität:** Common – Mythic
+**Form:** Hexagon · **Kategorie:** Support · **Rarität:** Common – Mythic
 
 Verursacht keinen oder nur minimalen Schaden, verstärkt stattdessen angrenzende Türme.
 
@@ -266,10 +297,16 @@ Verursacht keinen oder nur minimalen Schaden, verstärkt stattdessen angrenzende
 
 **Eigene Eigenschaften/Upgrades:** Buffstärke, Anzahl beeinflusster Türme
 
-> **Pentagon ist kein Zufall.** Fünf Anschlusskanten heißt: bis zu fünf verstärkte Nachbarn. Da ein
-> Buff-Turm einen vollen Turmplatz kostet, muss seine Stärke über der Schwelle `b > 1/k` liegen —
-> bei 4 erreichten Modulen also über 25 %. Ein Buff-Turm, der nur ein Modul erreicht, ist immer die
-> schlechtere Wahl gegenüber einem weiteren Kampfturm.
+> **Hexagon ist kein Zufall — und die einzige Ausnahme von der Formleiter.** Der Buff-Turm fällt ab
+> Common und wäre nach → [03, Abschnitt 7.2](03-modulare-basis-und-bauregeln.md) ein Dreieck. Bei
+> ihm sind Kanten aber keine Stärke, sondern Funktion: Sechs Anschlusskanten heißt bis zu sechs
+> verstärkte Nachbarn. Da ein Buff-Turm einen vollen Turmplatz kostet, muss seine Stärke über der
+> Schwelle `b > 1/k` liegen — bei 6 erreichten Modulen also über 16,7 %, bei 4 über 25 %. Ein
+> Buff-Turm, der nur ein Modul erreicht, ist immer die schlechtere Wahl gegenüber einem weiteren
+> Kampfturm.
+>
+> Er war ein Pentagon, und das war der schlechteste Platz für diese Form: Weil er zuerst gesetzt und
+> umbaut wird, begann **jede** Station mit den 108°, die keine Ecke schließen.
 >
 > Praktische Folge: Buff-Türme werden **früh** gesetzt und dann umbaut, nicht am Ende angeflanscht.
 

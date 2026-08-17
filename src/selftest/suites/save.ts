@@ -8,10 +8,10 @@
  * Stelle des ganzen Spiels.
  */
 
-import { assert, assertDeepEqual, assertEqual, check, suite } from '../../core/assert.ts'
+import { assert, assertClose, assertDeepEqual, assertEqual, check, suite } from '../../core/assert.ts'
 import { createLoop, createManualScheduler } from '../../core/loop.ts'
 import { on, resetEvents } from '../../core/events.ts'
-import { AUTOSAVE_INTERVAL_SECONDS } from '../../data/balance.ts'
+import { AUTOSAVE_INTERVAL_SECONDS, GOLD_SCALE } from '../../data/balance.ts'
 import {
   clearSave,
   deserialize,
@@ -39,6 +39,10 @@ import {
 
 const PERMANENT_FIELDS = [
   'bestWaveEver',
+  // Die hoechste freigeschaltete Liga gehoert zu `permanent` und nicht zum Run: Muesste man
+  // die Ligen nach jedem Prestige neu erklettern, waere die Liga eine zweite
+  // Prestige-Schleife und verdraengte die erste (docs/liga-system.md Abschnitt 4.4).
+  'leagueUnlocked',
   'prestigeCount',
   'prestigeNodes',
   'prestigePoints',
@@ -72,6 +76,12 @@ const RUN_FIELDS = [
   // -Punkten (GDD 10 Abschnitt 3 und 5) - und damit selbst Run-Daten: Ein neuer Run soll
   // sich sein Prestige neu verdienen.
   'goldEarned',
+  // Die **gespielte** Liga gehoert zum Run: Nach dem Prestige steht ein frischer Bau in
+  // Liga 1. Was der Spieler behaelt, ist die Erlaubnis in `permanent`, nicht der Ort.
+  'league',
+  // Wo jede Liga verlassen wurde. Der Rueckweg soll dort ankommen, wo man war, und nicht
+  // auf Welle 1 - der Rekord daneben taugt dafuer nicht, er zeigt die tiefste Welle.
+  'leagueWaves',
   'level',
   'nextEventWave',
   'nextTraderWave',
@@ -98,7 +108,10 @@ const RUN_FIELDS = [
   'trader',
   'upgrades',
   'wave',
-  'waveRecord',
+  // Ein Rekord **je Liga**, Index `liga - 1`. Ein gemeinsamer Rekord machte die Skip-Grenze
+  // in jeder hoeheren Liga sinnlos und setzte den Rueckweg in eine niedrige Liga auf
+  // Welle 1 zurueck - genau das, was die niedrige Liga als Rueckfallebene taugen laesst.
+  'waveRecords',
   'xp',
 ]
 
@@ -256,10 +269,42 @@ export function saveSuite(): void {
 
     const restored = deserialize(old)
     assert(restored !== null, 'die Migration muss greifen')
-    assertEqual(restored.run.gold, 250, 'Fortschritt bleibt erhalten')
+    // Der Betrag steht danach im Goldmassstab (Migration 7 -> 8): Erhalten bleibt die
+    // Kaufkraft, nicht die Zahl - die Preise sind denselben Weg gegangen.
+    assertClose(restored.run.gold, 250 * GOLD_SCALE, 1e-9, 'Fortschritt bleibt erhalten')
     assertEqual(restored.run.station.coreId, 'sentinel', 'der Kern wandert in die Station')
     assertEqual(restored.run.station.slots, 5, 'die Turmplaetze wandern mit')
     assert(restored.run.station.inventory.length > 0, 'Startmodule wie bei einem frischen Spiel')
+  })
+
+  check('der Goldmassstab rechnet einen alten Spielstand vollstaendig um', () => {
+    /*
+     * Der Beweis fuer Migration 7 -> 8. Sie ist die einzige, die vorhandene Werte
+     * **aendert** statt Felder zu ergaenzen - deshalb wird sie hier Feld fuer Feld
+     * geprueft, samt der Gegenprobe: Was nicht in Gold gerechnet ist, muss stehen bleiben.
+     */
+    const old = {
+      version: 7,
+      savedAt: 0,
+      permanent: createInitialPermanent(),
+      run: {
+        ...serialize(createInitialState(1), 0).run,
+        gold: 1000,
+        goldEarned: 4000,
+        towersBought: 3,
+        xp: 800,
+        coins: [{ x: 10, y: 20, value: 300, count: 2 }],
+      },
+    }
+
+    const restored = deserialize(old)
+    assert(restored !== null, 'die Migration muss greifen')
+    assertClose(restored.run.gold, 1000 * GOLD_SCALE, 1e-9, 'der Kontostand')
+    assertClose(restored.run.goldEarned, 4000 * GOLD_SCALE, 1e-9, 'das insgesamt Verdiente')
+    assertClose(restored.run.coins[0]?.value ?? 0, 300 * GOLD_SCALE, 1e-9, 'liegende Muenzen')
+    assertEqual(restored.run.coins[0]?.count, 2, 'die Stapelgroesse ist kein Betrag')
+    assertEqual(restored.run.xp, 800, 'Erfahrung ist kein Gold')
+    assertEqual(restored.run.towersBought, 3, 'der Kaufzaehler traegt den Preis, nicht ihn selbst')
   })
 
   check('kaputte Eingaben liefern null statt eines Absturzes', () => {
@@ -306,6 +351,70 @@ export function saveSuite(): void {
       run: { ...createInitialRun(5), zusatz: 1 },
     })
     assert(restored !== null, 'darf nicht verworfen werden')
+  })
+
+  /*
+   * Der Beweis fuer Migration 8 -> 9 (der Upgrade-Katalog).
+   *
+   * Sie ist die erste, die etwas **wegnimmt**, und genau deshalb steht sie hier: Was sie
+   * loescht, muss die eine Sache sein, die nicht mehr passt - und alles andere muss
+   * unberuehrt bleiben. Ein Spielstand, der beim Umbau seine Prestigepunkte verliert, waere
+   * ein Datenverlust, kein Umbau.
+   */
+  check('der Katalog-Umbau verwirft nur die alten Upgrades', () => {
+    const old = {
+      version: 8,
+      savedAt: 0,
+      permanent: {
+        ...createInitialPermanent(),
+        prestigePoints: 4200,
+        prestigeNodes: ['eco.gold1', 'helper.collector'],
+        bestWaveEver: 88,
+      },
+      run: {
+        ...serialize(createInitialState(3), 0).run,
+        wave: 40,
+        gold: 500,
+        // Die alten Pfade - keiner davon existiert im Katalog.
+        upgrades: { 'core.damage': 12, 'tower.autocannon.range': 4, 'global.stationHp': 7 },
+      },
+    }
+
+    const restored = deserialize(old)
+    assert(restored !== null, 'die Migration muss greifen')
+
+    assertEqual(Object.keys(restored.run.upgrades).length, 0, 'die alten Pfade sind weg')
+    // Und alles, was nicht am Katalog haengt, steht noch.
+    assertEqual(restored.permanent.prestigePoints, 4200, 'die Prestigepunkte')
+    assertEqual(restored.permanent.prestigeNodes.length, 2, 'die Freischaltungen')
+    assertEqual(restored.permanent.bestWaveEver, 88, 'die Statistik')
+    assertEqual(restored.run.wave, 40, 'die Welle')
+    assertEqual(restored.run.gold, 500, 'das Gold auf dem Konto')
+  })
+
+  check('eine alte Haendlerware bekommt ihr leeres Upgrade-Feld', () => {
+    const old = {
+      version: 8,
+      savedAt: 0,
+      permanent: createInitialPermanent(),
+      run: {
+        ...serialize(createInitialState(3), 0).run,
+        trader: {
+          x: 100,
+          y: 0,
+          left: 30,
+          visited: false,
+          // So sah ein Posten vor E7 aus: ohne `upgradeId`.
+          stock: [{ defId: 'trade.upgrade1', perkId: null, price: 5, sold: false }],
+        },
+      },
+    }
+
+    const restored = deserialize(old)
+    assert(restored !== null, 'die Migration muss greifen')
+    const offer = restored.run.trader?.stock[0]
+    assert(offer !== undefined, 'die Ware muss den Spielstand ueberleben')
+    assertEqual(offer.upgradeId, null, 'das neue Feld steht auf null')
   })
 
   check('die Migrationskette ist lueckenlos', () => {

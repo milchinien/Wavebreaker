@@ -13,61 +13,59 @@ nicht zur Laufzeit: Das Spiel lädt keine 4000 Pixel breite Datei, um daraus ein
 
 ## Symbole (`public/icons/`)
 
+**22 Strichzeichnungen, eigens für dieses Spiel gezeichnet** — kein geliefertes Paket.
+
 Symbole werden als **Maske** benutzt, nicht als Bild — die Datei liefert die Form, die Farbe
 kommt aus der Palette (`.pix` in `src/style.css`). Deshalb ist es gleichgültig, in welcher
 Farbe die Vorlage gezeichnet ist.
 
-| Datei | Quelle | Wo im Spiel |
-|---|---|---|
-| `coin.png` | Game UI collection · Icons · Asset 5 | Goldanzeige oben links, Kosten |
-| `prev.png` / `next.png` | Game UI collection · Icons · Asset 25 / 26 | Wellensteuerung |
-| `combat.png` | Game UI collection · Icons · Asset 13 | Navileiste: Kampf |
-| `base.png` | Game UI collection · Icons · Asset 39 | Navileiste: Basis |
-| `gear.png` | Cyan Blue Neon Arcade UI Pack · Settings_icon | Navileiste: Einstellungen |
-| `crosshair.png` | Game UI collection · Icons · Asset 27 | Reichweite |
-| `bullet.png` | Game UI collection · Icons · Asset 19 | Schaden |
-| `damage`, `hull`, `rate`, `range`, `radius`, `gold`, `turret`, `modules`, `upgrade`, `settings`, `autocannon`, `cannon`, `amplifier`, `boss` | Craftpix Skillicons (`1 Icons`) | Kachel- und Werteanzeigen |
+Alle liegen als SVG auf demselben Raster: 24 × 24 Einheiten, Strichstärke 2, runde Enden
+und Ecken. Das ist der Grund, warum sie sich mischen lassen, ohne dass eine Zeile unruhig
+wird — vorher lagen hier Pixelbilder in 24, 28 und 56 Pixel Kantenlänge nebeneinander, und
+zwei Zeichen derselben Zeile trugen sichtbar verschiedene Strichstärken.
+
+| Datei | Wo im Spiel |
+|---|---|
+| `coin` | Goldanzeige oben links, Kosten, Goldfaktor |
+| `gold` | Münzstapel — Prestige-Ast Wirtschaft |
+| `prev` / `next` | Wellensteuerung |
+| `combat` / `base` / `upgrade` / `crosshair` / `gear` | Navileiste (Kampf, Basis, Upgrades, Prestige, Einstellungen) |
+| `settings` | Regler — Einstellungspanel |
+| `turret` / `autocannon` / `cannon` / `amplifier` | Turmarten |
+| `damage` / `rate` / `range` / `hull` / `radius` | Kampfwerte |
+| `bullet` | Schaden des Hauptturms in der Rumpfleiste |
+| `boss` | Bosse und Titanen |
+| `modules` | Module und Lager |
+
+### Warum gezeichnet und nicht übernommen
+
+Der gelieferte Anlagensatz enthält **weder die Game-UI-Sammlung noch die Skillicons**, auf
+die diese Datei ursprünglich verwies. Aus `Lucid V1.2` ließen sich acht Zeichen übernehmen
+(Home, Gear, Grid, Up-Arrow, Clock, Previous, Next) — für die anderen vierzehn gibt es dort
+nichts, das die Bedeutung trägt. Eine Lupe als Fadenkreuz oder ein Schloss als Rumpf wäre
+geraten, nicht belegt.
+
+Übernommen wurde deshalb keines: Ein Satz aus acht geborgten Pixelbildern und vierzehn
+eigenen Zeichnungen sähe zusammengesucht aus, und die Oberfläche ringsherum ist glatte
+Neonzeichnung und kein Pixelbild. Die acht Lucid-Zeichen sind entsprechend abgelöst.
 
 ## Oberflächenteile (`public/ui/`)
 
-| Datei | Quelle | Wo im Spiel |
-|---|---|---|
-| `frame-slot.png` | Game UI collection · button/Blue · Asset 19 | Navischaltflächen, Upgrade-Kacheln |
-| `frame-box.png` | Game UI collection · button/Blue · Asset 16 | Panelrahmen (9-Schnitt über `border-image`) |
-| `bar-hatch.png` | Game UI collection · Bars/Blue · Asset 10 | Schraffur in Fortschritts- und Lebensleisten |
-| `corner.png` | Game UI collection · Bars/Blue · Asset 5 | Eckwinkel am Spielfeldrand |
-| `plate.png` | Game UI collection · Button with border/Blue · Asset 8 | Schild unter Beschriftungen |
+Ebenfalls gezeichnet, aus demselben Grund.
 
-### Nachtrag 07.08.2026 — was fehlt
+| Datei | Wo im Spiel |
+|---|---|
+| `frame-slot.svg` | Fassung der Navischaltflächen — Achteck mit Eckwinkeln |
+| `bar-hatch.svg` | laufende Schraffur in Fortschritts- und Lebensleisten |
 
-Der gelieferte Anlagensatz enthält **weder die Game-UI-Sammlung noch die Skillicons**.
-Aus `Lucid V1.2` ließen sich acht Symbole übernehmen, bei denen die Form die Bedeutung
-wirklich trifft (`_rettung/symbole-bauen.ps1`):
+## Seltenheitsrahmen (`public/frames/`)
 
-| Ziel | Quelle | Warum |
-|---|---|---|
-| `prev` / `next` | Previous / Next | Wellensteuerung |
-| `gear` / `settings` | Gear | Einstellungen |
-| `base` | Home | Navileiste Basis |
-| `modules` | Grid | Module sind ein Raster |
-| `upgrade` | Up-Arrow | allgemeines Verbesserungszeichen |
-| `rate` | Clock | Feuerrate ist Zeit |
+Fünf Stufen, jede in ihrer Farbe aus `src/render/theme.ts` (`RARITY_COLOR`). Anders als die
+Symbole sind sie **Bilder** und tragen ihre Farbe selbst.
 
-**Noch offen — 14 Symbole:** `turret`, `damage`, `range`, `hull`, `gold`, `radius`,
-`autocannon`, `cannon`, `amplifier`, `boss`, `coin`, `combat`, `crosshair`, `bullet`.
-Dazu die **fünf Seltenheitsrahmen** unter `public/frames/` (`common`, `rare`, `epic`,
-`legendary`, `mythic`).
-
-Für diese gibt es in `Lucid` nichts, das die Bedeutung trägt — eine Lupe als Fadenkreuz
-oder ein Schloss als Rumpf wäre geraten und nicht belegt. Sie brauchen die in dieser
-Datei genannten Pakete (Game UI collection, Craftpix Skillicons, Rahmensatz) oder eigene
-Zeichnungen. Bis dahin bleiben die betroffenen Kacheln leer; das Spiel läuft davon
-unbeeindruckt weiter (`icons.ts`: „Ein fehlendes Bild darf nie eine leere Kachel
-ergeben" — es fällt auf `turret` bzw. `upgrade` zurück, die ihrerseits noch fehlen).
-
-Die früheren `arrow-left.png` / `arrow-right.png` aus dem Craftpix-Rahmensatz sind entfallen:
-Sie trugen ihren Rahmen selbst, fielen dadurch aus der Formensprache heraus und ließen sich
-nicht mitfärben. Die Wellenpfeile sind jetzt `prev`/`next` als Maske in einem normalen Knopf.
+Die Ausstattung wächst mit der Stufe, damit sich die Seltenheit auch ohne Farbsehen ablesen
+lässt: `common` nur die Fassung, `rare` zusätzlich Eckwinkel, `epic` eine zweite Innenlinie,
+`legendary` Kerben an den Kanten, `mythic` obendrein die Marke oben.
 
 ## Münzen (`public/coins/`)
 
@@ -130,30 +128,70 @@ verwenden, darunter zerfällt sie.
 
 ## Klang (`public/sfx/`)
 
-| Datei | Quelle | Ereignis |
+Gebaut von `tools/klang-bauen.mjs` aus dem Rohpaket in `Assets/raw` (2100 WAV, 96 kHz,
+24 Bit, Stereo, je Klang sechs Aufnahmen). Ziel sind 32 kHz, 16 Bit, Mono, vorn und hinten
+beschnitten, gekürzt und auf einen gemeinsamen Spitzenwert ausgesteuert — aus zwei Megabyte
+je Datei werden zwanzig bis hundert Kilobyte. Neu bauen:
+
+```
+node tools/klang-bauen.mjs
+```
+
+| Name | Quelle (`Assets/raw`) | Ereignis |
 |---|---|---|
-| `coin.ogg` | `Coins sounds [OGG]` · `1_Coins.ogg` | `gold.collected` |
-| `pod.ogg` | `Coins sounds [OGG]` · `5_Coins.ogg` | `pod.collected` |
+| `coin` ×6 | `DSGNTonl_USABLE-Coin Toss` | `gold.collected` |
+| `pod` ×3 | `DSGNTonl_USABLE-Magic Coin` | `pod.collected` |
+| `poddrop` ×3 | `DSGNTonl_SKILL IMPACT-Coin Impact` | `pod.dropped` |
+| `shot` ×4 | `DSGNMisc_PROJECTILE-Laser Shot` | `tower.fired` |
+| `crit` ×3 | `DSGNMisc_SKILL IMPACT-Critical Strike` | `tower.fired` (kritisch) |
+| `kill` ×4 | `DSGNImpt_EXPLOSION-Small Flare` | `enemy.killed` |
+| `hurt` ×3 | `DSGNMisc_HIT-Mecha Armor Piercer` | `station.damaged` |
+| `bossin` ×2 | `MAGSpel_CAST-Sharp Summon` | `boss.spawned` |
+| `bossdown` ×2 | `DSGNImpt_EXPLOSION-Eruption` | `boss.killed` |
+| `lost` ×2 | `DSGNImpt_EXPLOSION-Forced Shutdown` | `station.destroyed` |
+| `wavein` ×2 | `MAGSpel_CAST-Energy Riser` | `wave.started` |
+| `waveout` ×2 | `DSGNSynth_BUFF-Stats Up` | `wave.cleared` |
+| `level` ×2 | `DSGNSynth_BUFF-Mecha Level Up` | `level.up` |
+| `prestige` ×2 | `MAGSpel_CAST-Complex Rise` | `prestige.done` |
+| `event` ×2 | `DSGNTonl_SKILL IMPACT-Magic Sparkles` | `event.triggered` |
+| `ability` ×3 | `DSGNSynth_CAST-Mecha Energy Gathering` | `ability.activated` |
+| `ready` ×2 | `DSGNMisc_INTERFACE-Zap Select` | `ability.ready` |
+| `buy` ×3 | `UIClick_INTERFACE-Positive Click` | `upgrade.bought` |
+| `build` ×2 | `DSGNSynth_BUFF-Mecha Lock In` | `tower.bought` |
+| `trade` ×2 | `DSGNTonl_USABLE-Mecha Upgrade Equip` | `trader.bought` |
+| `trader` ×2 | `WHSH_MOVEMENT-Mecha Ship Passby` | `trader.arrived` |
 
-**Nur diese beiden sind Aufnahmen.** Alles andere — Schüsse, Treffer, Explosionen, Bosse,
-Fähigkeiten, Menütöne — rechnet `src/app/audio.ts` aus Oszillatoren. Das ist keine
-Sparmaßnahme, sondern eine Entscheidung: Ein Klangapparat aus Oszillatoren braucht keine
-Ladezeit, lässt sich in Tonhöhe und Länge genau an das Ereignis anpassen und trifft den
-Neon-Look besser als ein Sammelsurium fremder Aufnahmen.
+Zusammen 56 Dateien, 3,2 MB. Geholt werden sie **bei der ersten Berührung der Seite**, nicht
+beim Laden: Der Klang darf den Start nicht aufhalten, und vorher darf der Browser ohnehin
+nichts abspielen.
 
-Die Ausnahme sind die beiden Aufhebe-Klänge: Es ist der Ton, den der Spieler hundertmal je
-Welle hört, und ein gerechneter Piepton wird dort schnell lästig.
+**Warum mehrere Aufnahmen je Klang.** Sie sind der Grund, warum hundert eingesammelte Münzen
+je Welle nicht klingen wie ein Maschinengewehr. `app/audio.ts` zieht bei jedem Ton eine
+andere als beim letzten Mal und streut bei den häufigen Klängen zusätzlich die Tonhöhe um
+±4 %. Die Anzahl folgt der Häufigkeit: Das Aufheben von Gold bekommt alle sechs, ein
+Prestige zwei.
+
+Die gerechneten Töne aus Oszillatoren sind geblieben — aber als **Ersatz**, nicht als
+Regel: Solange eine Aufnahme lädt oder fehlt, springt der zugehörige Ton ein. Eine fehlende
+Datei darf nie eine Fehlermeldung ergeben und auch keine Stille an einer Stelle, an der
+etwas passiert ist.
+
+### Was fehlt
+
+Die Schrift `monogram` (`public/fonts/monogram.ttf`) liegt dem Anlagensatz **nicht** bei.
+Alle Zahlen laufen deshalb in der Ersatzschrift (`ui-monospace`). Das Spiel läuft davon
+unbeeindruckt; die Pixeloptik der Zahlen fehlt aber.
 
 ## Lizenzen
 
 | Paket | Lizenz |
 |---|---|
 | Craftpix (Skillicons, Frames, Effektpakete) | https://craftpix.net/file-licenses/ |
-| Game UI collection FREE version | SunGraphica, gamedevmarket.net |
-| Cyan Blue Neon Arcade UI Pack | Uryon Games / Sophie Wodey — Nutzung frei, Weitergabe der Rohdateien nicht |
 | Super Pixel Effects Gigapack (Free) | Craftpix-Lizenz |
-| Coins sounds [OGG] | siehe Beilage des Pakets in `assets/raw` |
-| monogram | siehe `assets/raw/monogram/credits.txt` |
+| Lucid V1.2 (Symbolsatz, nicht mehr verwendet) | siehe Beilage des Pakets in `Assets/raw` |
+| Klangpaket (`DSGN*`, `MAG*`, `UI*`, `WHSH*`, `FGHT*`) | siehe Beilage des Pakets in `Assets/raw` |
+| Münz- und Effektbilder | siehe Beilage der Pakete in `Assets/raw` |
+| Symbole, Rahmen, Oberflächenteile in `public/icons`, `public/frames`, `public/ui` | eigene Zeichnungen, gehören zum Projekt |
 
 **Wichtig:** Die Rohpakete dürfen nicht weitergegeben werden. Deshalb liegt in `public/`
 immer nur der zugeschnittene Ausschnitt, der im Spiel auch erscheint.

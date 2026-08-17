@@ -17,12 +17,16 @@
 import { emit } from '../core/events.ts'
 import {
   AUTOSAVE_INTERVAL_SECONDS,
+  GOLD_SCALE,
   START_CORE_ID,
   START_INVENTORY,
+  START_LEAGUE,
   START_TOWER_SLOTS,
+  START_WAVE,
 } from '../data/balance.ts'
 import type { Loop } from '../core/loop.ts'
 import { isKnownEvent } from '../data/events.ts'
+import { clampLeague } from '../data/leagues.ts'
 import { isKnownTower } from '../data/towers.ts'
 import { isKnownTrait } from '../data/traits.ts'
 import { isRarity } from '../data/types.ts'
@@ -58,8 +62,15 @@ import {
  * Version 6 (E16): Versorgungskapseln im Feld, das offene Ereignis und die Welle, auf der
  *   das naechste faellig wird.
  * Version 7 (E16, nachgereicht): die Haendler-Drohne samt Sortiment und Restzeit.
+ * Version 8: der Goldmassstab - kein neues Feld, sondern eine Umrechnung der vorhandenen
+ *   Betraege (Kontostand, verdientes Gold, liegende Muenzen).
+ * Version 9: der Upgrade-Katalog. Die gekauften Upgrades werden verworfen (die alten Pfade
+ *   gibt es nicht mehr), und die Haendlerware bekommt ihr `upgradeId`.
+ * Version 10: die Ligen. Der eine Wellenrekord wird zu einem je Liga, dazu die gespielte
+ *   Liga im Run und die freigeschaltete in `permanent`. Verlustfrei - jeder alte Spielstand
+ *   landet in Liga 1 mit genau dem Rekord, den er hatte.
  */
-export const SAVE_VERSION = 7
+export const SAVE_VERSION = 10
 export const STORAGE_KEY = 'wavebreaker.save'
 
 /**
@@ -244,6 +255,7 @@ export function serialize(state: GameState, nowMs: number): SaveData {
       unlockedCores: [...state.permanent.unlockedCores],
       seenHints: [...state.permanent.seenHints],
       bestWaveEver: state.permanent.bestWaveEver,
+      leagueUnlocked: state.permanent.leagueUnlocked,
       prestigeCount: state.permanent.prestigeCount,
       totalPlaySeconds: state.permanent.totalPlaySeconds,
     },
@@ -252,7 +264,9 @@ export function serialize(state: GameState, nowMs: number): SaveData {
       rngState: state.run.rngState,
       station: saveStation(state.run.station),
       wave: state.run.wave,
-      waveRecord: state.run.waveRecord,
+      league: state.run.league,
+      waveRecords: [...state.run.waveRecords],
+      leagueWaves: [...state.run.leagueWaves],
       gold: state.run.gold,
       goldEarned: state.run.goldEarned,
       towersBought: state.run.towersBought,
@@ -314,6 +328,11 @@ export function deserialize(data: unknown): GameState | null {
   const permanent = readPermanent(migrated['permanent'])
   const run = readRun(migrated['run'])
 
+  // Die einzige Stelle, die **beide** Bloecke sieht - und deshalb die einzige, die pruefen
+  // kann, ob die gespielte Liga ueberhaupt freigeschaltet ist. Ein Spielstand aus fremder
+  // Hand kaeme sonst mit `league: 10` und `leagueUnlocked: 1` durch.
+  run.league = Math.min(run.league, permanent.leagueUnlocked)
+
   return { permanent, run, runtime: createRuntime(run) }
 }
 
@@ -331,6 +350,7 @@ function readPermanent(raw: Record<string, unknown>): PermanentState {
     unlockedCores: readStringArray(raw['unlockedCores'], base.unlockedCores),
     seenHints: readStringArray(raw['seenHints'], base.seenHints),
     bestWaveEver: readNumber(raw['bestWaveEver'], base.bestWaveEver),
+    leagueUnlocked: clampLeague(readNumber(raw['leagueUnlocked'], base.leagueUnlocked)),
     prestigeCount: readNumber(raw['prestigeCount'], base.prestigeCount),
     totalPlaySeconds: readNumber(raw['totalPlaySeconds'], base.totalPlaySeconds),
   }
@@ -343,7 +363,9 @@ function readRun(raw: Record<string, unknown>): RunState {
     rngState: readNumber(raw['rngState'], base.rngState),
     station: readStation(raw['station']),
     wave: readNumber(raw['wave'], base.wave),
-    waveRecord: readNumber(raw['waveRecord'], base.waveRecord),
+    league: clampLeague(readNumber(raw['league'], base.league)),
+    waveRecords: readWaveRecords(raw['waveRecords'], base.waveRecords),
+    leagueWaves: readWaveRecords(raw['leagueWaves'], base.leagueWaves),
     gold: readNumber(raw['gold'], base.gold),
     goldEarned: readNumber(raw['goldEarned'], base.goldEarned),
     towersBought: readNumber(raw['towersBought'], base.towersBought),
@@ -503,6 +525,135 @@ const MIGRATIONS: Record<number, Migration> = {
   6: (data) => {
     const run = isRecord(data['run']) ? data['run'] : {}
     return { ...data, run: { ...run, trader: null, nextTraderWave: 0 } }
+  },
+
+  /**
+   * 7 -> 8: der Goldmassstab (`GOLD_SCALE` in `data/balance.ts`).
+   *
+   * Die einzige Migration, die kein Feld hinzufuegt, sondern **vorhandene umrechnet**. Sie
+   * muss sein, weil der Massstab beide Seiten der Wirtschaft zugleich verschoben hat: Ein
+   * Spielstand mit Betraegen im alten Massstab traefe auf Preise im neuen und waere damit
+   * schlagartig fuenfmal so reich - der Spieler haette alles sofort und nichts mehr zu
+   * entscheiden.
+   *
+   * Umgerechnet wird jeder Betrag, der im Spielstand steht: Kontostand, das insgesamt
+   * Verdiente (Grundlage der Prestige-Voraussetzung) und jede Muenze, die noch im Feld
+   * liegt. Was nicht in Gold gerechnet ist - Erfahrung, Prestige-Punkte, Upgrade-Stufen,
+   * der Kaufzaehler - bleibt unberuehrt: Der Massstab hat die Wirtschaft nicht
+   * umgestellt, nur ihre Zahlen.
+   *
+   * `towersBought` ist der wichtigste dieser unberuehrten Werte: Der Turmpreis waechst aus
+   * ihm, und weil `towerCost` den Massstab selbst einrechnet, steht der naechste Preis
+   * ohne Zutun richtig da.
+   */
+  7: (data) => {
+    const run = isRecord(data['run']) ? data['run'] : {}
+    const coins = Array.isArray(run['coins']) ? run['coins'] : []
+    return {
+      ...data,
+      run: {
+        ...run,
+        gold: readNumber(run['gold'], 0) * GOLD_SCALE,
+        goldEarned: readNumber(run['goldEarned'], 0) * GOLD_SCALE,
+        // Eine unbrauchbare Muenze wird hier nicht aussortiert - das tut `readCoins`
+        // ohnehin danach. Sie wird nur nicht angefasst.
+        coins: coins.map((coin) =>
+          isRecord(coin) && typeof coin['value'] === 'number'
+            ? { ...coin, value: coin['value'] * GOLD_SCALE }
+            : coin,
+        ),
+      },
+    }
+  },
+
+  /**
+   * 8 -> 9: Der Upgrade-Katalog (`docs/upgrade-umbau.md`).
+   *
+   * **Die gekauften Upgrades werden verworfen**, und zwar vollstaendig. Die alten Pfade
+   * (`core.damage`, `tower.autocannon.range`, `global.stationHp`) gibt es nicht mehr; jeder
+   * von ihnen ist durch einen benannten Eintrag ersetzt worden, und keiner laesst sich
+   * eindeutig zuordnen - `core.damage` verteilt sich auf `Hammerfall` und `Overclock`, die
+   * verschieden wirken und verschieden viel kosten. Eine Umrechnung waere eine Schaetzung,
+   * die man nie ganz richtig hinbekommt.
+   *
+   * Sie stehenzulassen waere schlimmer als sie zu verwerfen: `applyUpgrades` ignoriert
+   * unbekannte Pfade, sie wuerden also mitgespeichert, nichts bewirken und beim naechsten
+   * Blick in den Spielstand wie ein Fehler aussehen.
+   *
+   * **Alles andere bleibt**: Prestigepunkte, Freischaltungen, Statistik, Station, Inventar,
+   * Level und Perks. Was verloren geht, ist ausgegebenes Gold eines laufenden Runs - laut
+   * GDD 08 Abschnitt 9 ohnehin die vergaenglichste Schicht des Spiels.
+   *
+   * Dazu das neue Feld `upgradeId` an der Haendlerware: Ein alter Posten wusste noch nicht,
+   * welches Upgrade er verschenkt (gewuerfelt wurde erst beim Kauf). `null` heisst hier
+   * "keines" - der Posten laesst sich kaufen und tut dann nichts. Das ist die eine Stelle,
+   * an der dieser Umbau einen alten Spielstand um eine Kleinigkeit aermer macht, und sie
+   * betrifft hoechstens die eine Drohne, die gerade im Feld steht.
+   */
+  8: (data) => {
+    const run = isRecord(data['run']) ? data['run'] : {}
+    const trader = isRecord(run['trader']) ? run['trader'] : null
+    const stock = trader && Array.isArray(trader['stock']) ? trader['stock'] : null
+
+    return {
+      ...data,
+      run: {
+        ...run,
+        upgrades: {},
+        ...(trader
+          ? {
+              trader: {
+                ...trader,
+                ...(stock
+                  ? {
+                      stock: stock.map((offer) =>
+                        isRecord(offer) ? { ...offer, upgradeId: null } : offer,
+                      ),
+                    }
+                  : {}),
+              },
+            }
+          : {}),
+      },
+    }
+  },
+
+  /**
+   * 9 -> 10: die Ligen (docs/liga-system.md).
+   *
+   * Aus dem einen `waveRecord` wird der erste Eintrag einer Liste je Liga, dazu kommen die
+   * gespielte Liga im Run und die freigeschaltete in `permanent`. Beide beginnen bei 1.
+   *
+   * **Verlustfrei.** Jeder alte Spielstand landet genau dort, wo er heute steht: in Liga 1,
+   * mit seinem Rekord, mit allem an Tuermen, Gold, Level und Upgrades. Die Ligen sind kein
+   * Umbau der Wirtschaft, sondern eine zweite Achse daneben - und die beginnt fuer einen
+   * bestehenden Run bei ihrem Anfang.
+   *
+   * Das alte Feld wird **geloescht** und nicht liegengelassen: Ein `waveRecord`, das
+   * mitgespeichert wuerde und niemanden mehr interessiert, saehe beim naechsten Blick in
+   * den Spielstand wie die Wahrheit aus.
+   */
+  9: (data) => {
+    const run = isRecord(data['run']) ? data['run'] : {}
+    const record = readNumber(run['waveRecord'], START_WAVE)
+
+    const migrated: Record<string, unknown> = {
+      ...run,
+      league: START_LEAGUE,
+      waveRecords: [Math.max(START_WAVE, Math.floor(record))],
+      leagueWaves: [Math.max(START_WAVE, Math.floor(readNumber(run['wave'], START_WAVE)))],
+    }
+    delete migrated['waveRecord']
+
+    const result: Record<string, unknown> = { ...data, run: migrated }
+    // `permanent` wird **ergaenzt, nicht erschaffen**: Ein Spielstand ohne diesen Block ist
+    // kaputt, und `deserialize` weist ihn ab. Wuerde die Migration ihn hier nebenbei
+    // anlegen, kaeme ein Fragment durch die Pruefung, das nie ein Spielstand war - der
+    // Selbsttest "kaputte Eingaben liefern null" faengt genau diesen Fall.
+    if (isRecord(data['permanent'])) {
+      result['permanent'] = { ...data['permanent'], leagueUnlocked: START_LEAGUE }
+    }
+    return result
   },
 }
 
@@ -667,6 +818,23 @@ function readString(value: unknown, fallback: string): string {
 function readStringArray(value: unknown, fallback: string[]): string[] {
   if (!Array.isArray(value)) return [...fallback]
   return value.filter((entry): entry is string => typeof entry === 'string')
+}
+
+/**
+ * Die Wellenrekorde je Liga (`run.waveRecords`).
+ *
+ * Ein unbrauchbarer Eintrag wird auf `START_WAVE` gesetzt statt ausgelassen: Die Liste ist
+ * **positionsgebunden** - Index `liga - 1` -, und ein ausgelassener Eintrag verschoebe alle
+ * dahinter um eine Liga. Dieselbe Ueberlegung, aus der die Muenzenliste umgekehrt verfaehrt
+ * (dort ist die Position bedeutungslos, also faellt eine kaputte Muenze weg).
+ */
+function readWaveRecords(value: unknown, fallback: number[]): number[] {
+  if (!Array.isArray(value) || value.length === 0) return [...fallback]
+  return value.map((entry) =>
+    typeof entry === 'number' && Number.isFinite(entry) && entry >= START_WAVE
+      ? Math.floor(entry)
+      : START_WAVE,
+  )
 }
 
 function readNumberRecord(value: unknown, fallback: Record<string, number>): Record<string, number> {

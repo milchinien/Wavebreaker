@@ -41,10 +41,22 @@ Jedes Modul besitzt:
 
 Dadurch passen alle Module geometrisch zusammen und rasten sauber ein.
 
-**Zwischenräume gehören dazu.** Dreiecke, Vierecke, Fünfecke und Sechsecke kacheln die Ebene nicht
-lückenlos: An vielen Ecken bleiben Keile offen — besonders dort, wo Fünfecke beteiligt sind
-(Innenwinkel 108°, drei davon ergeben nie 360°). Diese Keile sind Teil des Erscheinungsbilds und
-kein Fehler. Die Station soll wie eine gewachsene Maschine aussehen, nicht wie eine Fliesenwand.
+**Zwischenräume gehören dazu — aber sie müssen füllbar sein.**
+
+Diese Stelle stand ursprünglich anders da: *„An vielen Ecken bleiben Keile offen — besonders dort,
+wo Fünfecke beteiligt sind (Innenwinkel 108°, drei davon ergeben nie 360°). Diese Keile sind Teil
+des Erscheinungsbilds und kein Fehler."* Der erste Satz war richtig beobachtet, die Folgerung war
+falsch. Ein Keil, in den **nichts** passt, ist kein Erscheinungsbild, sondern eine Sackgasse: Der
+Spieler sieht eine Lückenform, hält ein Modul davor und bekommt die Sperrfarbe, ohne zu erfahren,
+warum.
+
+Deshalb sind seit 7.1 nur noch Formen zugelassen, deren Innenwinkel im 30°-Raster liegen — Dreieck,
+Viereck, Hexagon. Damit ist **jeder** entstehende Keil bis auf einen füllbar, und der Zwischenraum
+wird von einem Schönheitsfehler zu einer Entscheidung: Der 60°-Zwickel zwischen zwei Vierecken nimmt
+genau ein Dreieck, und dieses Einpassen ist einer der befriedigendsten Momente beim Bauen.
+
+Die Station soll trotzdem wie eine gewachsene Maschine aussehen und nicht wie eine Fliesenwand —
+lückenlos gekachelt wird sie nur, wenn der Spieler es darauf anlegt.
 
 ---
 
@@ -67,7 +79,7 @@ keine Feinpositionierung, keine Mehrdeutigkeit. Deshalb rastet immer alles saube
 ```
                     freie Kante
                    ╱          ╲
-        Fünfeck ──┤   HEXAGON   ├── Dreieck
+        Hexagon ──┤   HEXAGON   ├── Dreieck
                    ╲   (Kern)  ╱
                     └──────────┘
                        Viereck
@@ -75,19 +87,19 @@ keine Feinpositionierung, keine Mehrdeutigkeit. Deshalb rastet immer alles saube
 
 ### Grundfläche und Anschlusskanten
 
-Es gibt vier Grundflächen. Ihre Kantenzahl ist **Spielmechanik**, nicht Optik — sie bestimmt,
-wie viele Nachbarn ein Modul höchstens haben kann und damit, wie viele Buff-Verbindungen möglich sind.
+Es gibt **drei** Grundflächen. Ihre Kantenzahl ist **Spielmechanik**, nicht Optik — sie bestimmt,
+wie viele Nachbarn ein Modul höchstens haben kann und damit, wie viele Buff-Verbindungen möglich
+sind. Warum es genau diese drei sind, steht in Abschnitt 7.1.
 
-| Grundfläche | Anschlusskanten | Rolle |
-|---|---|---|
-| Dreieck | 3 | wenig Anschluss, kompakt, gut für den Rand |
-| Viereck | 4 | ausgewogen |
-| Fünfeck | 5 | viel Anschluss — die natürliche Form für Buff-Türme |
-| Hexagon | 6 | maximaler Anschluss, Hauptturm und Spezialmodule |
+| Grundfläche | Anschlusskanten | Innenwinkel | Rolle |
+|---|---|---|---|
+| Dreieck | 3 | 60° | wenig Anschluss, kompakt — der Universal-Füllstein für Keile |
+| Viereck | 4 | 90° | ausgewogen; zwei davon nebeneinander erzeugen den 60°-Keil |
+| Hexagon | 6 | 120° | maximaler Anschluss, Hauptturm, Buff-Türme und Endgame-Module |
 
 Formen, die geometrisch nicht andocken können (Kreis, Spezialform aus Abschnitt 7), werden als
 **Grundfläche plus Emblem** dargestellt: Das Drohnen-Modul ist ein Hexagon mit Kreis-Emblem, der
-Plasma-Turm ein Fünfeck mit Stern-Emblem. Die Formsprache bleibt erhalten, die Geometrie bleibt schlüssig.
+Plasma-Turm ein Hexagon mit Stern-Emblem. Die Formsprache bleibt erhalten, die Geometrie bleibt schlüssig.
 
 ### Zwei Regeln, die daraus folgen
 
@@ -216,27 +228,83 @@ Das Designziel lautet: **Qualität statt Masse.** Jeder einzelne Turm soll wicht
 
 ## 7. Modulformen
 
-Die Form leistet zweierlei: Sie macht das Modul auf einen Blick erkennbar **und** legt über die
-Kantenzahl fest, wie viele Nachbarn es haben kann (Abschnitt 3).
+Die Form leistet dreierlei: Sie macht das Modul auf einen Blick erkennbar, legt über die
+Kantenzahl fest, wie viele Nachbarn es haben kann (Abschnitt 3), **und sagt, wie stark der Turm
+ist**.
 
-| Form | Anschlusskanten | Typische Rolle | Beispiele |
+### 7.1 Es gibt genau drei Formen — Dreieck, Quadrat, Hexagon
+
+> **Neu am 10.08.2026.** Vorher gab es außerdem das Pentagon. Es ist entfernt, und der Grund ist
+> Geometrie, nicht Geschmack.
+
+Eine Ecke der Station schließt sich, wenn die Innenwinkel der dort anliegenden Module 360° ergeben.
+Der Innenwinkel eines regelmäßigen n-Ecks ist `180 − 360/n`:
+
+| n | 3 | 4 | 5 | 6 | 7 | 8 | 12 |
+|---|---|---|---|---|---|---|---|
+| Innenwinkel | 60° | 90° | **108°** | 120° | 128,6° | 135° | 150° |
+
+Damit mehrere Winkel zusammen 360° ergeben können, brauchen sie ein gemeinsames Raster. Es gibt
+genau ein brauchbares — 30° —, und `180 − 360/n` ist ein Vielfaches von 30 **nur** für
+n = 3, 4, 6 und 12.
+
+Das Pentagon liegt mit seinen 108° daneben, und zwar unheilbar: Es gibt keine Kombination von
+Modulen, die zusammen mit einem Pentagon auf 360° kommt. Das war ein sichtbarer Fehler im Spiel.
+Der Buff-Turm war ein Pentagon, und → [05, Abschnitt 5](05-turm-system-und-turmtypen.md) empfiehlt,
+ihn **zuerst** zu setzen und darum herum zu bauen. An der Ecke aus Kern, Buff-Turm und einem
+Quadrat standen damit 120 + 108 + 90 = 318° — ein Rest von 42°, in den nichts mehr passte, weil die
+kleinste Form 60° braucht. Der Spieler sah eine Lückenform, hielt ein Dreieck davor und bekam die
+Sperrfarbe. Jede Station hatte solche Reste, und keiner davon war seine Schuld.
+
+Mit 3, 4 und 6 ist jeder Rest ein Vielfaches von 30°, und alle bis auf einen lassen sich füllen:
+60° = Dreieck, 90° = Quadrat, 120° = Hexagon oder zwei Dreiecke, 150° = Dreieck + Quadrat, und so
+weiter. **Der einzige unfüllbare Rest ist 30°**, und er entsteht nur in einer Lage — Quadrat neben
+Hexagon neben Hexagon (90 + 120 + 120 = 330). Ihm kann der Spieler ausweichen; dem Pentagon konnte
+er es nicht.
+
+Erweiterbar ist die Liste nur um das **Zwölfeck** (150°, und 150 + 120 + 90 = 360). Sieben- und
+Achteck sind es nicht: Ein Achteck am Hexagon-Kern lässt 105° stehen.
+
+### 7.2 Mehr Kanten heißt stärkerer Turm
+
+> **Neu am 10.08.2026.**
+
+Die Form folgt der **Raritätsuntergrenze** der Turmart — der einzigen Zahl, die „wie stark ist
+das" schon beantwortet, und derselben, die der Spieler als Rahmenfarbe ohnehin vor sich hat:
+
+| Form | Kanten | Raritätsuntergrenze | Beispiele |
 |---|---|---|---|
-| Hexagon | 6 | Hauptturm, wichtige Spezialmodule | Hauptturm-Kerne, Tesla-Turm, Schildgenerator |
-| Quadrat | 4 | Standard-Kampftürme | Maschinengewehr, Kanone/Geschütz |
-| Dreieck | 3 | spezialisierte Angriffstürme | Sniper, Laser, Raketen, Flammen |
-| Pentagon | 5 | Unterstützung | Buff-Turm |
-| Kreis | 6 (Hexagon + Kreis-Emblem) | autonome Systeme | Drohnen-Modul |
-| Spezialform | 5 (Pentagon + Stern-Emblem) | Endgame-Module | Plasma-Turm |
+| Dreieck | 3 | Common | Maschinengewehr, Kanone, Sniper |
+| Quadrat | 4 | Rare und Epic | Raketen, Flammen, Cryo, Laser, Tesla, Schildgenerator |
+| Hexagon | 6 | Legendary und Mythic | Plasma, Void, Drohnen-Modul |
+
+Vorher folgte die Form der *Wirkung* — wenige Kanten für harte Einzelziel-Türme, viele für Streuung.
+Das war schlüssig, aber unlesbar: Ein Dreieck sagte dem Spieler nichts darüber, was er in der Hand
+hält. Jetzt sagt es das Wichtigste.
+
+Was mehr Kanten wirklich einbringen: mehr Nachbarn (also mehr Buff-Verbindungen), mehr eigene freie
+Kanten (also mehr Raum zum Weiterbauen), und eine größere Grundfläche, die den Turm weiter nach
+außen setzt und damit seine Reichweite ab Stationsmitte verlängert. Alles drei ist Vorteil. Bezahlt
+wird er durch Seltenheit: Die Turmart fällt seltener, und der Turmpreis steigt mit jedem Kauf.
+
+**Die eine Ausnahme sind Buff-Türme.** Bei ihnen sind Kanten nicht Stärke, sondern Funktion — ein
+Buff-Turm, der nur drei Module erreicht, reißt die Schwelle `b > 1/k` aus Abschnitt 9 nie. Der
+Buff-Turm ist deshalb ein **Hexagon**, obwohl er ab Common fällt.
+
+### 7.3 Kreis und Spezialform
 
 Kreis und Spezialform können geometrisch nicht andocken. Sie werden als Grundfläche plus Emblem
-dargestellt (Abschnitt 3) — die Wiedererkennung bleibt, die Geometrie bleibt schlüssig.
+dargestellt (Abschnitt 3) — die Wiedererkennung bleibt, die Geometrie bleibt schlüssig. Das
+Drohnen-Modul ist ein Hexagon mit Kreis-Emblem, der Plasma-Turm ein Hexagon mit Stern-Emblem.
 
-**Die Formzuordnung ist damit eine Balance-Entscheidung.** Ein Buff-Turm als Pentagon erreicht bis
-zu 5 Module, als Dreieck nur 3 — bei gleichem Turmplatz-Preis. Neue Türme dürfen deshalb nicht nach
-Optik, sondern nach gewünschter Anschlussfähigkeit eine Form bekommen.
+**Die Formzuordnung ist damit eine Balance-Entscheidung.** Ein Buff-Turm als Hexagon erreicht bis
+zu 6 Module, als Dreieck nur 3 — bei gleichem Turmplatz-Preis. Neue Türme dürfen deshalb nicht nach
+Optik eine Form bekommen.
 
-*Gemessen:* Über 60 Stationen mit je 15 Modulen lag die Kantenauslastung bei allen Formen zwischen
-40 % und 51 % — im Schnitt 1,52 Nachbarn beim Dreieck, 1,98 beim Fünfeck, 2,65 beim Hexagon.
+*Gemessen (noch mit Pentagon):* Über 60 Stationen mit je 15 Modulen lag die Kantenauslastung bei
+allen Formen zwischen 40 % und 51 % — im Schnitt 1,52 Nachbarn beim Dreieck, 1,98 beim Fünfeck,
+2,65 beim Hexagon. Die Messung stammt von vor 7.1 und ist für das Pentagon gegenstandslos; die
+Rangfolge Dreieck < Quadrat < Hexagon gilt weiter und ist neu zu messen.
 Die Form wirkt also, der Unterschied ist im normalen Wachstum aber eher Nuance. Wer gezielt
 kompakt um ein Buff-Modul herum baut, holt deutlich mehr heraus (Abschnitt 9).
 

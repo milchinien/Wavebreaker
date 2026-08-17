@@ -13,6 +13,8 @@
  * waere Betrug am Spieler. Sie sind spaeter **Eintraege in dieser Datei**, kein neuer Code.
  */
 
+import type { UpgradeEffect } from './upgrades.ts'
+
 export type PrestigeArea =
   | 'economy'
   | 'towers'
@@ -31,6 +33,19 @@ export type PrestigeNode = {
   /** Alle Voraussetzungen muessen gekauft sein, sonst bleibt der Knoten gesperrt. */
   requires: readonly string[]
   description: string
+  /**
+   * Was der Knoten an Zahlen hebt - **dieselbe Union wie Katalog und Perks** (seit E7).
+   *
+   * Er ist **freiwillig**, und das ist die eigentliche Aussage dieses Feldes: Die grosse
+   * Mehrheit der Knoten hebt gar keine Zahl, sondern **schaltet frei** - eine Turmart, eine
+   * Seltenheitsstufe, ein Spieltempo, einen Helfer. Solche Knoten sind reine Datenabfragen
+   * (`isUnlocked`), und ein erfundener Effekt daneben wuerde nur behaupten, sie seien
+   * dasselbe wie ein Goldbonus.
+   *
+   * Wo er steht, ersetzt er eine Kette von Fallunterscheidungen in `sim/prestige.ts`: Ein
+   * fuenfter Goldknoten ist damit ein Eintrag in dieser Liste und keine Zeile Code mehr.
+   */
+  effect?: UpgradeEffect
 }
 
 /*
@@ -51,6 +66,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     cost: 10,
     requires: [],
     description: '+10% gold from enemies.',
+    effect: { kind: 'global', key: 'goldBonus', amount: 0.1 },
   },
   {
     id: 'eco.xp1',
@@ -59,6 +75,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     cost: 40,
     requires: [],
     description: '+25% experience from kills.',
+    effect: { kind: 'global', key: 'xpBonus', amount: 0.25 },
   },
   {
     id: 'eco.gold2',
@@ -67,6 +84,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     cost: 50,
     requires: ['eco.gold1'],
     description: '+25% gold from enemies.',
+    effect: { kind: 'global', key: 'goldBonus', amount: 0.25 },
   },
   {
     id: 'eco.gold3',
@@ -75,6 +93,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     cost: 250,
     requires: ['eco.gold2'],
     description: '+50% gold from enemies.',
+    effect: { kind: 'global', key: 'goldBonus', amount: 0.5 },
   },
   /*
    * Der Abwesenheitsertrag (GDD 12 Abschnitt 1 und GDD 10, Bereich 1). Beide Zahlen stehen

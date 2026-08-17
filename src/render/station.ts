@@ -45,6 +45,15 @@ export type DrawOptions = {
    * **immer** hereingereicht - gerade in der Basis soll man sehen, dass etwas angedockt hat.
    */
   placings?: Map<string, Placing> | undefined
+  /**
+   * Module, die gerade im Overdrive sind (`sim/overdrive.ts`).
+   *
+   * Ohne sichtbaren Zustand existiert Overdrive fuer den Spieler nicht - er saehe nur, dass
+   * die Zahlen ueber dem Feld manchmal groesser sind, und wuesste nie warum. Gereicht wird
+   * die **Menge der Kennungen** und nicht der Zustand selbst: Die Zeichenebene muss wissen,
+   * wer glueht, nicht wie lange noch.
+   */
+  overdrive?: ReadonlySet<string> | undefined
 }
 
 /**
@@ -138,6 +147,46 @@ export function drawModules(
   for (const module of modules) drawSymbol(ctx, module, camera, width, height, time, options)
   // Zuletzt: Der Andockring läuft über seine Nachbarn hinweg und wäre sonst halb verdeckt.
   for (const module of modules) drawPlaceRing(ctx, module, camera, width, height, time, options)
+  for (const module of modules) drawOverdrive(ctx, module, camera, width, height, time, options)
+}
+
+/** Der Ton, in dem ein Modul im Overdrive glüht. */
+const OVERDRIVE_TONE = '#ff6a2d'
+const OVERDRIVE_PULSE_RATE = 9
+
+/**
+ * Ein Modul im Overdrive glüht (`docs/upgrade-umbau.md` Abschnitt 6.5).
+ *
+ * Gezeichnet als **pulsierender Umriss** und nicht als Fläche: Die Fläche sagt bereits, was
+ * für ein Modul es ist (Kategorie) und wie selten (Rahmenfarbe). Ein zweiter Farbauftrag
+ * darüber machte beides unlesbar; eine Kontur darüber nicht.
+ *
+ * Das Pulsieren ist schnell — deutlich schneller als das Atmen des Kerns. Der Zustand hält
+ * nur wenige Sekunden, und was kurz gilt, muss auch kurzatmig aussehen.
+ */
+function drawOverdrive(
+  ctx: CanvasRenderingContext2D,
+  module: PlacedModule,
+  camera: Camera,
+  width: number,
+  height: number,
+  time: number,
+  options: DrawOptions,
+): void {
+  if (!options.overdrive?.has(module.uid)) return
+
+  const pulse = 0.55 + 0.45 * Math.sin(time * OVERDRIVE_PULSE_RATE)
+  const points = toScreen(camera, module.poly, width, height)
+
+  ctx.save()
+  ctx.globalAlpha = alphaFor(module, options) * (0.5 + 0.5 * pulse)
+  trace(ctx, points)
+  ctx.strokeStyle = OVERDRIVE_TONE
+  ctx.lineWidth = 2 + 1.5 * pulse
+  ctx.shadowColor = OVERDRIVE_TONE
+  ctx.shadowBlur = 10 + 14 * pulse
+  ctx.stroke()
+  ctx.restore()
 }
 
 /**
