@@ -13,6 +13,7 @@
 import { formatNumber, formatPercent } from '../core/format.ts'
 import { MELT_COST } from '../data/balance.ts'
 import { towerById } from '../data/towers.ts'
+import { globalPaths, upgradeById } from '../data/upgrades.ts'
 import { isKnownTrait, traitById } from '../data/traits.ts'
 import { STAT_KEYS, type Rarity, type StatKey } from '../data/types.ts'
 import { t } from '../data/strings.ts'
@@ -38,16 +39,27 @@ export function renderInventory(
   root.replaceChildren()
 
   const header = document.createElement('header')
-  header.innerHTML =
-    `<h2>${t('base.inventory')}</h2>` +
-    `<span class="slots">${t('base.slots', { used: usedSlots(station), total: station.slots })}</span>`
+  header.innerHTML = `<h2>${t('base.inventory')}</h2>`
   root.appendChild(header)
 
+  root.appendChild(slotGauge(state))
+
   if (station.inventory.length === 0) {
+    /*
+     * Zwei Zeilen und nicht eine: Die erste sagt, was ist, die zweite, was zu tun ist.
+     *
+     * Das leere Lager ist seit dem Wegfall der drei geschenkten Module der **Normalfall der
+     * ersten Minuten** (`START_INVENTORY`) und nicht mehr die Ausnahme nach einem
+     * Schmelzgang. Ein Bereich, der einen Anfaenger mit "No modules in storage." allein
+     * laesst, hat ihm die einzige Frage nicht beantwortet, die er hat.
+     */
     const empty = document.createElement('p')
     empty.className = 'muted'
     empty.textContent = t('base.empty')
-    root.appendChild(empty)
+    const buy = document.createElement('p')
+    buy.className = 'muted'
+    buy.textContent = t('base.emptyHint')
+    root.append(empty, buy)
     return
   }
 
@@ -110,7 +122,72 @@ export function renderInventory(
 }
 
 /**
- * Verwaltung rechts unten (GDD 13 Abschnitt 5).
+ * Die Dockanzeige - wie viele Module ueberhaupt an den Kern passen.
+ *
+ * Sie stand hier als `11 px` graue Zeile neben der Ueberschrift ("3 / 5 slots") und war
+ * damit die am schlechtesten sichtbare Zahl des Spiels - ausgerechnet die, die entscheidet,
+ * ob ein gekaufter Turm ueberhaupt irgendwohin kann. Jetzt ist sie ein Block mit drei
+ * Teilen, und jeder beantwortet eine andere Frage:
+ *
+ *   die **Punktreihe**  Wie viele sind es, und wie viele davon sind frei? Ein Punkt je
+ *                       Platz - man zaehlt sie, ohne eine Zahl zu lesen.
+ *   die **Zahl**        Dasselbe noch einmal als `belegt / gesamt`, fuer den genauen Blick.
+ *   der **Nachsatz**    Wo mehr herkommen - aber **nur, wenn alle belegt sind**. Vorher
+ *                       waere es eine Werbung fuer etwas, das man nicht braucht; in dem
+ *                       Augenblick, in dem nichts mehr passt, ist es die Antwort.
+ *
+ * Die Namen der Ausbauten kommen aus dem Katalog (`globalPaths('towerSlots')`) und nicht aus
+ * einer Liste hier: Wer einen vierten Pfad eintraegt, bekommt ihn ohne Zutun genannt.
+ */
+function slotGauge(state: GameState): HTMLElement {
+  const station = state.run.station
+  const used = usedSlots(station)
+  const total = station.slots
+  const free = Math.max(0, total - used)
+
+  const gauge = document.createElement('div')
+  gauge.className = 'slot-gauge'
+  if (free === 0) gauge.classList.add('full')
+
+  const head = document.createElement('div')
+  head.className = 'slot-head'
+  const label = document.createElement('span')
+  label.className = 'slot-label'
+  label.textContent = t('base.docking')
+  const count = document.createElement('b')
+  count.className = 'slot-count'
+  count.textContent = t('base.slots', { used, total })
+  head.append(label, count)
+
+  const pips = document.createElement('div')
+  pips.className = 'slot-pips'
+  for (let index = 0; index < total; index++) {
+    const pip = document.createElement('i')
+    if (index < used) pip.className = 'on'
+    pips.appendChild(pip)
+  }
+
+  const status = document.createElement('span')
+  status.className = 'slot-state'
+  status.textContent = free > 0 ? t('base.dockingFree', { count: free }) : t('base.dockingFull')
+
+  gauge.append(head, pips, status)
+
+  if (free === 0) {
+    const names = globalPaths('towerSlots').map((id) => upgradeById(id).name)
+    if (names.length > 0) {
+      const more = document.createElement('p')
+      more.className = 'muted slot-more'
+      more.textContent = t('base.dockingMore', { names: names.join(', ') })
+      gauge.appendChild(more)
+    }
+  }
+
+  return gauge
+}
+
+/**
+ * Die Handlungen der Basis - beide im selben Fach unten (GDD 13 Abschnitt 5).
  *
  * Zwei Handlungen, und beide sind Entscheidungen ueber knappe Dinge:
  *
@@ -120,28 +197,23 @@ export function renderInventory(
  *   **Schmelzen** kostet drei Tuerme und bringt einen Wurf umsonst. Es ist der **einzige**
  *   Weg, ueberzaehlige Tuerme loszuwerden: Es gibt keinen Verkauf gegen Gold
  *   (GDD 06 Abschnitt 4), sonst waere die Frage "welche drei gebe ich auf?" keine.
+ *
+ * **Sie standen an zwei Enden des Bildes**, und das war der Grund, aus dem die Basis
+ * unuebersichtlich wirkte: Kaufen unten in der Leiste, Schmelzen in einem eigenen Panel
+ * rechts oben, das eine Ueberschrift ("Management") und darunter genau **einen** Knopf trug.
+ * Ein Panel fuer einen Knopf ist keine Gliederung, sondern eine dritte Flaeche, die man
+ * absuchen muss. Beide gehen dasselbe Konto an und beide bringen einen Wurf - sie stehen
+ * jetzt untereinander an derselben Stelle, und die rechte Spalte traegt nur noch das
+ * ausgewaehlte Modul.
  */
-export function renderShop(
+export function renderActions(
   state: GameState,
-  root: HTMLElement,
   melting: MeltSelection,
   onChange: () => void,
-  /**
-   * Das Fach in der unteren Leiste, an dem im Kampf die Kachelwand steht (`ui/shell.ts`).
-   *
-   * Der Kaufknopf steht **dort** und nicht mehr hier im Panel. Er ist die eine Handlung, um
-   * die sich die Basis dreht, und als schmale Zeile zwischen Ueberschrift und Schmelzknopf
-   * sah er aus wie eine von dreien. Der Rest der Verwaltung bleibt, wo er war: Schmelzen ist
-   * eine Aufraeumarbeit, kein Kauf.
-   */
+  /** Das Fach in der unteren Leiste, an dem im Kampf die Kachelwand steht (`ui/shell.ts`). */
   action: HTMLElement,
 ): void {
-  root.replaceChildren()
   action.replaceChildren()
-
-  const header = document.createElement('header')
-  header.innerHTML = `<h2>${t('shop.title')}</h2>`
-  root.appendChild(header)
 
   const price = towerPrice(state)
   const affordable = state.run.gold >= price
@@ -173,7 +245,7 @@ export function renderShop(
 
   const melt = document.createElement('button')
   melt.type = 'button'
-  melt.className = 'wide-button'
+  melt.className = 'wide-button melt-button'
   setSlideLabel(
     melt,
     melting.active
@@ -197,7 +269,7 @@ export function renderShop(
       onChange()
     }
   })
-  root.appendChild(melt)
+  action.appendChild(melt)
 
   if (melting.active) {
     const cancel = document.createElement('button')
@@ -209,12 +281,12 @@ export function renderShop(
       melting.chosen.clear()
       onChange()
     })
-    root.appendChild(cancel)
+    action.appendChild(cancel)
 
     const hint = document.createElement('p')
-    hint.className = 'muted'
+    hint.className = 'muted action-note'
     hint.textContent = t('shop.meltHint')
-    root.appendChild(hint)
+    action.appendChild(hint)
   }
 }
 

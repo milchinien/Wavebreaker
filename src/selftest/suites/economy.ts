@@ -31,7 +31,14 @@ import { collectAt, collectRadius, dropGold, goldOnField, mergeCoins } from '../
 import { activeBoss, spawnEnemy } from '../../sim/enemies.ts'
 import { moduleStats, maxStationHp, upgradeLevel } from '../../sim/stats.ts'
 import { CORE_UID, freeEdges, place, type FreeEdge } from '../../sim/station.ts'
-import { canSkipTo, isBossWave, nextWave, previousWave, startWave } from '../../sim/waves.ts'
+import {
+  canSkipTo,
+  isBossWave,
+  nextWave,
+  previousWave,
+  startWave,
+  stepWave,
+} from '../../sim/waves.ts'
 
 function rig(): GameState {
   resetStationViewCache()
@@ -385,7 +392,9 @@ export function economySuite(): void {
     assert(lowReward < highReward, 'Welle 3 muss Welle-3-Ertraege geben')
   })
 
-  check('der Auto-Modus laesst sich abschalten und haelt die Welle an', () => {
+  check('ohne Auto-Modus wiederholt sich dieselbe Welle, mit ihm geht es weiter', () => {
+    // GDD 07 Abschnitt 10: Der Auto-Modus haelt den Kampf nie an - er entscheidet nur,
+    // welche Welle nach der Pause kommt.
     const state = rig()
     state.run.autoWaves = false
     startWave(state, 2)
@@ -394,16 +403,18 @@ export function economySuite(): void {
     combat.phase = 'pause'
     combat.timer = 0.01
 
-    // Auch nach reichlich Zeit darf ohne Auto-Modus nichts weiterlaufen.
-    for (let i = 0; i < 600; i++) stepPause(state)
-    assertEqual(state.run.wave, 2, 'das Spiel wartet auf den Spieler')
-  })
-}
+    for (let i = 0; i < 600; i++) stepWave(state, 1 / 60)
+    assertEqual(state.run.wave, 2, 'dieselbe Welle noch einmal')
+    assertEqual(combat.phase, 'running', 'und sie laeuft wirklich - es kommen Gegner')
+    assert(combat.spawnIndex > 0, 'die Wiederholung spawnt')
 
-function stepPause(state: GameState): void {
-  const combat = state.runtime.combat
-  combat.timer -= 1 / 60
-  if (combat.timer <= 0 && state.run.autoWaves) startWave(state, state.run.wave + 1)
+    // Mit Auto-Modus fuehrt dieselbe Pause eine Welle weiter.
+    state.run.autoWaves = true
+    combat.phase = 'pause'
+    combat.timer = 0.01
+    stepWave(state, 1 / 60)
+    assertEqual(state.run.wave, 3, 'ein Sieg fuehrt nach oben')
+  })
 }
 
 function dummy(defId: string) {

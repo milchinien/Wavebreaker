@@ -296,11 +296,29 @@ export function isBossWave(wave: number): boolean {
   return wave > 0 && wave % BOSS_WAVE_INTERVAL === 0
 }
 
+/**
+ * Der Auto-Modus entscheidet nicht, **ob** es weitergeht, sondern nur **wohin**.
+ *
+ * Aus ist er eine Wiederholungstaste: dieselbe Welle noch einmal, so oft man will. An ist er
+ * der Weg nach vorn. Ein Aus, das die Gegner anhielte, waere ein Pausenknopf - und wer ihn
+ * ausschaltet, will ueben, nicht warten (GDD 07 Abschnitt 10).
+ */
 export function setAutoMode(state: GameState, on: boolean): void {
   if (state.run.autoWaves === on) return
   state.run.autoWaves = on
   markDirty(state)
   emit('wave.autoModeChanged', { on })
+}
+
+/**
+ * Die Welle, die nach der Pause beginnt: vorwaerts im Auto-Modus, sonst dieselbe noch einmal.
+ *
+ * Steht hier und nicht zweimal ausgeschrieben, weil zwei Stellen dieselbe Zahl brauchen -
+ * `stepWave` startet sie, das HUD kuendigt sie an. Zwei Rechenwege fuer einen Wert waeren
+ * einer zuviel, und die Ankuendigung waere die erste, die daneben liegt.
+ */
+export function upcomingWave(state: GameState): number {
+  return state.run.autoWaves ? state.run.wave + 1 : state.run.wave
 }
 
 /**
@@ -404,8 +422,9 @@ export function stepWave(state: GameState, dt: number): void {
 
   if (combat.phase === 'pause') {
     combat.timer -= dt
-    // Ist der Auto-Modus aus, wartet das Spiel auf den Spieler (GDD 07 Abschnitt 10).
-    if (combat.timer <= 0 && state.run.autoWaves) startWave(state, state.run.wave + 1)
+    // Nach der Pause geht es **immer** weiter; der Auto-Modus bestimmt nur, mit welcher
+    // Welle (GDD 07 Abschnitt 10). Aus heisst dieselbe noch einmal, nicht Stillstand.
+    if (combat.timer <= 0) startWave(state, upcomingWave(state))
     return
   }
 

@@ -73,7 +73,9 @@ if (query.has('selftest')) {
  * laedt, will das Spiel sehen und nicht das Plakat - dieselbe Bauart wie `?debug`.
  */
 function boot(canvas: HTMLCanvasElement, targets: ShellTargets): void {
-  applyMotion(targets.app, loadSettings().motion)
+  const settings = loadSettings()
+  applyMotion(targets.app, settings.motion)
+  applyEffects(targets.app, settings.effects)
 
   if (query.has('noboot')) {
     startGame(canvas, targets)
@@ -135,6 +137,7 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
   const preferences = loadSettings()
   const audio = mountAudio(preferences.mix)
   applyMotion(targets.app, preferences.motion)
+  applyEffects(targets.app, preferences.effects)
 
   const remember = (): void => saveSettings(preferences)
 
@@ -161,6 +164,7 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
     effects: () => preferences.effects,
     setEffects(on) {
       preferences.effects = on
+      applyEffects(targets.app, on)
       remember()
     },
     motion: () => preferences.motion,
@@ -366,6 +370,23 @@ function startGame(canvas: HTMLCanvasElement, targets: ShellTargets): void {
 function applyMotion(app: HTMLElement, on: boolean): void {
   if (on) delete app.dataset['motion']
   else app.dataset['motion'] = 'off'
+}
+
+/**
+ * Die Effektstufe ebenfalls an das Stilblatt weiterreichen (`#app::before`, `src/style.css`).
+ *
+ * Der Schalter steuerte bisher nur, was das Canvas zeichnet - Splitter, Druckwellen,
+ * Glanzschleier, Rasterzeilen (`showEffects` unten in der Zeichenschleife). Der
+ * Roehrenfilter liegt aber ueber dem **ganzen** Bild und damit auch ueber der Bedienleiste,
+ * und die kennt kein Canvas. Er haengt deshalb an einem Merkmal am Wurzelknoten, genau wie
+ * die Bewegungsdaempfung.
+ *
+ * Zwei Wege fuer eine Einstellung, und das ist kein Bruch: Der Schalter sagt "keine
+ * Zierde", und beide Wege setzen dasselbe um - jeder dort, wo er zustaendig ist.
+ */
+function applyEffects(app: HTMLElement, on: boolean): void {
+  if (on) delete app.dataset['effects']
+  else app.dataset['effects'] = 'off'
 }
 
 /**

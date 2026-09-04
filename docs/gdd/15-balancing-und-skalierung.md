@@ -251,7 +251,7 @@ Diese Werte sind noch nicht festgelegt und müssen im Spieltest bestimmt werden:
 | Wert | Status |
 |---|---|
 | **Wellenfaktor** in `Start-HP × (1 + Wellenfaktor)` | offen — zentralster Balancing-Wert, wird gegen die 30–60-Minuten-Vorgabe justiert |
-| Prestige-Punkte-Formel | nur Richtwerte vorhanden |
+| Prestige-Punkte-Formel | **gemessen und festgezurrt** — Kurve `(Welle/45)²` plus Goldanteil, Richtwerte in [10 §5](10-prestige-system.md#5-prestige-punkte-berechnung) korrigiert, Wächter in `src/selftest/guards.ts` |
 | XP-Kurve über Level 50 hinaus | nur Richtwerte vorhanden |
 | exakte Turmkauf-Kurve (Faktor 1,5 vs. steilere Varianten) | Faktor 1,5 gesetzt, Feinjustierung offen |
 | Obergrenzen einzelner Buffs | nur Beispielwert (+100 %) |

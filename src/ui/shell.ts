@@ -25,9 +25,10 @@
 import { t } from '../data/strings.ts'
 import { windowOpen, type UpgradeWindow } from '../data/upgrades.ts'
 import { ensureOpenWindow, setUpgradeWindow, setView } from '../app/actions.ts'
+import { asset } from '../app/assets.ts'
 import type { GameState, View } from '../app/state.ts'
 import { mountAbilityPanel, type AbilityPanel } from './abilities.ts'
-import { createMeltSelection, renderInventory, renderModuleDetail, renderShop } from './base.ts'
+import { createMeltSelection, renderActions, renderInventory, renderModuleDetail } from './base.ts'
 import { mountDialogs, type Dialogs } from './dialogs.ts'
 import { mountCoreGauge } from './coregauge.ts'
 import { createFlip } from './flip.ts'
@@ -146,13 +147,20 @@ export function mountShell(
   const inventory = element('section', 'panel', 'inventory-panel')
   const rail = element('div', 'rail')
   const detail = element('section', 'panel', 'detail-panel')
-  const shop = element('section', 'panel', 'shop-panel')
   const settings = element('section', 'panel', 'settings-panel')
   const prestige = element('section', 'panel', 'prestige-panel')
 
   // Die Wellen- und Goldkarte der Basis gehoert dem HUD - sie traegt laufende Zahlen und
   // haengt deshalb direkt in der Overlay-Ebene, nicht in dieser Spalte.
-  rail.append(detail, shop)
+  /*
+   * Nur noch **ein** Panel in der rechten Spalte.
+   *
+   * Daneben stand das Verwaltungs-Panel mit dem Schmelzknopf. Es ist in das Handlungsfach
+   * unten gewandert, zum Kaufknopf (`ui/base.ts`, `renderActions`): Die Spalte traegt jetzt
+   * das ausgewaehlte Modul und sonst nichts, und die Basis hat eine Flaeche weniger, die
+   * man absuchen muss.
+   */
+  rail.append(detail)
   overlay.append(title, inventory, rail, settings, prestige)
 
   // --- Untere Leiste ---
@@ -214,7 +222,7 @@ export function mountShell(
      * leer und darunter steht der gezeichnete Reiter mit seinem Zeichen: Ein fehlendes Bild
      * darf nie einen leeren Reiter ergeben - dieselbe Regel wie im Upgrade-Raster.
      */
-    button.style.setProperty('--art', `url('/nav/${slug}.png')`)
+    button.style.setProperty('--art', `url('${asset(`nav/${slug}.png`)}')`)
     button.innerHTML = icon(entry.icon, 30)
     button.addEventListener('click', () => {
       if (entry.kind === 'view') {
@@ -346,7 +354,7 @@ export function mountShell(
     if (view === 'base') {
       renderInventory(state, inventory, melting, refresh)
       renderModuleDetail(state, detail)
-      renderShop(state, shop, melting, refresh, buySlot)
+      renderActions(state, melting, refresh, buySlot)
     } else if (view === 'prestige') {
       if (!prestigePanel) prestigePanel = mountPrestigePanel(prestige, state, refresh, prestigeSlot)
       prestigePanel.update()

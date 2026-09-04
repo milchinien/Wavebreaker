@@ -280,7 +280,9 @@ Der Spieler steuert den Wellenfortschritt über eine Anzeige **oben links** in d
 
 **Auto-Wellen-Modus an:** Nach der Pause startet die nächste Welle von selbst. Das ist der Idle-Standard — das Spiel läuft weiter, auch wenn der Spieler wegschaut.
 
-**Auto-Wellen-Modus aus:** Der Spieler startet jede Welle selbst über `(>)`. Volle Kontrolle für gezieltes Optimieren zwischen den Wellen.
+**Auto-Wellen-Modus aus:** Nach der Pause beginnt **dieselbe Welle erneut** — so oft, bis der Spieler weitergeht. Der Kampf steht nie still, nur der Fortschritt wartet: die Trainingsstellung für gezieltes Optimieren, mit `(>)` als Schritt nach vorn.
+
+**Verloren wird in beiden Modi gleich:** Fällt die Station, beginnt dieselbe Welle von vorn.
 
 **Zurückskippen** erlaubt es, bewusst auf eine niedrigere Welle zu wechseln — etwa um sicher Gold und XP zu farmen, statt an der aktuellen Grenzwelle zu scheitern.
 

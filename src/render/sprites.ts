@@ -18,6 +18,8 @@
  *     und auf ganze Pixel gesetzt, sonst verwaschen 16 Pixel grosse Muenzen zu Flecken.
  */
 
+import { asset } from '../app/assets.ts'
+
 export type Strip = {
   /** Anzahl der Einzelbilder je Reihe. */
   frames: number
@@ -117,11 +119,11 @@ export function drawFrame(
  */
 export const SPRITES = {
   /** Drei Wertstufen zu je sieben Glanzbildern, 16 px. */
-  coins: loadStrip('/coins/coins.png', 7, 3),
+  coins: loadStrip(asset('coins/coins.png'), 7, 3),
   /** Einschlag am Gegner - zehn Bilder, blau. */
-  impact: loadStrip('/fx/impact.png', 10),
+  impact: loadStrip(asset('fx/impact.png'), 10),
   /** Zerfall eines Gegners - zehn Bilder, violett. */
-  death: loadStrip('/fx/death.png', 10),
+  death: loadStrip(asset('fx/death.png'), 10),
   /** Funkenwurf bei einem kritischen Treffer - zehn Bilder, gold. */
-  spark: loadStrip('/fx/spark.png', 10),
+  spark: loadStrip(asset('fx/spark.png'), 10),
 } as const

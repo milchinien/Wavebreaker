@@ -11,6 +11,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { TestResult } from '../core/assert.ts'
+import { PRESTIGE_WAVE_DIVISOR, PRESTIGE_WAVE_EXPONENT } from '../data/balance.ts'
 import { LEAGUES } from '../data/leagues.ts'
 import { STRINGS } from '../data/strings.ts'
 import { upgradeIcon, UPGRADES, WINDOW_SLOTS } from '../data/upgrades.ts'
@@ -140,7 +141,9 @@ export function runGuards(): TestResult[] {
     catalogWiringRule(),
     upgradeIconRule(),
     upgradeTileRule(),
+    dockFillRule(),
     leagueRowRule(),
+    prestigePointsRule(),
     hintSettleRule(),
     ...resourceBarRules(),
   ]
@@ -741,16 +744,48 @@ function upgradeIconRule(): TestResult {
 /** Schmalste Kachel, bei der ein 24er-Zeichen noch als Zeichen lesbar ist. */
 const MIN_TILE = 44
 /**
- * Was zwischen Fensterkante und Kachelwand liegt, solange die Navileiste daneben steht.
+ * Was zwischen Fensterkante und Kachelwand liegt, wenn die Leiste **darunter** steht.
  *
- * Die Leiste waechst inzwischen in die Breite, die das gedeckelte Panel uebrig laesst
- * (`--panel-max` im Stilblatt) - hier steht deshalb ihr **schmalstes** Mass. Das ist die
- * richtige Zahl fuer diese Rechnung: Wo die Leiste breiter wird, ist das Panel gedeckelt,
- * und den Deckel bringt `panelWidth` unten selbst ins Spiel.
+ * Das Gegenstueck fuer die Leiste **daneben** steht nicht mehr als Zahl da: Ihre Breite
+ * haengt seit dem Umbau an `--dock-h` und damit an der Fensterhoehe, ist also keine
+ * Konstante mehr, sondern eine Rechnung (`navOuter` unten).
  */
-const DOCK_OVERHEAD = 470
-/** Dasselbe, wenn die Leiste darunter steht. */
 const STACKED_OVERHEAD = 40
+
+/**
+ * Die Fenstermasse, ueber die nachgerechnet wird.
+ *
+ * Breite Pixel fuer Pixel, Hoehe in Achterschritten - die Kachelgroesse ist in beiden
+ * stueckweise linear, ihre Knicke liegen an den Grenzen der `clamp()`, und die trifft ein
+ * Achterschritt sicher. Die Hoehe ueberhaupt mitzunehmen ist der eigentliche Zugewinn
+ * dieser Fassung: Vorher lief die Rechnung nur ueber die Breite - was richtig war, solange
+ * die Leiste feste Pixelmasse hatte, und falsch wurde, als sie an die Hoehe rueckte.
+ */
+const WIDTHS = { from: 320, to: 3840, step: 1 }
+const HEIGHTS = { from: 480, to: 2160, step: 8 }
+
+/**
+ * Bildschirme, die es wirklich gibt - zusaetzlich zum Raster und genau getroffen.
+ *
+ * Ein Achterschritt in der Hoehe kann 991 oder 1080 knapp verfehlen, und das sind die
+ * Masse, an denen jemand sitzt. Sie stehen deshalb noch einmal einzeln da.
+ */
+const REAL_SCREENS: readonly (readonly [number, number])[] = [
+  [1366, 768],
+  [1440, 900],
+  [1536, 864],
+  [1600, 900],
+  [1920, 1080],
+  [2000, 991],
+  [2560, 1440],
+  [3440, 1440],
+  [3840, 2160],
+  [1280, 800],
+  [1024, 768],
+  [820, 1180],
+  [768, 1024],
+  [390, 844],
+]
 
 /**
  * Mittlere Zeichenbreite der Pixelschrift, als Anteil der Schriftgroesse.
@@ -790,8 +825,18 @@ function leagueRowRule(): TestResult {
   }
   const css = source.replace(/\/\*[\s\S]*?\*\//g, ' ')
 
-  const cardWidth = css.match(/\.wave-card\s*\{[^{}]*width:\s*(\d+)px/)
-  if (!cardWidth) return fail('in style.css legt .wave-card keine feste Breite fest')
+  /*
+   * Die **Untergrenze** des `clamp()`, nicht die mittlere Zahl.
+   *
+   * Die Karte ist seit dem Layoutumbau fliessend (`clamp(198px, 12.5vw, 260px)`). Fuer
+   * diese Regel zaehlt davon nur das erste Glied: Ein Liganame, der bei 260 px passt und
+   * bei 198 px gekappt wird, ist gekappt - und zwar auf genau den Bildschirmen, auf denen
+   * ohnehin am wenigsten Platz ist. Die schmalste Fassung ist der Pruefstand.
+   */
+  const cardWidth = css.match(/\.wave-card\s*\{[^{}]*width:\s*clamp\(\s*([\d.]+)px/)
+  if (!cardWidth) {
+    return fail('in style.css legt .wave-card ihre Breite nicht als clamp() mit Untergrenze fest')
+  }
 
   const cardPad = css.match(/\.wave-card\s*\{[^{}]*padding:\s*[\d.]+px\s+([\d.]+)px/)
   if (!cardPad) return fail('in style.css hat .wave-card keine seitliche Polsterung')
@@ -846,8 +891,115 @@ function leagueRowRule(): TestResult {
   }
 }
 
+/**
+ * Die Punkteformel trifft die Richtwerte aus GDD 10 Abschnitt 5.
+ *
+ * **Die Tabelle wird gelesen, nicht abgeschrieben.** Diese Regel holt die Zeilen aus
+ * `docs/gdd/10-prestige-system.md` und rechnet sie gegen `PRESTIGE_WAVE_DIVISOR` und
+ * `PRESTIGE_WAVE_EXPONENT` nach - dieselbe Bauart wie beim laengsten Liganamen, der aus dem
+ * Stilblatt kommt. Wer an einer der beiden Zahlen dreht, ohne die Tabelle nachzuziehen,
+ * bekommt es hier gesagt; wer die Tabelle aendert, ohne die Formel nachzuziehen, ebenso.
+ *
+ * Das ist der Grund, aus dem es diese Regel ueberhaupt gibt: Die 500er-Zeile stand jahrelang
+ * auf einem Wert, den keine Kurve treffen konnte, die auch die beiden Nachbarzeilen trifft -
+ * und es ist niemandem aufgefallen, weil die Tabelle in einem Dokument stand und die Formel
+ * in einer anderen Datei. Zwei Wahrheiten ohne Verbindung driften, bis jemand nachmisst.
+ *
+ * Geprueft wird der **Wellenterm**. Der Goldterm sitzt obendrauf und misst etwas anderes -
+ * wie gruendlich jemand gefarmt hat, nicht wie tief er gekommen ist (siehe `prestigePoints`).
+ * Bei Welle 1.000 traegt er drei Prozent bei; ihn hier mitzurechnen hiesse, die Regel an die
+ * Gegnerdaten zu haengen, die beim Balancing staendig wandern.
+ *
+ * Zehn Prozent Spielraum, weil das GDD **Richtwerte** nennt und keine Zielwerte. Ein Wert
+ * ohne Spielraum waere keine Regel, sondern eine zweite Fassung derselben Zahl.
+ */
+function prestigePointsRule(): TestResult {
+  const name = 'die Prestige-Punkteformel trifft die Richtwerte aus GDD 10'
+  const fail = (message: string): TestResult => ({
+    suite: 'querschnittsregeln',
+    name,
+    ok: false,
+    message,
+  })
+
+  let source = ''
+  try {
+    source = readFileSync(resolve(SRC, '..', 'docs', 'gdd', '10-prestige-system.md'), 'utf8')
+  } catch {
+    return fail('docs/gdd/10-prestige-system.md ist nicht lesbar')
+  }
+
+  /*
+   * Die Tabelle zeilenweise einsammeln statt mit einem Muster ueber mehrere Zeilen.
+   *
+   * Ein mehrzeiliges Muster muesste die Trennzeile, die Spaltenzahl und das Ende der Tabelle
+   * alle drei mitbeschreiben - und braeche bei der ersten Leerzeile, die jemand einfuegt.
+   * Der Zeilenlauf braucht nur zwei Marken: die Kopfzeile faengt ihn an, die erste Zeile
+   * ohne Strich beendet ihn.
+   */
+  const lines = source.split(/\r?\n/)
+  const head = lines.findIndex((line) => /^\|\s*Erreichte Welle\s*\|/.test(line))
+  if (head < 0) return fail('in GDD 10 Abschnitt 5 steht keine Richtwerttabelle')
+
+  const rows: string[] = []
+  for (let index = head + 2; index < lines.length; index++) {
+    const line = lines[index] ?? ''
+    if (!line.trimStart().startsWith('|')) break
+    rows.push(line)
+  }
+
+  const points = (wave: number): number =>
+    Math.pow(wave / PRESTIGE_WAVE_DIVISOR, PRESTIGE_WAVE_EXPONENT)
+
+  const offenders: string[] = []
+  let checked = 0
+
+  for (const line of rows) {
+    const cells = line.split('|').map((cell) => cell.trim())
+    const wave = Number((cells[1] ?? '').replace(/\./g, ''))
+    const target = cells[2] ?? ''
+    if (!Number.isFinite(wave) || wave <= 0) continue
+
+    const value = points(wave)
+    // Vier Schreibweisen, und jede heisst etwas anderes: eine Spanne, ein Ungefaehr, eine
+    // Untergrenze, eine Zahl. Was gar keine Zahl traegt ("massive Belohnung"), ist eine
+    // Absichtserklaerung und nichts, was sich nachrechnen liesse.
+    const span = target.match(/^([\d.]+)\s*[–-]\s*([\d.]+)$/)
+    const about = target.match(/^~\s*([\d.]+)$/)
+    const least = target.match(/^([\d.]+)\s*\+$/)
+    const exact = target.match(/^([\d.]+)$/)
+    const num = (raw: string): number => Number(raw.replace(/\./g, ''))
+
+    let ok: boolean
+    if (span) ok = value >= num(span[1] ?? '') * 0.9 && value <= num(span[2] ?? '') * 1.1
+    else if (about) ok = Math.abs(value - num(about[1] ?? '')) <= num(about[1] ?? '') * 0.2
+    else if (least) ok = value >= num(least[1] ?? '')
+    else if (exact) ok = Math.abs(value - num(exact[1] ?? '')) <= num(exact[1] ?? '') * 0.1
+    else continue
+
+    checked += 1
+    if (!ok) offenders.push(`Welle ${wave}: Tabelle "${target}", Formel ${value.toFixed(1)}`)
+  }
+
+  if (checked === 0) return fail('keine einzige Zeile der Tabelle war nachrechenbar')
+
+  return {
+    suite: 'querschnittsregeln',
+    name,
+    ok: offenders.length === 0,
+    ...(offenders.length > 0
+      ? {
+          message:
+            'Formel und GDD-Tabelle sind auseinandergelaufen. Eine von beiden muss nachziehen -\n' +
+            '      welche, entscheidet die Begruendung in GDD 10 Abschnitt 5.\n      ' +
+            offenders.join('\n      '),
+        }
+      : {}),
+  }
+}
+
 function upgradeTileRule(): TestResult {
-  const name = 'die Upgrade-Kachel bleibt bei jeder Fensterbreite erkennbar'
+  const name = 'die Upgrade-Kachel bleibt bei jedem Fenstermass erkennbar'
   const fail = (message: string): TestResult => ({
     suite: 'querschnittsregeln',
     name,
@@ -896,39 +1048,134 @@ function upgradeTileRule(): TestResult {
   const pad = Number(padMatch[1])
 
   /*
-   * Der Deckel, ab dem das Panel nicht mehr mitwaechst.
+   * Das Mass, aus dem sich die ganze untere Leiste rechnet.
    *
-   * Er gehoert in diese Rechnung, weil er sie **umdreht**: Unterhalb von ihm bestimmt die
-   * Fensterbreite die Kachel, oberhalb steht sie still. Ohne ihn rechnete diese Regel auf
-   * einem breiten Bild mit einem Panel, das es gar nicht gibt - und meldete Ruhe, wo sie
-   * gar nichts geprueft haette.
+   * Es hat den frueheren festen Deckel `--panel-max: 1000px` abgeloest. Der Deckel steht
+   * immer noch da, aber als Rechnung - und deshalb liest diese Regel jetzt die Rechnung
+   * statt der Zahl. Das ist der Punkt der ganzen Fassung: Solange hier eine Zahl stand,
+   * konnte sie nur die Breite pruefen; jetzt haengt alles an `--dock-h`, und das haengt an
+   * beidem.
    */
-  const capMatch = css.match(/--panel-max:\s*([\d.]+)px/)
-  if (!capMatch) return fail('in style.css hat .dock-row keinen Deckel (--panel-max) fuer das Panel')
-  const panelMax = Number(capMatch[1])
+  const dockMatch = css.match(
+    /--dock-h:\s*clamp\(\s*([\d.]+)px\s*,\s*min\(\s*([\d.]+)vh\s*,\s*([\d.]+)vw\s*\)\s*,\s*([\d.]+)px\s*\)/,
+  )
+  if (!dockMatch) {
+    return fail('in style.css hat #app kein --dock-h in der Form clamp(px, min(vh, vw), px)')
+  }
+  const [dockFloor, dockVh, dockVw, dockCeil] = dockMatch.slice(1, 5).map(Number) as [
+    number,
+    number,
+    number,
+    number,
+  ]
+
+  const tileMatch = css.match(/--tile:\s*calc\(\(var\(--dock-h\) - ([\d.]+)px\)\s*\/\s*2\)/)
+  if (!tileMatch) return fail('in style.css leitet --tile sich nicht aus --dock-h ab')
+  const tileInset = Number(tileMatch[1])
+
+  const panelMatch = css.match(
+    /--panel-max:\s*calc\(\s*(\d+)\s*\*\s*var\(--tile\)\s*\+\s*([\d.]+)px\)/,
+  )
+  if (!panelMatch) return fail('in style.css leitet --panel-max sich nicht aus --tile ab')
+  const panelCols = Number(panelMatch[1])
+  const panelInset = Number(panelMatch[2])
+  if (panelCols !== cols) {
+    return fail(`--panel-max rechnet mit ${panelCols} Kacheln, .up-grid hat ${cols} Spalten`)
+  }
+
+  const navMatch = css.match(/--nav-rows:\s*calc\(var\(--dock-h\) - ([\d.]+)px\)/)
+  if (!navMatch) return fail('in style.css leitet --nav-rows sich nicht aus --dock-h ab')
+  const navInset = Number(navMatch[1])
+
+  const navMaxMatch = css.match(/--nav-max:\s*calc\(3 \* var\(--dock-h\) \+ ([\d.]+)px\)/)
+  if (!navMaxMatch) return fail('in style.css hat die Reiterleiste keinen lesbaren Deckel')
+  const navMaxInset = Number(navMaxMatch[1])
+
+  const navBoxMatch = css.match(/\.nav\s*\{[^{}]*gap:\s*([\d.]+)px;\s*padding:\s*([\d.]+)px/)
+  if (!navBoxMatch) return fail('in style.css hat .nav keinen Abstand und keine Polsterung')
+  const navGap = Number(navBoxMatch[1])
+  const navPad = Number(navBoxMatch[2])
 
   // Wo die Navileiste unter das Panel rutscht - ab da rechnet es mit der vollen Breite.
   const stack = css.match(/@media\s*\(max-width:\s*(\d+)px\)\s*\{\s*#dock\s*\{/)
   if (!stack) return fail('in style.css steht kein Umbruchpunkt, an dem die Navileiste rutscht')
   const stackAt = Number(stack[1])
 
-  const offenders: string[] = []
-  for (let width = 320; width <= 3840; width++) {
-    // Zwei Schwellen, und sie liegen **nicht** aufeinander: Das Raster bricht bei 1000 px
-    // auf fuenf Spalten um, die Navileiste rutscht erst bei 780 px unter das Panel.
-    // Dazwischen gilt beides einzeln, und genau dieser Bereich war der Fehler.
-    const overhead = width <= stackAt ? STACKED_OVERHEAD : DOCK_OVERHEAD
-    // Untereinander gibt es keinen Deckel - dort ist das Panel aber ohnehin schmaler als er.
-    const panel = Math.min(width - overhead, panelMax)
+  /*
+   * Ab wann das Kernfeld in der Zeile steht.
+   *
+   * Es gehoert in diese Rechnung, weil es der Kachelwand Breite **wegnimmt** - und weil
+   * seine Bedingung eine Naeherung ist: Die Medienabfrage fragt nach dem Seitenverhaeltnis,
+   * die Zeile braucht aber eine Summe. Ob die Naeherung stimmt, ist genau das, was hier
+   * geprueft wird; steht das Feld einmal zu frueh da, schrumpft die Kachel, und diese Regel
+   * sagt es an der Stelle, an der es passiert.
+   */
+  const gaugeMatch = css.match(
+    /@media\s*\(min-aspect-ratio:\s*(\d+)\s*\/\s*(\d+)\)\s*and\s*\(min-width:\s*(\d+)px\),\s*\(min-width:\s*(\d+)px\)/,
+  )
+  if (!gaugeMatch) return fail('in style.css hat das Kernfeld keine Bedingung, die hier lesbar ist')
+  const gaugeRatio = Number(gaugeMatch[1]) / Number(gaugeMatch[2])
+  const gaugeMinWidth = Number(gaugeMatch[3])
+  const gaugeWideWidth = Number(gaugeMatch[4])
+
+  /** Die Kachelkante bei einem gegebenen Fenster - dieselbe Kette wie im Stilblatt. */
+  const tileAt = (width: number, height: number): { tile: number; columnsNow: number } => {
+    const dockH = Math.min(
+      Math.max(dockFloor, Math.min((dockVh * height) / 100, (dockVw * width) / 100)),
+      dockCeil,
+    )
+    const panelMax = panelCols * ((dockH - tileInset) / 2) + panelInset
     const columnsNow = width <= narrowAt ? narrowCols : cols
-    const tile = (panel - 2 * pad - (columnsNow - 1) * gap) / columnsNow
+
+    let panel: number
+    if (width <= stackAt) {
+      // Untereinander gibt es keinen Deckel - dort ist das Panel aber ohnehin schmaler.
+      panel = Math.min(width - STACKED_OVERHEAD, panelMax)
+    } else {
+      // Sechs Reiter im Format 1:2, ihre fuenf Fugen, zweimal Polsterung, ein Rahmen.
+      const navOuter = 6 * ((dockH - navInset) / 2) + 5 * navGap + 2 * navPad + 1
+      const gaugeShown =
+        (width / height >= gaugeRatio && width >= gaugeMinWidth) || width >= gaugeWideWidth
+
+      if (gaugeShown) {
+        /*
+         * Mit Kernfeld nimmt sich die Reiterleiste ihren Deckel, **bevor** die Kachelwand
+         * ihren bekommt: Beide sind Spalten mit einer Wachstumsgrenze, und das Raster
+         * bedient sie im selben Schritt. Die Kachelwand erreicht ihren Deckel deshalb nur,
+         * wo nach dem Deckel der Leiste noch genug uebrig ist.
+         *
+         * Das ist der ungruenstigste Fall und damit der richtige fuer eine Untergrenze -
+         * nachgemessen bei 2000 x 991: Leiste 748, Kachelwand 1014 statt ihrer 1049.
+         */
+        const navCap = Math.max(navOuter, 3 * dockH + navMaxInset)
+        panel = Math.min(width - navCap - dockH - 20, panelMax)
+      } else {
+        // Ohne Kernfeld ist die Leiste die einzige dehnbare Spalte (`1fr`), und eine
+        // dehnbare Spalte wird erst bedient, wenn alle gedeckelten satt sind.
+        panel = Math.min(width - navOuter - 10, panelMax)
+      }
+    }
+
+    return { tile: (panel - 2 * pad - (columnsNow - 1) * gap) / columnsNow, columnsNow }
+  }
+
+  const offenders: string[] = []
+  const check = (width: number, height: number): void => {
+    if (offenders.length > 4) return
+    const { tile, columnsNow } = tileAt(width, height)
     if (tile + 1e-9 < MIN_TILE) {
       offenders.push(
-        `${width}px: ${columnsNow} Spalten -> Kachel ${tile.toFixed(1)}px, Minimum ${MIN_TILE}px`,
+        `${width}x${height}: ${columnsNow} Spalten -> Kachel ${tile.toFixed(1)}px, Minimum ${MIN_TILE}px`,
       )
-      if (offenders.length > 4) break
     }
   }
+
+  for (let width = WIDTHS.from; width <= WIDTHS.to && offenders.length <= 4; width += WIDTHS.step) {
+    for (let height = HEIGHTS.from; height <= HEIGHTS.to; height += HEIGHTS.step) {
+      check(width, height)
+    }
+  }
+  for (const [width, height] of REAL_SCREENS) check(width, height)
 
   return {
     suite: 'querschnittsregeln',
@@ -938,6 +1185,78 @@ function upgradeTileRule(): TestResult {
       ? {
           message:
             'Ein Menue aus Bildern braucht Bilder, die man erkennt.\n      ' +
+            offenders.join('\n      '),
+        }
+      : {}),
+  }
+}
+
+/*
+ * === Die untere Leiste parkt keinen Rest =====================================
+ *
+ * Die Regel zu dem Fehler, aus dem der Layoutumbau entstanden ist.
+ *
+ * Reiterleiste, Kernfeld und Kachelwand sind **feste Formen**: sechs Reiter im Format 1:2
+ * und zwanzig Quadrate. Feste Formen fuellen eine gegebene Breite nur bei genau einem
+ * Seitenverhaeltnis - bei jedem anderen bleibt ein Rest. Die Frage ist nie, ob es ihn gibt,
+ * sondern wohin er geht.
+ *
+ * Vorher ging er nirgends hin: `justify-content: space-between` legte ihn als Fuge zwischen
+ * die Kaesten, und auf einem 2000er Bild waren das zweimal rund 70 px Leere mitten in der
+ * Bedienung. Jetzt gibt es in jeder Fassung der Zeile eine Spalte mit `1fr`, die ihn
+ * aufnimmt - die Reiterleiste, deren eigenes `space-between` ihn gleichmaessig zwischen die
+ * sechs Reiter verteilt.
+ *
+ * Geprueft wird deshalb nicht ein Mass, sondern eine **Eigenschaft**: Jede Fassung von
+ * `.dock-row` hat einen Nehmer. Ein Mass koennte man ausrechnen und danebenliegen; diese
+ * Eigenschaft ist der Grund, aus dem die Rechnung ueberhaupt aufgeht.
+ */
+function dockFillRule(): TestResult {
+  const name = 'die untere Leiste laesst keine Fuge stehen'
+  const fail = (message: string): TestResult => ({
+    suite: 'querschnittsregeln',
+    name,
+    ok: false,
+    message,
+  })
+
+  let source = ''
+  try {
+    source = readFileSync(join(SRC, 'style.css'), 'utf8')
+  } catch {
+    return fail('src/style.css ist nicht lesbar')
+  }
+  const css = source.replace(/\/\*[\s\S]*?\*\//g, ' ')
+
+  const templates = [...css.matchAll(/\.dock-row\s*\{[^{}]*?grid-template-columns:\s*([^;]+);/g)]
+  if (templates.length === 0) {
+    return fail('in style.css legt .dock-row keine Spalten fest')
+  }
+
+  const offenders: string[] = []
+  for (const match of templates) {
+    const spec = (match[1] ?? '').replace(/\s+/g, ' ').trim()
+    // Eine einzelne Spalte fuellt die Zeile ohnehin - das ist die gestapelte Fassung.
+    if (spec === '1fr') continue
+    if (!/\b1fr\b/.test(spec)) offenders.push(spec)
+  }
+
+  /*
+   * Und der Gegenspieler: Steht irgendwo noch `space-between` auf der Zeile selbst, ist der
+   * Rest wieder eine Fuge - auch dann, wenn daneben eine `1fr`-Spalte steht. Die beiden
+   * schliessen sich aus, und genau diese Zeile war der Fehler.
+   */
+  const spread = css.match(/\.dock-row\s*\{[^{}]*justify-content:\s*space-between/)
+  if (spread) offenders.push('justify-content: space-between parkt den Rest wieder als Fuge')
+
+  return {
+    suite: 'querschnittsregeln',
+    name,
+    ok: offenders.length === 0,
+    ...(offenders.length > 0
+      ? {
+          message:
+            'Leere mitten in der Bedienung liest sich als Fehler, nicht als Entscheidung.\n      ' +
             offenders.join('\n      '),
         }
       : {}),

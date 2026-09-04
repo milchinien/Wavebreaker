@@ -41,6 +41,7 @@
  */
 
 import { t } from '../data/strings.ts'
+import { asset } from '../app/assets.ts'
 import { mountBootStation, type BootStation } from './bootstation.ts'
 import { mountStrokeText, strokeFillSeconds } from './stroketext.ts'
 import { createTypewriter } from './typewriter.ts'
@@ -55,7 +56,7 @@ export type BootOptions = {
 }
 
 /** Wo die Bildebenen liegen. Alle im selben Ordner, damit ein Austausch dort stattfindet. */
-const FOLDER = '/boot/'
+const FOLDER = asset('boot/')
 
 type Layer = {
   file: string

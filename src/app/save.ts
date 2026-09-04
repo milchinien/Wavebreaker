@@ -19,7 +19,6 @@ import {
   AUTOSAVE_INTERVAL_SECONDS,
   GOLD_SCALE,
   START_CORE_ID,
-  START_INVENTORY,
   START_LEAGUE,
   START_TOWER_SLOTS,
   START_WAVE,
@@ -36,7 +35,6 @@ import { isValidTrader } from '../sim/trader.ts'
 import type { Coin } from '../sim/economy.ts'
 import {
   createStation,
-  newModule,
   sanitizeStation,
   type ModuleInstance,
   type Station,
@@ -433,8 +431,12 @@ type Migration = (data: Record<string, unknown>) => Record<string, unknown>
 const MIGRATIONS: Record<number, Migration> = {
   /**
    * 1 -> 2 (E2): `coreId` und `towerSlots` lagen frueher direkt in den Run-Daten. Sie
-   * gehoeren zur Station, die es in Version 1 noch nicht gab. Ein Spielstand aus E0/E1
-   * hat noch keine Module, also entsteht eine leere Station mit dem Startinventar.
+   * gehoeren zur Station, die es in Version 1 noch nicht gab. Ein Spielstand aus E0/E1 hat
+   * noch keine Module, also entsteht eine leere Station.
+   *
+   * Hier wurden einmal drei Module hineingelegt - dieselben, die ein frisches Spiel
+   * verschenkte, weil es den Turmkauf (E12) noch nicht gab. Beides ist weg: Das Lager
+   * beginnt leer, und ein alter Spielstand faengt damit genauso an wie ein neuer.
    */
   1: (data) => {
     const run = isRecord(data['run']) ? data['run'] : {}
@@ -442,11 +444,6 @@ const MIGRATIONS: Record<number, Migration> = {
       readString(run['coreId'], START_CORE_ID),
       readNumber(run['towerSlots'], START_TOWER_SLOTS),
     )
-    // Dieselben Startmodule wie ein frisches Spiel - sonst stuende ein alter Spielstand
-    // ohne alles da, solange es den Turmkauf (E12) noch nicht gibt.
-    for (const entry of START_INVENTORY) {
-      station.inventory.push(newModule(station, entry.defId, entry.rarity))
-    }
     const migrated: Record<string, unknown> = { ...run, station: saveStation(station) }
     delete migrated['coreId']
     delete migrated['towerSlots']

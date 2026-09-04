@@ -1,6 +1,9 @@
 node_modules/
 dist/
 *.local
+
+# Das fertige itch.io-Paket. Rein abgeleitet - `npm run itch` baut es jederzeit neu.
+wavebreaker-itch.zip
 .DS_Store
 .vite/
 

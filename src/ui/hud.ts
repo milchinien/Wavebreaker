@@ -26,6 +26,7 @@
  */
 
 import { on } from '../core/events.ts'
+import { asset } from '../app/assets.ts'
 import { formatNumber } from '../core/format.ts'
 import type { SpeedFactor } from '../core/loop.ts'
 import { WAVE_PAUSE_SECONDS } from '../data/balance.ts'
@@ -36,7 +37,6 @@ import {
   goToNextWave,
   goToPreviousLeague,
   goToPreviousWave,
-  goToWave,
   toggleAutoWaves,
 } from '../app/actions.ts'
 import { waveRecord, type GameState } from '../app/state.ts'
@@ -49,7 +49,7 @@ import { goldOnField } from '../sim/economy.ts'
 import { levelProgress } from '../sim/progression.ts'
 import { CORE_UID } from '../sim/station.ts'
 import { effectiveTowerStats, globalMultiplier } from '../sim/stats.ts'
-import { canEnterLeague, canSkipTo, isBossWave } from '../sim/waves.ts'
+import { canEnterLeague, canSkipTo, isBossWave, upcomingWave } from '../sim/waves.ts'
 import { abilityIcon, icon, type IconName } from './icons.ts'
 import type { SettingsControls } from './settings.ts'
 import { setSlideLabel } from './slide.ts'
@@ -167,9 +167,9 @@ export function mountHud(state: GameState, targets: HudTargets, controls: Settin
    * hat), Gold (was er gerade ausgeben kann), Prestige (was den Run ueberlebt).
    */
   const resources = div('plate', 'resource-bar')
-  const level = figure('upgrade', 16, 'res', 'level')
-  const gold = figure('coin', 16, 'res', 'gold')
-  const prestige = figure('crosshair', 16, 'res', 'prestige')
+  const level = figure('upgrade', 18, 'res', 'level')
+  const gold = figure('coin', 18, 'res', 'gold')
+  const prestige = figure('crosshair', 18, 'res', 'prestige')
   gold.node.setAttribute('aria-label', t('hud.gold'))
   prestige.node.setAttribute('aria-label', t('prestige.points'))
   describe(prestige.node, t('prestige.points'))
@@ -200,7 +200,7 @@ export function mountHud(state: GameState, targets: HudTargets, controls: Settin
   settings.type = 'button'
   settings.className = 'res res-settings'
   settings.setAttribute('aria-label', t('view.settings'))
-  settings.innerHTML = icon('gear', 16)
+  settings.innerHTML = icon('gear', 18)
   describe(settings, `<b>${t('view.settings')}</b><br>${t('view.settings.about')}`)
   settings.addEventListener('click', () => targets.openSettings())
 
@@ -266,49 +266,22 @@ export function mountHud(state: GameState, targets: HudTargets, controls: Settin
 
   const waveHead = div('head')
   /*
-   * Die Wellennummer ist eine **Schaltflaeche** - sie ist der Griff fuer den Sprung.
+   * Die Wellennummer ist eine **Anzeige** und kein Griff.
    *
-   * Ein eigener Knopf daneben waere ein vierter in einer Karte, die schon drei hat, und er
-   * muesste erklaeren, worauf er sich bezieht. Die Zahl selbst muss das nicht: Wer "Wave 12"
-   * anfasst, um eine andere Welle zu waehlen, hat die Bedienung nicht gelernt, sondern
-   * geraten - und richtig geraten.
+   * Sie war einmal eine Schaltflaeche, die eine Sprungzeile mit Zahlenfeld aufklappte. Das
+   * Feld war das einzige Eingabefeld der ganzen Oberflaeche - eine Formularzeile mitten in
+   * einem Geraet, das sonst nur aus Knoepfen besteht -, und es stand fuer eine Handlung, die
+   * die beiden Pfeile darunter ohnehin erledigen. Was bleibt, ist die Zahl.
    */
-  const waveLabel = document.createElement('button')
-  waveLabel.type = 'button'
+  const waveLabel = document.createElement('span')
   waveLabel.className = 'wave-label'
   const scales = div('scales', 'enemy')
-  const waveDamage = figure('damage', 16, 'fig')
-  const waveHp = figure('hull', 16, 'fig')
+  const waveDamage = figure('damage', 18, 'fig')
+  const waveHp = figure('hull', 18, 'fig')
   describe(waveDamage.node, t('status.waveDamage'))
   describe(waveHp.node, t('status.waveHp'))
   scales.append(waveDamage.node, waveHp.node)
   waveHead.append(waveLabel, scales)
-
-  /*
-   * Die Sprungzeile (GDD 07 Abschnitt 10).
-   *
-   * Sie steht **eingeklappt** da und nicht dauernd offen: Ein Eingabefeld in der Wellenkarte
-   * waere das einzige der ganzen Oberflaeche, und es stuende die meiste Zeit leer herum. Wer
-   * springen will, sagt das zuerst, indem er die Zahl anfasst.
-   *
-   * Was hineingehoert, sagt das Feld selbst: `max` ist der Rekord dieses Runs, und daneben
-   * steht die Spanne als Text. Ein Feld, das jede Zahl annimmt und dann schweigend nichts
-   * tut, waere eine Falle - die Grenze muss vor dem Tippen sichtbar sein, nicht danach.
-   */
-  const jump = div('wave-jump')
-  jump.hidden = true
-  const jumpField = document.createElement('input')
-  jumpField.type = 'number'
-  jumpField.className = 'wave-jump-field'
-  jumpField.min = '1'
-  jumpField.inputMode = 'numeric'
-  const jumpRange = document.createElement('span')
-  jumpRange.className = 'wave-jump-range'
-  const jumpGo = document.createElement('button')
-  jumpGo.type = 'button'
-  jumpGo.className = 'wave-jump-go'
-  jumpGo.textContent = t('hud.jumpGo')
-  jump.append(jumpField, jumpRange, jumpGo)
 
   const progress = bar('progress')
 
@@ -319,49 +292,7 @@ export function mountHud(state: GameState, targets: HudTargets, controls: Settin
   const next = iconButton('next', t('hud.nextWave'), () => goToNextWave(state))
   waveControls.append(previous, auto, next)
 
-  waveCard.append(leagueRow, waveHead, jump, progress.node, waveControls)
-
-  function openJump(): void {
-    jump.hidden = false
-    jumpField.value = String(state.run.wave)
-    jumpField.focus()
-    jumpField.select()
-  }
-
-  /**
-   * Springen - und bei einer Zahl ausserhalb der Spanne **stehen bleiben**.
-   *
-   * Die Zeile bleibt dann offen und zuckt einmal. Sie stillschweigend zu schliessen waere
-   * die schlechteste der drei Moeglichkeiten: Der Spieler saehe eine unveraenderte
-   * Wellennummer und wuesste nicht, ob er sich vertippt hat oder ob das Spiel den Sprung
-   * verboten hat.
-   */
-  function submitJump(): void {
-    if (goToWave(state, Number.parseInt(jumpField.value, 10))) {
-      jump.hidden = true
-      return
-    }
-    restart(jump, 'refused')
-  }
-
-  waveLabel.addEventListener('click', () => {
-    if (jump.hidden) openJump()
-    else jump.hidden = true
-  })
-  jumpGo.addEventListener('click', submitJump)
-  jump.addEventListener('animationend', () => jump.classList.remove('refused'))
-  jumpField.addEventListener('keydown', (event) => {
-    /*
-     * Was im Feld getippt wird, geht **nicht** weiter ans Spiel.
-     *
-     * Die Tastenkuerzel haengen am Fenster (`main.ts`, `ui/input.ts`), und "12" waere dort
-     * zweimal ein Tempowechsel, "Entf" das Abreissen des ausgewaehlten Moduls. Ein Feld, in
-     * dem Tippen nebenbei die Station umbaut, ist kein Feld.
-     */
-    event.stopPropagation()
-    if (event.key === 'Enter') submitJump()
-    else if (event.key === 'Escape') jump.hidden = true
-  })
+  waveCard.append(leagueRow, waveHead, progress.node, waveControls)
 
   /*
    * --- Rumpfleiste, unten ueber der Bedienleiste ---
@@ -405,7 +336,7 @@ export function mountHud(state: GameState, targets: HudTargets, controls: Settin
   // sie sagt, dass diese Flaeche zur Maschine gehoert und nicht ins Feld gefallen ist.
   const railHead = div('rail-head')
   railHead.innerHTML =
-    `<i class="pix trace" style="--icon:url('/ui/circuit.svg')"></i>` +
+    `<i class="pix trace" style="--icon:url('${asset('ui/circuit.svg')}')"></i>` +
     `<b>${t('abilities.short')}</b>`
   const railSlots = div('rail-slots')
   abilityRail.append(railHead, railSlots)
@@ -761,27 +692,9 @@ export function mountHud(state: GameState, targets: HudTargets, controls: Settin
 
       waveLabel.textContent =
         combat.phase === 'pause'
-          ? t('hud.wavePause', { wave: state.run.wave + 1 })
+          ? t('hud.wavePause', { wave: upcomingWave(state) })
           : t('hud.wave', { wave: state.run.wave })
 
-      // Die Grenze des Sprungs steht an drei Stellen dasselbe: im Hinweis, im Feld und als
-      // Spanne daneben. Sie kommt aus `waveRecord` und wandert mit ihm.
-      const record = waveRecord(state)
-      describe(
-        waveLabel,
-        `<b>${t('hud.jumpWave')}</b><br>${t('hud.jumpAbout', { max: record, next: record + 1 })}`,
-      )
-      jumpField.max = String(record)
-      jumpRange.textContent = t('hud.jumpRange', { max: record })
-      /*
-       * Auf Welle 1 mit Rekord 1 gibt es kein Ziel - dann ist die Zahl wieder nur eine Zahl.
-       *
-       * Das ist kein Sonderfall, sondern der **Anfang jedes Runs**: Ein Griff anzubieten, der
-       * in den ersten Minuten nichts kann als abzuweisen, waere die schlechteste Einfuehrung
-       * fuer die Sache, die er kann.
-       */
-      waveLabel.disabled = record <= 1
-      if (waveLabel.disabled) jump.hidden = true
       waveDamage.value.textContent = plan ? plan.damageScale.toFixed(2) : formatNumber(1)
       waveHp.value.textContent = plan ? plan.hpScale.toFixed(2) : formatNumber(1)
 
@@ -792,13 +705,10 @@ export function mountHud(state: GameState, targets: HudTargets, controls: Settin
       progress.node.classList.toggle('pause', pausing)
 
       if (pausing) {
+        // Die Uhr laeuft in beiden Modi - ohne Auto kommt dieselbe Welle wieder, und auch
+        // das ist eine Frist und kein Warten auf den Spieler.
         const left = Math.max(0, combat.timer)
-        // Ohne Auto-Modus wartet das Spiel auf den Spieler - dann laeuft keine Uhr mehr.
-        const waiting = !state.run.autoWaves || left <= 0
-        progress.set(
-          waiting ? 0 : left / WAVE_PAUSE_SECONDS,
-          waiting ? t('status.waveReady') : t('status.nextWave', { seconds: left.toFixed(1) }),
-        )
+        progress.set(left / WAVE_PAUSE_SECONDS, t('status.nextWave', { seconds: left.toFixed(1) }))
       } else {
         const done = Math.min(combat.killsThisWave, total)
         progress.set(total > 0 ? done / total : 0, t('status.progress', { done, total }))

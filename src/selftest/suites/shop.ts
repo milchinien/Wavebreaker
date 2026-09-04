@@ -171,7 +171,7 @@ export function shopSuite(): void {
 
     discardTowerOffer(state)
     assertEqual(state.run.gold, 150 - cost, 'verwerfen gibt nichts zurueck')
-    assertEqual(state.run.station.inventory.length, 3, 'und bringt keinen Turm')
+    assertEqual(state.run.station.inventory.length, 0, 'und bringt keinen Turm')
   })
 
   check('ohne genug Gold aendert sich nichts', () => {
@@ -353,7 +353,7 @@ export function shopSuite(): void {
     const uids = fillInventory(state, 4)
     assertEqual(meltTowers(state, uids.slice(0, 2)), null, 'zwei sind zu wenig')
     assertEqual(meltTowers(state, uids), null, 'vier sind zu viel')
-    assertEqual(state.run.station.inventory.length, 3 + 4, 'nichts ist verschwunden')
+    assertEqual(state.run.station.inventory.length, 4, 'nichts ist verschwunden')
   })
 
   check('derselbe Turm zaehlt nicht dreimal', () => {

@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "selftest": "node src/selftest/cli.ts"
+    "selftest": "node src/selftest/cli.ts",
+    "itch": "vite build && node tools/itch-paket.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

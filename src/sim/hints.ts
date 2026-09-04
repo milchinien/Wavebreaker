@@ -18,11 +18,10 @@
  *
  *   - **Die Liste ist eine Reihe, kein Suchlauf.** Faellig ist immer genau der naechste
  *     ungesehene Zettel - nie ein spaeterer, dessen Bedingung zufaellig frueher zutrifft.
- *     Ohne diese Regel gewinnt beim allerersten Start der Buff-Hinweis: Der Verstaerker
- *     liegt ab Sekunde null im Startlager, die erste Muenze faellt erst nach ein paar
- *     Sekunden. Der erste Satz des Spiels spraeche dann von "module" und "edge", bevor der
- *     Spieler die Basis ueberhaupt gesehen hat - und sobald die Muenze eingesammelt ist,
- *     pendelte der Zettel im Sekundentakt zwischen zwei zusammenhanglosen Saetzen.
+ *     Ohne diese Regel gewaenne, sobald der erste Verstaerker im Lager liegt, dessen
+ *     Hinweis gegen jeden frueheren, dessen Augenblick gerade nicht zutrifft: Der Satz
+ *     spraeche von "module" und "edge", bevor der Spieler die Basis gesehen hat, und
+ *     pendelte danach im Sekundentakt zwischen zwei zusammenhanglosen Saetzen.
  *     Als Reihe gelesen ist die Folge der gezeigten Kennungen **monoton**: Keine kehrt
  *     zurueck, nachdem eine andere dran war.
  *
@@ -123,15 +122,6 @@ export type HintDef = {
   gone?(state: GameState): boolean
 }
 
-/** Liegt oder steht irgendwo ein Verstaerker - im Lager oder an der Station? */
-function ownsBuff(state: GameState): boolean {
-  const station = state.run.station
-  return (
-    station.inventory.some((module) => towerById(module.defId).category === 'buff') ||
-    buffPlaced(state)
-  )
-}
-
 /** Steht ein Verstaerker an der Station? */
 function buffPlaced(state: GameState): boolean {
   return state.run.station.placed.some((module) => towerById(module.defId).category === 'buff')
@@ -187,19 +177,36 @@ export const HINTS: readonly HintDef[] = [
   {
     id: 'hint.buff',
     key: 'hint.buff',
-    // GDD 14 Abschnitt 2 setzt ihn hinter den ersten angedockten Turm ("2:00 erster Turm
-    // angedockt / 3:00+ Verstaerker im Lager faellt auf"). Erst dann sind "module" und
-    // "edge" ueberhaupt im Bild gewesen - vorher spraeche der Satz von Dingen, die der
-    // Spieler noch nie gesehen hat.
-    //
-    // Ob der Verstaerker im Lager liegt oder schon steht, entscheidet dagegen **nicht**
-    // ueber den Augenblick: Der Satz erklaert den Zeitpunkt ("place them early"), und wer
-    // ihn zufaellig zuerst angedockt hat, weiss deswegen noch nicht, warum das gut war.
-    when: (state) => state.run.station.placed.length > 0 && ownsBuff(state),
-    // Es gibt keinen mehr - eingeschmolzen oder verkauft; dann ist der Satz gegenstandslos.
-    // Der zweite Fall zaehlt nur beim Laden (siehe `settleHints`): Steht ein Verstaerker an
-    // der Station, hat dieser Spielstand die Frage hinter sich.
-    gone: (state) => !ownsBuff(state) || buffPlaced(state),
+    /*
+     * GDD 14 Abschnitt 2 setzt ihn hinter den ersten angedockten Turm. Erst dann sind
+     * "module" und "edge" ueberhaupt im Bild gewesen - vorher spraeche der Satz von Dingen,
+     * die der Spieler noch nie gesehen hat. Das ist die **ganze** Bedingung.
+     *
+     * Hier stand zusaetzlich "und er besitzt einen Verstaerker". Das war richtig, solange
+     * einer im Startlager lag: Dann traf es vom ersten Turm an zu. Gekauft wird der
+     * Verstaerker aber gewuerfelt, und damit waere der Satz an einen Zufall geknuepft
+     * gewesen, der bei manchem Spieler erst nach der Frist eintritt - er saehe ihn nie.
+     *
+     * Ohne die Haelfte ist er ausserdem **frueher** dran, und das ist der Punkt: Er erklaert
+     * den Zeitpunkt ("place them early"). Wer ihn liest, bevor der erste Verstaerker aus dem
+     * Laden kommt, erkennt ihn, wenn er kommt. Wer ihn erst danach liest, hat ihn womoeglich
+     * schon an die falsche Kante gesetzt.
+     */
+    when: (state) => state.run.station.placed.length > 0,
+    /*
+     * Vorbei ist der Satz genau dann, wenn ein Verstaerker **steht** - dann hat der Spieler
+     * die Frage hinter sich, um die es geht.
+     *
+     * Hier stand einmal auch "er besitzt gar keinen mehr": Das Startlager enthielt einen
+     * Verstaerker, und wer keinen mehr hatte, hatte ihn eingeschmolzen - eine ehrliche Spur.
+     * Seit das Lager leer beginnt (`START_INVENTORY`), heisst derselbe Ausdruck etwas ganz
+     * anderes, naemlich "noch keinen gekauft", und das ist der Normalzustand der ersten
+     * Minuten. Der Zettel waere ab Sekunde null abgeraeumt gewesen und **nie** erschienen.
+     *
+     * Dass die Reihe deswegen nicht stehen bleibt, traegt die Frist (`hintDeadline`) - genau
+     * der Fall, fuer den es sie gibt.
+     */
+    gone: buffPlaced,
   },
   {
     id: 'hint.level',

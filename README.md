@@ -31,6 +31,7 @@ Das Spiel liegt dann auf `http://localhost:5173`.
 | `npm run preview` | Den gebauten Stand probelaufen lassen |
 | `npm run typecheck` | TypeScript prüfen, ohne etwas zu erzeugen |
 | `npm run selftest` | Die komplette Selbsttestreihe (31 Suiten) |
+| `npm run itch` | Bauen und als `wavebreaker-itch.zip` für itch.io schnüren |
 
 ---
 

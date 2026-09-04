@@ -16,6 +16,7 @@
  * es einbringt: Wer eine Lupe fuer "Reichweite" sieht, liest sie als Suche.
  */
 
+import { asset } from '../app/assets.ts'
 import { TOWERS } from '../data/towers.ts'
 import type { Rarity, StatKey } from '../data/types.ts'
 import { PALETTE, RARITY_COLOR } from '../render/theme.ts'
@@ -56,7 +57,8 @@ export type IconName =
  * derselben Zeile trugen damit verschiedene Strichstaerken und sassen verschieden hoch.
  */
 export function icon(name: IconName, size = 16): string {
-  return `<i class="pix" style="--icon:url('/icons/${name}.svg');--pix-size:${size}px"></i>`
+  const file = asset(`icons/${name}.svg`)
+  return `<i class="pix" style="--icon:url('${file}');--pix-size:${size}px"></i>`
 }
 
 /**
@@ -78,7 +80,7 @@ export function moduleTile(
   const frame = rarity ?? 'common'
   const color = tone ?? (rarity ? RARITY_COLOR[rarity] : PALETTE.edge)
   return (
-    `<span class="tile" style="--frame:url('/frames/${frame}.svg');color:${color}">` +
+    `<span class="tile" style="--frame:url('${asset(`frames/${frame}.svg`)}');color:${color}">` +
     `${icon(name, size)}</span>`
   )
 }

@@ -17,7 +17,7 @@ import { invalidateStationView, resetStationViewCache, stationView } from '../..
 import { startBuild } from '../../app/actions.ts'
 import type { Camera } from '../../render/camera.ts'
 import type { Vec2 } from '../../core/vec.ts'
-import { CORE_UID, freeEdges, type FreeEdge } from '../../sim/station.ts'
+import { CORE_UID, freeEdges, newModule, type FreeEdge } from '../../sim/station.ts'
 import { dropGold } from '../../sim/economy.ts'
 
 const WIDTH = 900
@@ -50,6 +50,17 @@ function createRig(slots = 4): Rig {
 
   const state = createInitialState(1234)
   state.run.station.slots = slots
+  /*
+   * Drei Module ins Lager - dieselben drei, die frueher das Startinventar mitbrachte.
+   *
+   * Geschenkt bekommt sie niemand mehr (`START_INVENTORY`), gekauft werden sie gewuerfelt.
+   * Diese Suite prueft aber das **Setzen** mit dem Zeiger und nicht den Laden: Sie braucht
+   * einen bekannten Lagerinhalt in bekannter Reihenfolge, und den legt sie sich deshalb
+   * selbst hin, statt ihn zu ziehen.
+   */
+  for (const defId of ['autocannon', 'cannon', 'amplifier']) {
+    state.run.station.inventory.push(newModule(state.run.station, defId, 'common'))
+  }
   // Gebaut wird in der Basisansicht; in der Kampfansicht sammelt der Zeiger Gold ein
   // (GDD 13 Abschnitt 3 und 5).
   state.runtime.view = 'base'

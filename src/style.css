@@ -103,6 +103,42 @@
   --shine-width: 2px;
 
   /*
+   * Die Roehre (siehe `#app::before`).
+   *
+   * Vier Zahlen, und sie sind die **einzige** Stelle, an der die Staerke des Filters steht.
+   * Wer ihn kraeftiger oder leiser will, dreht hier und nirgends sonst.
+   *
+   * Alle vier sind mit Absicht klein. Ein Roehrenfilter hat dieselbe Regel wie der
+   * Glanzschleier auf dem Feld (`render/post.ts`): Man soll ihn nicht sehen, sondern das
+   * Bild fuer ein Geraet halten. Faellt die Ecke als dunkler Fleck auf oder das Band als
+   * wandernder Streifen, ist er zu stark.
+   */
+  /*
+   * Wie dunkel die **Ecken** werden - der Kolben, der sich vom Betrachter wegkruemmt.
+   *
+   * Der Wert gilt genau in den vier Ecken. Was an den Anzeigen ankommt, ist deutlich
+   * weniger, und das ist die eigentliche Grenze dieser Zahl: In der oberen linken Ecke steht
+   * die Ressourcenzeile, in der unteren linken der erste Reiter. Beides sind Anzeigen, die
+   * man **liest**, und ein Filter, der sie abdunkelt, nimmt zurueck, wofuer sie da sind.
+   * Nachgemessen an einem 1280er Bild liegen bei diesem Wert 13 Prozent auf der
+   * Ressourcenzeile und 16 auf dem Reiter - sichtbar als Tiefe, nicht als Schatten.
+   */
+  --tube-vignette: 0.26;
+  /*
+   * Die schmale Kante ganz aussen, wo das Glas am staerksten steht.
+   *
+   * Sie ist mit Absicht **eng** (26 px Streuung, nicht 96): Ein weicher Saum, der einen
+   * halben Finger weit ins Bild reicht, laege genau auf denselben Anzeigen wie die Ecken -
+   * und beide zusammen waeren dann doch ein Schatten. Die breite Abdunklung macht der
+   * Farbverlauf, den Saum macht dieser Wert. Jede Aufgabe hat genau eine Lage.
+   */
+  --tube-rim: 0.5;
+  /* Das Band des Bildaufbaus. Zwei Hundertstel: sichtbar in Bewegung, unsichtbar im Halt. */
+  --tube-band: 0.02;
+  /* Wie lange es fuer einen Durchlauf braucht. Lang genug, um nicht zu takten. */
+  --tube-band-dur: 9s;
+
+  /*
    * Tiefe. Panels liegen ueber dem Feld, Karten liegen im Panel. Ohne den Unterschied
    * wirkt die Oberflaeche flach aufgemalt statt gebaut.
    */
@@ -216,6 +252,107 @@ button {
   mask-composite: exclude;
   animation: shine-drift var(--shine-dur) linear infinite;
   pointer-events: none;
+}
+
+/*
+ * === Die Roehre ==============================================================
+ *
+ * Ein Bildschirmfilter ueber dem **ganzen** Spiel - Feld, Anzeigen und Bedienleiste.
+ *
+ * Auf dem Feld liegen laengst zwei Lagen, die dasselbe erzaehlen: der Glanzschleier und die
+ * Rasterzeilen (`render/post.ts`). Beide zeichnen ins Canvas und hoeren deshalb an der
+ * Unterkante des Feldes auf. Was fehlte, ist das, was eine Roehre **ausserhalb** des Bildes
+ * ausmacht - der Kolben. Der geht ueber alles, was hinter dem Glas liegt, und in dieser
+ * Maschine liegt die Bedienleiste genauso dahinter wie das Spielfeld.
+ *
+ * Drei Lagen, jede mit genau einer Aufgabe:
+ *
+ *   Der **Kolbenrand**  Die Ecken sind dunkler als die Mitte. Das ist der eine Reiz, an dem
+ *                       ein Auge eine gewoelbte Scheibe erkennt, und er kostet nichts: ein
+ *                       Farbverlauf, der einmal gezeichnet wird und dann steht.
+ *   Die **Glaskante**   Ganz aussen ein schmaler dunkler Saum, links mit einem Hauch
+ *                       Magenta, rechts mit einem Hauch Cyan. Das ist der Konvergenzfehler
+ *                       einer Roehre - die drei Strahlen treffen am Rand nicht mehr genau
+ *                       denselben Punkt. Ein Filter mit Vignette allein sieht aus wie ein
+ *                       Foto; erst der Farbsaum sieht aus wie ein Geraet.
+ *   Das **Zeilenband**  Ein sehr blasser heller Streifen, der langsam nach unten wandert -
+ *                       der Bildaufbau, den eine Kamera vor einer Roehre einfaengt. Er ist
+ *                       das einzige Bewegte daran und traegt deshalb die kleinste Zahl.
+ *
+ * **Er faengt nichts ab** (`pointer-events: none`) und **er liegt unter dem Wanderlicht**
+ * (`#app::after`, z-index 30): Der Ring ist die Fassung der Maschine und damit vor dem Glas,
+ * nicht dahinter.
+ *
+ * **Er kruemmt nichts.** Eine echte Woelbung hiesse, jede Bildzeile einzeln zu verzerren -
+ * auf einem 1080er Bild tausend Zeichenvorgaenge je Bild, fuer einen Reiz, den der dunkle
+ * Rand fast genauso gut gibt. Dieselbe Ueberlegung wie beim Schleier: der billige Weg zum
+ * Eindruck, nicht der teure zur Wahrheit.
+ *
+ * Er haengt am Effekt-Schalter (`data-effects`, `main.ts`) - genau wie die beiden Lagen auf
+ * dem Feld. Wer die Zierde abbestellt, bestellt sie ganz ab und nicht zur Haelfte.
+ */
+#app::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  pointer-events: none;
+  background:
+    /*
+     * Der Kolbenrand. Bis 52 Prozent des Halbmessers passiert nichts - das ist die Flaeche,
+     * auf der gespielt wird, und sie darf der Filter nicht anfassen. Erst danach faellt es
+     * ab, und die volle Dunkelheit steht nur in den vier Ecken.
+     */
+    radial-gradient(
+      72% 72% at 50% 48%,
+      transparent 0%,
+      transparent 52%,
+      rgba(0, 0, 0, calc(var(--tube-vignette) * 0.34)) 79%,
+      rgba(0, 0, 0, var(--tube-vignette)) 100%
+    ),
+    /*
+     * Das Zeilenband. Es blendet an **beiden** eigenen Enden aus - deshalb braucht der Lauf
+     * unten keine Sonderbehandlung: Was aus dem Bild faehrt, ist dort schon durchsichtig.
+     */
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(196, 236, 255, var(--tube-band)) 40%,
+      rgba(214, 244, 255, calc(var(--tube-band) * 1.7)) 50%,
+      rgba(196, 236, 255, var(--tube-band)) 60%,
+      transparent 100%
+    );
+  background-repeat: no-repeat, no-repeat;
+  background-size: 100% 100%, 100% 34%;
+  background-position: 0 0, 0 0;
+  /*
+   * Die Glaskante. Ein enger dunkler Saum ganz aussen, dazu die beiden farbigen Streifen an
+   * den **Seitenkanten** und nur dort - der negative Radius zieht sie von den waagerechten
+   * Kanten wieder weg.
+   */
+  box-shadow:
+    inset 0 0 26px rgba(2, 5, 14, calc(var(--tube-rim) * 0.7)),
+    inset 22px 0 30px -24px rgba(255, 92, 168, calc(var(--tube-rim) * 0.55)),
+    inset -22px 0 30px -24px rgba(127, 216, 255, calc(var(--tube-rim) * 0.55));
+  animation: tube-sweep var(--tube-band-dur) linear infinite;
+}
+
+/*
+ * Nur das Band wandert. Das zweite Wertepaar je Zeile gehoert dem Kolbenrand - er bleibt
+ * stehen, und stuende dort nichts, wanderte er mit. Dieselbe Bauart wie bei `shine-drift`.
+ */
+@keyframes tube-sweep {
+  from {
+    background-position: 0 0, 0 -34%;
+  }
+  to {
+    background-position: 0 0, 0 134%;
+  }
+}
+
+/* Ohne Zierde keine Roehre - dieselbe Zusage wie fuer Schleier und Rasterzeilen. */
+#app[data-effects='off']::before {
+  display: none;
 }
 
 /*
@@ -381,58 +518,93 @@ button {
 }
 
 /*
- * Und mit dem Panel waechst die Reiterleiste - nur mit ihm.
+ * Die Masse stehen als Werte auf `#app` und nicht als Regeln auf `.dock-row`.
  *
- * Die Leiste nimmt sich die Breite, die der Deckel des Panels uebrig laesst (`.dock-row`).
- * Wo kein Panel steht, laesst auch keines etwas uebrig: In der Basis, in den Einstellungen
- * und im Prestige traegt die untere Leiste nichts als die sechs Reiter, und die duerfen
- * dann nicht die halbe Fensterbreite und ein Drittel der Fensterhoehe fuellen - sie
- * naehmen dem Spielfeld genau den Platz weg, den es dort braucht.
- *
- * Beides steht als Wert und nicht als zweite Regel auf `.dock-row`: Die schmalen Fenster
- * bauen die Leiste ganz anders (siehe "Schmale Fenster"), und eine Bereichsregel waere
- * staerker als ihre - der Umbruch fiele in genau den zwei Bereichen aus, in denen es auf
- * ihn ankommt.
+ * Zwei Gruende, beide aus Fehlern gelernt: Die schmalen Fenster bauen die Leiste ganz
+ * anders (siehe "Schmale Fenster"), und eine Bereichsregel waere staerker als ihre - der
+ * Umbruch fiele dann in genau den Bereichen aus, in denen es auf ihn ankommt. Und ein
+ * Reiter ist dasselbe Ding, egal wo man gerade steht: Haengt seine Groesse am Nachbarn,
+ * ist er in der Basis, wo keine Kachelwand danebensteht, ploetzlich halb so gross.
  */
 /*
- * Sechs Reiter im Format 1:2, hochkant, alle gleich gross.
+ * === Das Mass der unteren Leiste =============================================
  *
- * Das Seitenverhaeltnis ist die eigentliche Aussage dieser zwei Zeilen: Ein Reiter ist ein
- * **Bild** und kein Knopf mit einem Zeichen darauf (`public/nav/`), und ein Bildformat, das
- * ueberall dasselbe ist, laesst sich einmal zeichnen und sechsmal fuellen. Quadrate waeren
- * die naheliegende Wahl gewesen und die falsche: Was in einer Bucht der Station steht, steht
- * aufrecht.
+ * Sechs Reiter im Format 1:2, hochkant, alle gleich gross - und zwanzig quadratische
+ * Kacheln daneben. Beides sind **feste Formen**, und feste Formen fuellen eine gegebene
+ * Breite nur bei genau einem Seitenverhaeltnis. Die Frage ist deshalb nie "wie breit darf
+ * die Leiste werden", sondern "wie hoch darf sie sein" - der Rest folgt daraus.
  *
- * Die kleine Fassung greift nur auf schmalen Bildern - **nicht** in einzelnen Bereichen. Sie
- * hing eine Fassung lang am Bereich, weil die Leiste ohne Kachelwand daneben keine Hoehe
- * vorgegeben bekommt, und war in der Basis und im Prestige damit halb so gross wie im Kampf.
- * Das war der Fehler: Ein Reiter ist dasselbe Ding, egal wo man gerade steht, und er darf
- * nicht bei jedem Bereichswechsel die Groesse wechseln. Die Hoehe steht deshalb jetzt als
- * Zahl da und wird nicht mehr vom Nachbarn geerbt.
+ * Genau das steht hier: **eine** Zahl, aus der sich alles andere rechnet. Vorher standen
+ * dieselben Groessen als sechs ausgeschriebene Pixelwerte an fuenf Stellen, gestuft ueber
+ * Umbruchpunkte bei 780, 900, 1000, 1641 und 1860 px. Sie waren nicht falsch - sie waren
+ * eine Familie, die fuer **ein** Fenster ausgeschrieben war (rund 1900 x 950). Oberhalb
+ * davon wuchs nichts mehr mit, und der Ueberschuss wurde als Fuge zwischen den Kaesten
+ * geparkt: auf einem 2000er Bild zweimal rund 70 px Leere mitten in der Bedienung.
+ *
+ * Die Herleitung, ruecklings aus der alten Fassung nachgerechnet (Dockzeile = 208 px):
+ *
+ *   Kachelkante K   (208 - 23) / 2      = 92,5 px   (alt gemessen: 92,6)
+ *   Kachelwand      10 K + 9 x 6 + 20   = 999 px    (alt: --panel-max 1000)
+ *   Reiterhoehe     208 - 13            = 195 px    (alt: --nav-rows 195)
+ *   Reiterbreite    195 / 2             = 97,5 px   (alt: 98, Format 1:2)
+ *   Kernfeld        208                 = 208 px    (alt: --nav-rows + 13)
+ *
+ * Die 23 px sind, was in der Kachelwand neben den zwei Kachelreihen liegt: 6 px Fuge,
+ * 16 px Polsterung, 1 px Rahmen. Die 13 px sind dasselbe fuer die Reiterleiste: 12 px
+ * Polsterung und 1 px Rahmen. Die 74 px in `--panel-max` sind die neun Fugen zu 6 px plus
+ * 20 px seitliche Polsterung.
+ *
+ * Bei 1900 x 950 kommt damit Pixel fuer Pixel dasselbe Bild heraus wie vorher - der Umbau
+ * verallgemeinert die Zahlen, er ersetzt sie nicht.
+ *
+ * Die Grenzen des `clamp()`:
+ *   132 px  Untergrenze. Darunter faellt die Kachel unter die 44 px, ab denen ihre
+ *           Zeichnung keine Zeichnung mehr ist (`selftest/guards.ts` rechnet es nach).
+ *    22 vh  Der gemessene Anteil der alten Fassung. Er ist der eigentliche Wert dieser
+ *           Zeile: Auf einem 768er Laptop wird die Leiste 169 statt 217 px hoch, und die
+ *           knapp 50 px gehen ans Spielfeld - dorthin, wo sie fehlen.
+ *   260 px  Obergrenze. Ohne sie waere die Leiste auf einem 1440er Bild 317 px hoch und
+ *           verdeckte wieder das, was man beim Kaufen im Auge behalten will.
+ *
+ * **Warum zusaetzlich `12.5 vw`?** Weil die Hoehe allein die falsche Frage beantwortet,
+ * sobald das Fenster schmal und hoch ist. Nebeneinander brauchen Reiterleiste und
+ * Kachelwand zusammen 8 H - 26 px Breite; ist nur 22 vh im Spiel, verlangt ein Fenster von
+ * 1001 x 1000 px eine Leiste von 220 px Hoehe, die Leiste nimmt 665 px, und der Kachelwand
+ * bleiben 326 px - die Kachel faellt auf 25 px. Der zweite Deckel dreht das um: 8 H <= W
+ * heisst H <= 12.5 vw, und dann passt es bei **jedem** Verhaeltnis. Auf allen breiten
+ * Fenstern greift ohnehin die Hoehe; die Breite ist die Bremse, nicht das Mass.
  */
 #app {
-  --nav-cols: repeat(6, 46px);
-  --nav-rows: 92px;
-}
+  --dock-h: clamp(132px, min(22vh, 12.5vw), 260px);
+  --tile: calc((var(--dock-h) - 23px) / 2);
+  --panel-max: calc(10 * var(--tile) + 74px);
+  --nav-rows: calc(var(--dock-h) - 13px);
+  --nav-cols: repeat(6, calc((var(--dock-h) - 13px) / 2));
+  /*
+   * Wie breit die Reiterleiste hoechstens werden darf, wenn sie den Rest der Zeile aufnimmt.
+   *
+   * Ihr Eigenmass ist `3 H + 4` (sechs Reiter zu (H-13)/2, fuenf Fugen zu 6, zweimal
+   * Polsterung, ein Rahmen). Der Deckel laesst 47 px mehr zu, also gut 9 px auf jede der
+   * fuenf Fugen: Die Reiter ruecken von 6 auf rund 15 px auseinander und bleiben sichtbar
+   * eine Reihe. Weiter gestreut waeren es sechs Knoepfe mit Leere dazwischen - dieselbe
+   * Luecke wie vorher, nur in Scheiben geschnitten (auf einem 3440er Bild ohne Deckel:
+   * 229 px zwischen zwei Reitern).
+   *
+   * Die Zahl ist zugleich der Grund, warum die Kachelwand ihren Deckel ueberhaupt erreicht.
+   * Reiterleiste und Kachelwand sind beide gedeckelte Spalten, und das Raster bedient sie im
+   * selben Schritt: Was die eine mehr nimmt, fehlt der anderen. Bei 47 px bleibt genug.
+   */
+  --nav-max: calc(3 * var(--dock-h) + 51px);
 
-/*
- * Die grosse Fassung: 98 x 195 px, das Format 1:2.
- *
- * Die 195 sind die Innenhoehe der Kachelwand bei einem 1000-px-Deckel (zwei Reihen zu 92,6 px
- * plus 6 px Fuge plus 16 px Polsterung, minus Rahmen und die 12 px Polsterung der Leiste).
- * Damit stehen Leiste und Kachelwand im Kampf auf **exakt** derselben Hoehe - und in jedem
- * anderen Bereich, wo keine Kachelwand steht, eben auch. Dreht jemand an `--panel-max`,
- * gehoert diese Zahl mitgedreht; sie ist die einzige Stelle, an der die beiden zusammenhaengen.
- *
- * 1641 px ist die Fensterbreite, ab der beides nebeneinander passt: 631 px Leiste, 10 px
- * Fuge, 1000 px Panel. Darunter bleibt es bei der kleinen Fassung, sonst nimmt die Leiste
- * der Kachelwand die Breite weg, die deren Kacheln lesbar haelt (`selftest/guards.ts`).
- */
-@media (min-width: 1641px) {
-  #app {
-    --nav-cols: repeat(6, 98px);
-    --nav-rows: 195px;
-  }
+  /*
+   * Die Hoehe der Ressourcenzeile - die Oberkante, unter der alles andere anfaengt.
+   *
+   * Sie steht hier, weil sich **vier** Schilder an ihr ausrichten (Bereichsname, Bosszeile,
+   * Wellenschild, die Panels der Basis) und sie vorher in jedem davon als eigene Zahl
+   * stand: 39, 41, 68, 84, 96. Fuenf Zahlen fuer eine Kante heisst, dass beim Aendern der
+   * Zeile vier davon stehen bleiben - genau so laufen Reihen auseinander.
+   */
+  --hud-top: 36px;
 }
 
 #app[data-view='base'] .meta-card,
@@ -836,6 +1008,7 @@ ul.inventory > *:nth-child(n + 8) {
   --shine: linear-gradient(transparent, transparent);
 }
 
+#app[data-motion='off']::before,
 #app[data-motion='off']::after,
 #app[data-motion='off'] .bar i::after,
 #app[data-motion='off'] .outcome .caret,
@@ -940,12 +1113,6 @@ ul.inventory > *:nth-child(n + 8) {
   line-height: 1.5;
 }
 
-.panel .slots {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
 .muted {
   color: var(--text-dim);
 }
@@ -1037,7 +1204,7 @@ ul.inventory > *:nth-child(n + 8) {
 .icon-button {
   display: grid;
   place-items: center;
-  width: 34px;
+  width: 37px;
   padding: 0;
 }
 
@@ -1242,7 +1409,7 @@ button:hover:not(:disabled) .slide::after {
  */
 .view-title {
   position: absolute;
-  top: 39px;
+  top: calc(var(--hud-top) + 3px);
   left: 50%;
   transform: translateX(-50%);
   margin: 0;
@@ -1337,11 +1504,11 @@ button:hover:not(:disabled) .slide::after {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 17px 7px;
+  gap: 10px;
+  padding: 8px 19px 9px;
   color: var(--res);
   font-family: var(--font-pixel);
-  font-size: 22px;
+  font-size: 25px;
   line-height: 1;
   text-shadow: 0 0 13px color-mix(in srgb, var(--res) 55%, transparent);
 }
@@ -1581,10 +1748,25 @@ button:hover:not(:disabled) .slide::after {
   position: absolute;
   top: 0;
   right: 0;
-  width: 208px;
+  /*
+   * Fliessend statt gestuft: 236 px bei 1900, und die Stufen bei 900 (214) und 780 (198)
+   * fallen ersatzlos weg - das `clamp()` durchlaeuft dieselben Werte, nur ohne Sprung.
+   *
+   * Die **Untergrenze** ist die Zahl, auf die es ankommt: An ihr rechnet `guards.ts` nach,
+   * ob der laengste Liganame noch in die Ligazeile passt. Wer sie senkt, bekommt es dort
+   * gesagt und nicht erst an einem abgeschnittenen "SHATTERED BE...".
+   *
+   * Sie steht bei 220 und nicht bei den frueheren 198, und das ist eine **Korrektur**, kein
+   * Nebeneffekt: Bei 198 px bot die Ligazeile 83,5 px Platz, der laengste Liganame
+   * ("Starless Deep") braucht 102,9. Drei der zwoelf Ligen waren auf schmalen Fenstern
+   * schon vorher gekappt. Aufgefallen ist es nie, weil die Regel bis jetzt nur die
+   * Basisbreite nachgerechnet hat und die schmale Fassung gar nicht kannte - sie stand als
+   * zweite Zahl in einer Medienabfrage, und dorthin hat nie jemand geschaut.
+   */
+  width: clamp(220px, 12.5vw, 260px);
   flex-direction: column;
-  gap: 6px;
-  padding: 9px 12px 10px;
+  gap: 7px;
+  padding: 11px 14px 12px;
   border-top: 0;
   border-right: 0;
   border-radius: 0 0 0 14px;
@@ -1633,7 +1815,7 @@ button:hover:not(:disabled) .slide::after {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   /*
    * 0,10em und nicht 0,14: Bei 10 px Pixelschrift in einer 208 px breiten Karte kostet
@@ -1649,7 +1831,7 @@ button:hover:not(:disabled) .slide::after {
 
 .league-rank {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.06em;
   color: var(--league-tint, var(--edge));
@@ -1665,8 +1847,8 @@ button:hover:not(:disabled) .slide::after {
  */
 .league-row button {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
 }
 
@@ -1676,140 +1858,21 @@ button:hover:not(:disabled) .slide::after {
 }
 
 /*
- * Die Wellennummer - und zugleich der Griff fuer den Sprung (`ui/hud.ts`).
+ * Die Wellennummer - die groesste Zahl der Karte und **nur** eine Anzeige (`ui/hud.ts`).
  *
- * Sie ist eine Schaltflaeche, sieht aber keine Sekunde lang wie eine aus: kein Rahmen, keine
- * Flaeche, nichts. Ein Knopfrahmen um die groesste Zahl der Karte machte aus einer Anzeige
- * ein Bedienelement, und gelesen wird sie oefter als gedrueckt. Der gestrichelte Strich
- * darunter ist alles, was sie verraet - und beim Beruehren geht sie auf.
+ * Sie war einmal eine Schaltflaeche mit gestricheltem Strich darunter, die eine Sprungzeile
+ * mit Zahlenfeld aufklappte. Beides ist weg: Was man an der Welle aendern kann, aendern die
+ * Pfeile unten in derselben Karte, und eine Anzeige, die aussieht wie ein Knopf, ist eine
+ * Behauptung ueber eine Bedienung, die es nicht mehr gibt.
  */
 .wave-label {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--edge);
   text-shadow: 0 0 12px rgba(127, 216, 255, 0.5);
   white-space: nowrap;
-  cursor: pointer;
-  text-decoration: underline dotted rgba(127, 216, 255, 0.4);
-  text-underline-offset: 4px;
-  transition: color var(--dur-tap) var(--ease-out),
-    text-decoration-color var(--dur-tap) var(--ease-out);
-}
-
-.wave-label:hover:not(:disabled) {
-  color: var(--text);
-  text-decoration-color: var(--edge);
-}
-
-/* Solange es kein Sprungziel gibt, ist sie wieder nur eine Zahl - ohne Strich, ohne Zeiger. */
-.wave-label:disabled {
-  cursor: default;
-  text-decoration: none;
-}
-
-/*
- * Die Sprungzeile.
- *
- * Drei Dinge in einer Zeile: das Feld, die Spanne, die es annimmt, und der Knopf. Die Spanne
- * steht **zwischen** beiden und nicht darunter - sie ist die Auskunft, die man genau in dem
- * Augenblick braucht, in dem man tippt.
- */
-.wave-jump {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.wave-jump-field {
-  width: 0;
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 4px 6px;
-  border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  background: rgba(4, 10, 28, 0.8);
-  color: var(--text);
-  font-family: var(--font-pixel);
-  font-size: 14px;
-  text-align: center;
-}
-
-.wave-jump-field:focus {
-  outline: none;
-  border-color: var(--edge);
-  box-shadow: var(--glow-soft);
-}
-
-/* Die Pfeilchen des Zahlenfeldes fallen weg - sie gehoeren zum Formular, nicht zum Geraet. */
-.wave-jump-field::-webkit-inner-spin-button,
-.wave-jump-field::-webkit-outer-spin-button {
-  margin: 0;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.wave-jump-range {
-  flex: none;
-  color: var(--text-dim);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  white-space: nowrap;
-}
-
-.wave-jump-go {
-  flex: none;
-  min-height: 26px;
-  padding: 3px 9px;
-  border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  background: rgba(10, 20, 54, 0.65);
-  color: var(--text-dim);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  transition: color var(--dur-tap) var(--ease-out),
-    border-color var(--dur-tap) var(--ease-out), box-shadow var(--dur-tap) var(--ease-out);
-}
-
-.wave-jump-go:hover {
-  color: var(--lime);
-  border-color: var(--lime);
-  box-shadow: 0 0 12px rgba(127, 232, 63, 0.3);
-}
-
-/*
- * Die Abfuhr: Die Zeile zuckt einmal und bleibt stehen.
- *
- * Sie ist die einzige Antwort auf eine Zahl ausserhalb der Spanne - und sie muss eine sein,
- * die man nicht lesen muss. Eine Fehlermeldung in einer 208 px breiten Karte waere zwei
- * Zeilen Kleinschrift fuer eine Auskunft, die das Feld daneben schon traegt.
- */
-.wave-jump.refused {
-  animation: refuse 260ms var(--ease-out);
-}
-
-@keyframes refuse {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  20% {
-    transform: translateX(-5px);
-  }
-  55% {
-    transform: translateX(4px);
-  }
-  80% {
-    transform: translateX(-2px);
-  }
 }
 
 .scales {
@@ -1823,13 +1886,22 @@ button:hover:not(:disabled) .slide::after {
 }
 
 .scales .fig b {
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .wave-controls {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/*
+ * Etwas schwerer als die Tempoknoepfe unten links, mit denen sich die Wellensteuerung sonst
+ * dieselbe Regel teilt: Diese drei sind die Bedienung der Karte, jene eine Nebeneinstellung.
+ */
+.wave-controls button {
+  min-height: 33px;
+  font-size: 13px;
 }
 
 /* Der Auto-Knopf ist der einzige mit Text und nimmt deshalb den freien Platz. */
@@ -2190,7 +2262,7 @@ button:hover:not(:disabled) .slide::after {
  */
 .wave-banner {
   position: absolute;
-  top: 84px;
+  top: calc(var(--hud-top) + 48px);
   left: 50%;
   transform: translateX(-50%);
   opacity: 0;
@@ -2416,7 +2488,7 @@ button:hover:not(:disabled) .slide::after {
 .boss-bar {
   --boss: var(--magenta);
   position: absolute;
-  top: 41px;
+  top: calc(var(--hud-top) + 5px);
   left: 50%;
   transform: translateX(-50%);
   animation: boss-enter 460ms var(--ease-out);
@@ -2457,7 +2529,7 @@ button:hover:not(:disabled) .slide::after {
 
 .boss-hp {
   position: relative;
-  width: 220px;
+  width: clamp(180px, 16vw, 320px);
   height: 14px;
   border: 1px solid var(--boss);
   border-radius: 5px;
@@ -2501,32 +2573,31 @@ button:hover:not(:disabled) .slide::after {
  * Mindestbreite (sechs Schaltflaechen zu 62 px), und das Panel bekommt, was es kriegen kann.
  */
 .dock-row {
-  /*
-   * Der Deckel des Kachelpanels: 980 px Raster plus zweimal 10 px Polsterung.
-   *
-   * Er steht hier und nicht am Raster, weil er hier **beide** Spalten betrifft.
-   * `selftest/guards.ts` liest ihn an dieser Stelle.
-   *
-   * Diese eine Zahl bestimmt die **Hoehe der ganzen unteren Leiste**, und zwar mit dem
-   * Faktor ein Fuenftel: Zehn quadratische Kacheln in zwei Reihen sind (Breite - 74) / 5
-   * hoch. 1280 px Deckel ergaben ein 273 px hohes Dock und haben ein Viertel des Bildes
-   * verdeckt; 1000 px ergeben 215 px. Wer es noch flacher will, dreht hier - und bekommt
-   * kleinere Kacheln, nicht kleinere Reiter. Die haengen nicht mehr daran.
-   */
-  --panel-max: 1000px;
   display: grid;
   /*
-   * Die Leiste nimmt ihr Eigenmass, das Panel seinen Deckel - und was uebrig bleibt, liegt
-   * **zwischen** ihnen. Beide sitzen damit auf ihrer Bildschirmkante, wie alle Schilde des
-   * Spiels; die Fuge dazwischen ist Dockflaeche und kein Kasten, der Leere umrahmt.
+   * **Eine Spalte dehnt sich immer** - das ist der ganze Unterschied zur Vorgaengerfassung.
    *
-   * Ein Rest muss irgendwo hin: Kachelwand und Reiterleiste ergeben zusammen nur bei einer
-   * einzigen Fensterbreite genau das Bild (1653 px). Waechst das Panel mit, waechst die
-   * Leistenhoehe mit ihm; waechst die Leiste mit, werden die Reiter riesig. Beides war schon
-   * da, beides war schlechter als eine Fuge.
+   * Vorher nahm die Leiste ihr Eigenmass, das Panel seinen Deckel, und der Rest lag als
+   * Fuge zwischen ihnen (`justify-content: space-between`). Die Ueberlegung dahinter war
+   * richtig: Waechst das Panel mit, waechst die Leistenhoehe mit ihm; waechst die Leiste
+   * mit, werden die Reiter riesig. Nur war die Folgerung falsch. Eine Fuge ist kein
+   * neutraler Ort, an dem ein Rest liegen darf - auf einem 2000er Bild waren es zweimal
+   * rund 70 px Leere mitten in der Bedienung, und Leere mitten in der Bedienung liest sich
+   * als Fehler, nicht als Entscheidung.
+   *
+   * Jetzt bekommt der Rest einen **Nehmer** statt eines Ablageplatzes: Die Reiterleiste ist
+   * die dehnbare Spalte. Ihre Reiter behalten dabei ihr Mass (`--nav-cols` gibt feste
+   * Spaltenbreiten vor) - was sich dehnt, ist der Abstand zwischen ihnen, den ihr eigenes
+   * `space-between` gleichmaessig verteilt. Aus einem geparkten Klumpen Leere wird damit
+   * eine regelmaessig gesetzte Reihe, und die Reiter bleiben so gross, wie die Hoehe der
+   * Leiste sie macht.
+   *
+   * `min-content` als Untergrenze der dehnbaren Spalte ist Absicht: Wo es eng wird, gibt
+   * die Leiste **nicht** nach - das Panel hat seinen eigenen `minmax(0, ...)` und ist der
+   * Nachgiebige. Zwischen Basis und Kampf wird staendig gewechselt; ein zu kleiner Reiter
+   * ist teurer als eine Kachel, die einen Pixel verliert.
    */
-  grid-template-columns: min-content minmax(0, var(--panel-max));
-  justify-content: space-between;
+  grid-template-columns: minmax(min-content, 1fr) minmax(0, var(--panel-max));
   gap: 10px;
   align-items: stretch;
 }
@@ -2611,8 +2682,8 @@ button:hover:not(:disabled) .slide::after {
  * damit ist es die einzige Anzeige der unteren Leiste, die keinen Platz kostet: Die Leiste
  * wird um keinen Pixel hoeher, sie fuellt nur eine Flaeche, die vorher leer war.
  *
- * Quadratisch, und zwar genau so hoch wie die Reiterleiste daneben (`--nav-rows` plus deren
- * 12 px Polsterung und 1 px Rahmen). Drei Kaesten in einer Reihe, alle auf derselben
+ * Quadratisch, und zwar genau so hoch wie die Zeile selbst (`--dock-h`) - das ist dieselbe
+ * Hoehe wie die Reiterleiste daneben. Drei Kaesten in einer Reihe, alle auf derselben
  * Oberkante: Was daneben eine Handbreit hoeher oder tiefer saesse, laese sich als etwas
  * Fremdes, das dort abgestellt wurde.
  *
@@ -2623,10 +2694,20 @@ button:hover:not(:disabled) .slide::after {
 .core-gauge {
   position: relative;
   align-self: end;
-  /* Nur da, wo die Fuge auch breit genug ist - siehe die Medienabfrage unten. */
+  /* Nur da, wo die Zeile auch Platz dafuer hat - siehe die Medienabfrage unten. */
   display: none;
-  width: calc(var(--nav-rows) + 13px);
-  height: calc(var(--nav-rows) + 13px);
+  /*
+   * Quadratisch als **Mindestmass**, breiter wenn Platz da ist.
+   *
+   * Es ist der zweite Nehmer des Restes, hinter der Reiterleiste (siehe `.dock-row`). Auf
+   * einem 3440er Bild bleiben nach Leiste und Kachelwand rund 1100 px uebrig; verteilte die
+   * Leiste die allein, staenden ihre sechs Reiter 229 px auseinander - dieselbe Luecke wie
+   * vorher, nur in Scheiben geschnitten. Hier ist der Rest kein Rest mehr, sondern
+   * Anzeigeflaeche: Der Ladestand steigt ueber die volle Breite des Kastens, und je breiter
+   * der ist, desto besser laesst er sich im Augenwinkel ablesen.
+   */
+  min-width: var(--dock-h);
+  height: var(--dock-h);
   overflow: hidden;
   border: 1px solid var(--line-soft);
   border-radius: 14px;
@@ -2671,41 +2752,79 @@ button:hover:not(:disabled) .slide::after {
   transition: height 260ms var(--ease-out);
 }
 
-/* Der Kern liegt darueber und traegt keine eigene Flaeche - gezeichnet wird auf
-   durchsichtigem Grund, damit der Ladestand hinter ihm durchsteht. */
+/*
+ * Der Kern liegt darueber und traegt keine eigene Flaeche - gezeichnet wird auf
+ * durchsichtigem Grund, damit der Ladestand hinter ihm durchsteht.
+ *
+ * Er bleibt **quadratisch und mittig**, auch wenn der Kasten breiter wird. Zwei Gruende,
+ * und der zweite ist der harte: Ein in die Breite gezogener Kern waere nicht mehr der Kern,
+ * den man auf dem Feld sieht - und `ui/coregauge.ts` misst seine Zeichenflaeche mit
+ * `canvas.clientWidth` fuer **beide** Kanten. Ein breiter Kasten ergaebe dort einen Puffer,
+ * der unten aus dem Bild laeuft.
+ */
 .core-gauge .core-view {
   position: absolute;
-  inset: 0;
-  width: 100%;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: var(--dock-h);
   height: 100%;
+  transform: translateX(-50%);
 }
 
 /*
- * Ab hier gibt es die Fuge - und erst ab hier gibt es das Kernfeld.
+ * Erst ab hier gibt es einen dritten Kasten - und damit das Kernfeld.
  *
- * Die Rechnung ist die Fortsetzung der 1641 px weiter oben, nur mit einem Kasten mehr:
+ * Alle drei Breiten haengen an `--dock-h`, also an der Fensterhoehe. Was die Zeile braucht,
+ * laesst sich deshalb in einer Zeile ausrechnen (H = `--dock-h`):
  *
- *   631 px  Reiterleiste in der grossen Fassung (6 x 98 + 5 x 6 Abstand + 12 Polsterung + 1)
- *    10 px  Fuge
- *   208 px  das Kernfeld, so hoch wie die Leiste und damit so breit
- *    10 px  Fuge
- *  1000 px  Kachelwand an ihrem Deckel (`--panel-max`)
- *  ------
- *  1859 px
+ *   3 H + 5    Reiterleiste an ihrem Eigenmass (6 Reiter zu H/2, Fugen, Polsterung, Rahmen)
+ *   1 H        das Kernfeld, so hoch wie die Zeile und damit so breit
+ *   5 H - 41   Kachelwand an ihrem Deckel (`--panel-max`)
+ *   20         zwei Fugen
+ *   --------
+ *   9 H - 16
  *
- * Darunter faellt das Feld weg, statt sich zu verkleinern oder der Kachelwand Breite zu
- * nehmen. Beides waere schlechter: Ein Instrument, das je nach Fenster eine andere Groesse
- * hat, liest sich nicht als dasselbe Ding, und ein Bildmenue, dem fuer eine Anzeige die
- * Kacheln schrumpfen, verliert genau das, wofuer es da ist (`selftest/guards.ts` rechnet die
- * Untergrenze Pixel fuer Pixel nach - sie darf hier nicht angetastet werden).
+ * Mit H = 22 vh heisst das: Das Feld passt, sobald das Fenster **doppelt so breit wie hoch**
+ * ist. Genau das steht als erste Abfrage da - eine Seitenverhaeltnisabfrage und keine feste
+ * Breite, weil eine feste Breite hier die falsche Frage beantwortet: Nicht "ist das Fenster
+ * gross", sondern "ist es flach genug, dass die Leiste schmal genug wird".
+ *
+ * Die zweite Abfrage faengt den Fall ab, in dem `--dock-h` an seiner Obergrenze klebt (sehr
+ * hohe Fenster ab 1182 px): Dort waechst die Zeile nicht mehr mit der Hoehe, und 2340 px
+ * Breite reichen unabhaengig vom Verhaeltnis. Die 1200 px in der ersten Abfrage sind das
+ * Gegenstueck fuer sehr flache Fenster, wo `--dock-h` an seiner **Unter**grenze klebt.
+ *
+ * Passt es nicht, faellt das Feld weg, statt sich zu verkleinern oder der Kachelwand Breite
+ * zu nehmen. Beides waere schlechter: Ein Instrument, das je nach Fenster eine andere
+ * Groesse hat, liest sich nicht als dasselbe Ding, und ein Bildmenue, dem fuer eine Anzeige
+ * die Kacheln schrumpfen, verliert genau das, wofuer es da ist.
  *
  * Wandert die Erfahrung damit auf schmalen Bildern aus dem Bild? Nein: Ihr genauer Stand
  * steht dort wie hier im Hinweis der Stufe (`ui/hud.ts`), und die Stufe selbst steht in der
  * Ressourcenzeile, die in jedem Bereich und bei jeder Breite dieselbe ist.
  */
-@media (min-width: 1860px) {
+@media (min-aspect-ratio: 2 / 1) and (min-width: 1200px), (min-width: 2340px) {
+  /*
+   * **Zwei** Nehmer, und ihre Reihenfolge ist der Punkt.
+   *
+   * Zuerst die Reiterleiste - aber nur bis zu einem Deckel. Der Deckel ist die Breite, bei
+   * der zwischen zwei Reitern 24 px liegen (statt der 6 px, die sie dicht an dicht haben):
+   * sechs Reiter zu H/2, fuenf Fugen zu 24, zweimal Polsterung, ein Rahmen. Weiter gestreut
+   * liest sich die Reihe nicht mehr als Reihe, sondern als sechs einzelne Knoepfe mit Leere
+   * dazwischen - und das ist genau der Fehler, den dieser Umbau behebt, nur in Scheiben
+   * geschnitten. Gemessen auf einem 3440er Bild: ohne Deckel staenden die Reiter 229 px
+   * auseinander.
+   *
+   * Was danach noch uebrig ist, nimmt das Kernfeld (`1fr`, zweite Spalte). Es darf das,
+   * weil es als einziges der drei mit seiner Breite etwas anfangen kann: Sein Ladestand ist
+   * eine Flaeche und kein Mass.
+   */
   .dock-row {
-    grid-template-columns: min-content min-content minmax(0, var(--panel-max));
+    grid-template-columns:
+      minmax(min-content, var(--nav-max))
+      minmax(min-content, 1fr)
+      minmax(0, var(--panel-max));
   }
 
   .core-gauge {
@@ -2959,6 +3078,19 @@ button:hover:not(:disabled) .slide::after {
   letter-spacing: 0.14em;
 }
 
+/*
+ * Der Schmelzknopf unter dem Kauf - deutlich kleiner als er.
+ *
+ * Beide bringen einen Wurf, aber nur einer ist der Grund, aus dem man in die Basis geht.
+ * Gleich gross nebeneinander waeren es zwei Angebote; untereinander und verschieden schwer
+ * sind es eine Handlung und ihre Aufraeumarbeit.
+ */
+.action-slot .melt-button {
+  flex: none;
+  font-size: 12px;
+  padding: 8px;
+}
+
 /* Der Preis unter der Beschriftung statt dahinter - auf dieser Flaeche waere eine Zeile aus
    zwei Teilen eine Zeile mit einer Luecke. */
 .action-button b {
@@ -3186,12 +3318,119 @@ button:hover:not(:disabled) .slide::after {
   text-align: right;
 }
 
+/*
+ * === Die Dockanzeige =========================================================
+ *
+ * Wie viele Module an den Kern passen - die Zahl, an der in der Basis alles haengt
+ * (`ui/base.ts`, `slotGauge`).
+ *
+ * Sie war eine graue `11 px`-Zeile neben der Ueberschrift und damit die am schlechtesten
+ * sichtbare Zahl des Spiels. Jetzt ist sie ein eigener Block mit eigener Flaeche, direkt
+ * unter der Ueberschrift des Lagers: Wer ein Modul aussucht, sieht im selben Blick, ob es
+ * ueberhaupt irgendwohin kann.
+ *
+ * Die **Punktreihe** ist der eigentliche Gewinn. Eine Zahl muss man lesen, Punkte zaehlt man
+ * im Vorbeisehen - und bei einem bis dreizehn Plaetzen ist Zaehlen schneller als Lesen.
+ */
+.slot-gauge {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 10px;
+  padding: 9px 10px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: rgba(10, 20, 54, 0.45);
+}
+
+.slot-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.slot-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.slot-count {
+  font-family: var(--font-pixel);
+  font-size: 19px;
+  font-weight: 400;
+  color: var(--edge);
+  text-shadow: 0 0 10px rgba(127, 216, 255, 0.45);
+  white-space: nowrap;
+}
+
+/*
+ * Ein Punkt je Platz - belegt gefuellt, frei hohl.
+ *
+ * Sie duerfen umbrechen: Mit allen Ausbauten und dem Prestige-Baum sind es dreizehn, und
+ * eine Reihe, die dann aus dem Panel laeuft, waere die Anzeige, die genau bei dem Spieler
+ * bricht, der am meisten davon hat.
+ */
+.slot-pips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.slot-pips i {
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  opacity: 0.4;
+}
+
+.slot-pips i.on {
+  background: var(--edge);
+  box-shadow: 0 0 8px rgba(127, 216, 255, 0.55);
+  opacity: 1;
+}
+
+.slot-state {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+/*
+ * Voll: Die Anzeige wechselt die Farbe, statt eine Zeile mehr zu schreiben.
+ *
+ * Es ist kein Fehler und keine Warnung - es ist der Augenblick, in dem der naechste Kauf ins
+ * Leere ginge. Deshalb Gold und nicht Rot: Die Antwort steht im Katalog, und Gold ist die
+ * Farbe dessen, was man dort ausgibt.
+ */
+.slot-gauge.full {
+  border-color: var(--gold);
+  background: rgba(64, 46, 10, 0.35);
+}
+
+.slot-gauge.full .slot-count,
+.slot-gauge.full .slot-state {
+  color: var(--gold);
+  text-shadow: none;
+}
+
+.slot-more {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .inventory-panel {
   position: absolute;
-  top: 68px;
+  top: calc(var(--hud-top) + 32px);
   left: 0;
   bottom: 0;
-  width: 232px;
+  width: clamp(190px, 13vw, 280px);
   flex-direction: column;
   border-left: 0;
   border-bottom: 0;
@@ -3211,10 +3450,10 @@ button:hover:not(:disabled) .slide::after {
  */
 .rail {
   position: absolute;
-  top: 96px;
+  top: calc(var(--hud-top) + 60px);
   right: 0;
   bottom: 0;
-  width: 254px;
+  width: clamp(210px, 14vw, 300px);
   flex-direction: column;
   gap: 10px;
 }
@@ -3238,16 +3477,12 @@ button:hover:not(:disabled) .slide::after {
   min-height: 0;
 }
 
-/* Der Kaufbereich sitzt unten rechts - genau dort, wo ihn der Entwurf zeigt. */
-.rail .shop-panel {
-  flex: 0 0 auto;
-}
-
 .meta-card {
   position: absolute;
   top: 0;
   right: 0;
-  width: 254px;
+  /* Dieselbe Breite wie die Schiene darunter - sie sind eine Spalte in zwei Teilen. */
+  width: clamp(210px, 14vw, 300px);
   flex-direction: column;
   gap: 5px;
   border-top: 0;
@@ -4655,11 +4890,6 @@ ul.sources.traits li {
   color: var(--gold);
 }
 
-.shop-panel .wide-button + .wide-button,
-.shop-panel .wide-button + .chip {
-  margin-top: 8px;
-}
-
 /* --- Prestige (GDD 10, GDD 13 Abschnitt 6) ------------------------------- */
 
 /*
@@ -5080,8 +5310,14 @@ ul.sources.traits li {
  * Reihe, die man zaehlen kann.
  *
  * Die Schwelle liegt bewusst **ueber** dem Umbruchpunkt der Navileiste (780 px): Zwischen
- * beiden steht die Leiste noch daneben und nimmt dem Panel rund 470 px weg. Genau diese
- * Luecke hat `selftest/guards.ts` gemeldet, bevor sie jemand gesehen hat.
+ * beiden steht die Leiste noch daneben und nimmt dem Panel Breite weg. Genau diese Luecke
+ * hat `selftest/guards.ts` gemeldet, bevor sie jemand gesehen hat.
+ *
+ * Wie viel sie wegnimmt, haengt jetzt an `--dock-h`. Auf einem so schmalen Fenster klebt
+ * das an seiner Untergrenze (132 px), die Leiste misst damit 401 px, und zehn Spalten
+ * blieben rechnerisch bis rund 925 px Fensterbreite ueber den 44 px. Die Schwelle steht
+ * trotzdem bei 1000: Der Abstand dazwischen ist die Luft, die eine gerechnete Untergrenze
+ * braucht, damit sie nicht bei jeder Nachkommastelle kippt.
  */
 @media (max-width: 1000px) {
   .up-grid {
@@ -5091,20 +5327,13 @@ ul.sources.traits li {
 
 /* --- Schmale Fenster ----------------------------------------------------- */
 
+/*
+ * Die drei Panelbreiten, die hier frueher als zweite Fassung standen (Inventar 190,
+ * Schiene und Metakarte 210, Wellenkarte 214), sind ersatzlos entfallen: Ihre `clamp()`
+ * durchlaufen genau diese Werte, nur ohne Stufe. Was hier bleibt, ist eine Aenderung, die
+ * sich **nicht** als Zahl ausdruecken laesst - ein Raster, das die Form wechselt.
+ */
 @media (max-width: 900px) {
-  .inventory-panel {
-    width: 190px;
-  }
-
-  .rail,
-  .meta-card {
-    width: 210px;
-  }
-
-  .wave-card {
-    width: 190px;
-  }
-
   /*
    * Die schmale Spalte fuer den Ausloeser lohnt sich nicht mehr: Was von der Kachelwand
    * daneben uebrig bliebe, waere weniger als ein Bereich breit, und dann braeche jeder in
@@ -5170,6 +5399,18 @@ ul.sources.traits li {
    * Kampf wird staendig gewechselt, und ein zu kleiner Reiter ist teurer als eine Kachel,
    * die eine Zeile weit rollen muss.
    */
+  /*
+   * Hier steht bewusst wieder eine **feste** Zahl, und das ist keine Nachlaessigkeit.
+   *
+   * Der Versuch, sie an `--dock-h` zu haengen (128 / 208 = 0,62), war falsch: Auf einem
+   * schmalen Fenster klebt `--dock-h` an seiner Untergrenze von 132 px, weil es dort von der
+   * **Breite** gedeckelt wird - 0,62 davon sind 82 px statt 128, und das Panel waere staerker
+   * beschnitten als vorher. Untereinander ist `--dock-h` schlicht das falsche Mass: Es
+   * beschreibt eine Zeile aus drei Kaesten nebeneinander, und die gibt es hier nicht mehr.
+   *
+   * 128 px ist rund eine Kachelreihe samt Polsterung, ueber die ganze Bandbreite dieser
+   * Abfrage. Mehr braucht es nicht: Was darunter liegt, ist eine Rollspur weit entfernt.
+   */
   .upgrade-panel {
     order: 1;
     max-height: 128px;
@@ -5180,17 +5421,23 @@ ul.sources.traits li {
    *
    * Sie liegt hier ueber die volle Fensterbreite, und sechs Reiter, die sich das teilen,
    * waeren auf einem 780er Bild 123 px breit und im Format 1:2 damit 246 px hoch - eine
-   * Reiterleiste, die doppelt so hoch waere wie die Kachelwand darueber. Deshalb steht hier
-   * ein festes Mass; die Fuge zwischen den Reitern nimmt den Rest (`space-between`).
+   * Reiterleiste, die doppelt so hoch waere wie die Kachelwand darueber. Deshalb bekommt
+   * sie hier ihr **eigenes** Mass und nicht das der Zeile; die Fuge zwischen den Reitern
+   * nimmt den Rest (`space-between`).
+   *
+   * Es bleibt trotzdem fliessend: 13 vw ist die Breite, bei der die sechs Reiter samt Fugen
+   * knapp die halbe Zeile fuellen. Die Schranken halten den Reiter auf einem 320er Telefon
+   * noch greifbar und auf einem 780er nicht hoeher als die Kachelwand darueber.
    */
   #app {
-    --nav-cols: repeat(6, 40px);
-    --nav-rows: 80px;
+    --nav-rows: clamp(64px, 13vw, 100px);
+    --nav-cols: repeat(6, calc(var(--nav-rows) / 2));
   }
 
+  /* Die Breite kommt aus dem `clamp()` und steht hier nicht mehr - nur die engere
+     Polsterung, die sich aus keiner Formel ergibt. */
   .wave-card {
-    width: 176px;
-    padding: 8px 10px 9px;
+    padding: 9px 11px 10px;
   }
 
   /*
@@ -5224,9 +5471,9 @@ ul.sources.traits li {
    * man ohnehin weniger, und der Kontostand ist das Letzte, worauf man verzichten kann.
    */
   .resource-bar .res {
-    gap: 6px;
-    padding: 5px 11px 6px;
-    font-size: 18px;
+    gap: 7px;
+    padding: 6px 13px 7px;
+    font-size: 20px;
   }
 }
 

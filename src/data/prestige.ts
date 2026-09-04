@@ -49,8 +49,32 @@ export type PrestigeNode = {
 }
 
 /*
- * Die Kosten stammen aus GDD 10 - Bereich fuer Bereich uebernommen. Wo das GDD keine Zahl
- * nennt (XP-Bonus), ist sie zwischen die Nachbarn gesetzt.
+ * === Die Kosten ==============================================================
+ *
+ * **Jede Zahl, die GDD 10 nennt, steht hier unveraendert.** Das sind sechzehn der dreissig
+ * Knoten, und keine davon uebersteigt 500. Die anderen vierzehn nennt das GDD gar nicht -
+ * sie sind Fortschreibungen der Umsetzung, und genau die sind einmal entgleist.
+ *
+ * *Wie sie entgleist sind.* Sie wuchsen mit Faktor vier bis fuenf je Kettenglied
+ * (1.000 -> 5.000 -> 25.000). Das klingt nach einer Kurve, war aber gegen nichts geeicht:
+ * Nachgerechnet gegen die Punkteformel musste ein Spieler fuer den letzten Knoten
+ * **Welle 7.116** erreichen, und die Summe des Baums lag bei 81.550 Punkten - die vier
+ * teuersten Knoten allein trugen 62 Prozent davon. Gemessen ist das Spiel bis Welle 1.000
+ * (siehe das Zeichenbudget in `data/balance.ts`); der halbe Baum lag also jenseits von
+ * allem, wofuer je eine Zahl erhoben wurde.
+ *
+ * *Die Regel, nach der sie jetzt gebaut sind.* Ueber 500 verdoppelt sich ein Kettenglied
+ * ungefaehr, statt sich zu vervierfachen. Damit kostet der teuerste Knoten
+ * (`trait.mythic`, 2.800) **einen bis zwei Laeufe auf Welle 2.000** - die tiefste Welle, zu
+ * der GDD 10 Abschnitt 5 ueberhaupt noch eine Zahl nennt. Die Summe liegt bei 21.000, die
+ * vier teuersten tragen 40 Prozent.
+ *
+ * *Was dabei nicht verhandelbar ist:* Ein Knoten muss teurer sein als jeder, den er
+ * voraussetzt. Sonst ist die Voraussetzung totes Kapital - man kauft sie nur, um an den
+ * billigeren dahinter zu kommen. `suites/prestige.ts` prueft beides, das Gefaelle und die
+ * Obergrenze.
+ *
+ * ---
  *
  * Die Voraussetzungen bilden die Ketten des GDD ab: Raritaeten und Eigenschaften bauen
  * jeweils aufeinander auf, die Tempostufen ebenso. Wirtschaft und Turmplaetze stehen frei -
@@ -132,7 +156,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'towers.slot2',
     label: 'Reinforced Frame',
     area: 'towers',
-    cost: 400,
+    cost: 350,
     requires: ['towers.slot1'],
     description: '+1 tower slot.',
   },
@@ -140,7 +164,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'towers.slot3',
     label: 'Expanded Base',
     area: 'towers',
-    cost: 1500,
+    cost: 800,
     requires: ['towers.slot2'],
     description: '+1 tower slot.',
   },
@@ -156,7 +180,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'towers.ability3',
     label: 'Ability Slot III',
     area: 'towers',
-    cost: 2000,
+    cost: 1000,
     requires: ['towers.ability2'],
     description: 'Unlocks the third and last ability slot.',
   },
@@ -174,7 +198,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'speed.x4',
     label: 'Acceleration II',
     area: 'speed',
-    cost: 3000,
+    cost: 1200,
     requires: ['speed.x2'],
     description: 'Unlocks game speed x4.',
   },
@@ -200,7 +224,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'rarity.legendary',
     label: 'Legendary Towers',
     area: 'rarity',
-    cost: 1000,
+    cost: 600,
     requires: ['rarity.epic'],
     description: 'Legendary towers can appear.',
   },
@@ -208,7 +232,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'rarity.mythic',
     label: 'Mythic Towers',
     area: 'rarity',
-    cost: 5000,
+    cost: 1400,
     requires: ['rarity.legendary'],
     description: 'Mythic towers can appear.',
   },
@@ -252,7 +276,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'tech.drone',
     label: 'Drone Technology',
     area: 'tech',
-    cost: 2000,
+    cost: 900,
     requires: [],
     description: 'Drone bays appear in the tower shop.',
   },
@@ -260,7 +284,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'tech.plasma',
     label: 'Plasma Technology',
     area: 'tech',
-    cost: 10000,
+    cost: 1800,
     requires: ['tech.laser'],
     description: 'Plasma cannons appear in the tower shop.',
   },
@@ -285,7 +309,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'helper.better',
     label: 'Improved Collector',
     area: 'helpers',
-    cost: 2000,
+    cost: 1000,
     requires: ['helper.collector'],
     description: 'Doubles the collector pickup radius.',
   },
@@ -293,7 +317,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'helper.fast',
     label: 'Fast Collector',
     area: 'helpers',
-    cost: 5000,
+    cost: 1600,
     requires: ['helper.better'],
     description: 'A second collector, and both move much faster.',
   },
@@ -301,7 +325,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'helper.elite',
     label: 'Elite Collector',
     area: 'helpers',
-    cost: 15000,
+    cost: 2200,
     requires: ['helper.fast'],
     description: 'A third collector joins the field.',
   },
@@ -319,7 +343,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'trait.epic',
     label: 'Epic Modifiers',
     area: 'traits',
-    cost: 1000,
+    cost: 500,
     requires: ['trait.rare'],
     description: 'Towers can roll epic modifiers.',
   },
@@ -327,7 +351,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'trait.legendary',
     label: 'Legendary Modifiers',
     area: 'traits',
-    cost: 5000,
+    cost: 1200,
     requires: ['trait.epic'],
     description: 'Towers can roll legendary modifiers.',
   },
@@ -335,7 +359,7 @@ export const PRESTIGE_NODES: readonly PrestigeNode[] = [
     id: 'trait.mythic',
     label: 'Mythic Modifiers',
     area: 'traits',
-    cost: 25000,
+    cost: 2800,
     requires: ['trait.legendary'],
     description: 'Towers can roll mythic modifiers.',
   },

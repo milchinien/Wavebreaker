@@ -72,8 +72,18 @@ export const AUTOSAVE_INTERVAL_SECONDS = 5
 
 export const START_CORE_ID = 'sentinel'
 export const START_TOWER_IDS = ['autocannon', 'cannon', 'amplifier'] as const
-/** Turmplaetze zusaetzlich zum Hauptturm. */
-export const START_TOWER_SLOTS = 4
+/**
+ * Turmplaetze zusaetzlich zum Hauptturm - **einer**, nicht vier.
+ *
+ * Vier Plaetze zu Beginn hiessen: Der erste Ausbau, der einen fuenften bringt, kommt erst
+ * nach drei Kaeufen zum Tragen, und bis dahin ist "Platz" nichts, worueber man nachdenkt.
+ * Mit einem Platz ist die Station von der ersten Minute an eine **Entscheidung** - welcher
+ * eine Turm haengt daran? -, und der erste zusaetzliche Platz verdoppelt sie sichtbar.
+ *
+ * Mehr Plaetze kommen aus dem Katalog: `f1.foreman`, `f2.pathfinder` und `f3.architect`
+ * geben je drei Stufen zu einem Platz (`data/upgrades.ts`), dazu der Prestige-Baum.
+ */
+export const START_TOWER_SLOTS = 1
 export const START_ABILITY_SLOTS = 1
 export const MAX_ABILITY_SLOTS = 3
 export const START_WAVE = 1
@@ -237,15 +247,19 @@ export const BUFF_CAPS: Record<StatKey, number> = {
 }
 
 /**
- * PLATZHALTER bis E12: Startmodule, damit ueberhaupt gebaut werden kann. Laut GDD 14
- * Abschnitt 3 sind zu Beginn nur die **Turmarten** freigeschaltet; die Exemplare kauft der
- * Spieler ab E12 mit Gold. Bis dahin bekommt er hier eines je Art.
+ * Das Startlager ist **leer** (GDD 14 Abschnitt 3).
+ *
+ * Hier standen drei geschenkte Module - eines je Turmart -, und das war ein Platzhalter aus
+ * der Zeit vor dem Turmkauf: Ohne ihn haette man in E0 bis E11 gar nichts bauen koennen.
+ * Den Kauf gibt es laengst, und damit ist das Geschenk zur teuersten Zeile des Spiels
+ * geworden: Es nimmt dem Laden seinen ersten Kunden und dem Run seine erste Entscheidung.
+ * Wer mit drei Tuermen anfaengt, kauft den vierten - wer mit keinem anfaengt, kauft den
+ * ersten, und der ist der einzige, an den man sich erinnert.
+ *
+ * Freigeschaltet sind trotzdem drei Turmarten (`START_TOWER_IDS`): Der Laden muss etwas
+ * anzubieten haben. Was er ausgibt, kostet Gold.
  */
-export const START_INVENTORY: readonly { defId: string; rarity: Rarity }[] = [
-  { defId: 'autocannon', rarity: 'common' },
-  { defId: 'cannon', rarity: 'common' },
-  { defId: 'amplifier', rarity: 'common' },
-]
+export const START_INVENTORY: readonly { defId: string; rarity: Rarity }[] = []
 
 // ---------------------------------------------------------------------------
 // Gegner und Wellen (GDD 07) - alles PLATZHALTER bis zum Justieren nach E9

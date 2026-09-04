@@ -47,7 +47,14 @@ import { rangeBlobs } from '../../render/combat.ts'
 import { spawnProjectile, stepProjectiles } from '../../sim/projectiles.ts'
 import { rangeCircles, stationRange, type RangeCircle } from '../../sim/towers.ts'
 import { fireInterval, moduleStats } from '../../sim/stats.ts'
-import { CORE_UID, freeEdges, place, type FreeEdge } from '../../sim/station.ts'
+import {
+  CORE_UID,
+  freeEdges,
+  newModule,
+  place,
+  type FreeEdge,
+  type ModuleInstance,
+} from '../../sim/station.ts'
 import { findTarget } from '../../sim/targeting.ts'
 import { stepTowers } from '../../sim/towers.ts'
 import { clearField, healStationFull, skipToWave, startWave } from '../../sim/waves.ts'
@@ -78,10 +85,26 @@ function refresh(state: GameState): void {
   syncStation(state, view.modules, view.buffs)
 }
 
+/**
+ * Ein Modul ins Lager legen - im Spiel tut das der Kauf (`sim/shop.ts`).
+ *
+ * Das Startlager ist leer (`START_INVENTORY`), seit die drei geschenkten Module weg sind.
+ * Ein Pruefstand, der etwas anbauen will, besorgt sich seine Module deshalb selbst - und
+ * den Platz dafuer gleich mit: Die Station beginnt mit **einem** Turmplatz, und eine
+ * Aufstellung aus drei Tuermen wuerde sonst an einer Regel scheitern, die dieser Test gar
+ * nicht prueft.
+ */
+function stock(state: GameState, defId: string): ModuleInstance {
+  const station = state.run.station
+  const module = newModule(station, defId, 'common')
+  station.inventory.push(module)
+  station.slots = Math.max(station.slots, station.placed.length + station.inventory.length)
+  return module
+}
+
 function placeFirst(state: GameState, defId: string, edgeIndex = 0): string {
   const station = state.run.station
-  const module = station.inventory.find((m) => m.defId === defId)
-  if (!module) throw new Error(`${defId} liegt nicht im Inventar`)
+  const module = station.inventory.find((m) => m.defId === defId) ?? stock(state, defId)
   const edge = freeEdges(station).find(
     (candidate) => candidate.ownerUid === CORE_UID && candidate.edgeIndex === edgeIndex,
   ) as FreeEdge
@@ -775,8 +798,7 @@ export function combatSuite(): void {
      */
     const state = rig()
     const combat = state.runtime.combat
-    const module = state.run.station.inventory[0]
-    assert(module !== undefined, 'das Startlager muss ein Modul haben')
+    const module = stock(state, 'autocannon')
 
     invalidateStationView(state)
     const edge = stationView(state).freeEdges[0]
@@ -800,8 +822,7 @@ export function combatSuite(): void {
     const state = rig()
     state.runtime.combat.observed = false
 
-    const module = state.run.station.inventory[0]
-    assert(module !== undefined, 'das Startlager muss ein Modul haben')
+    const module = stock(state, 'autocannon')
     invalidateStationView(state)
     const edge = stationView(state).freeEdges[0]
     assert(edge !== undefined, 'die Station muss eine freie Kante haben')

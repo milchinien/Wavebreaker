@@ -72,18 +72,50 @@ Richtwerte:
 | Erreichte Welle | Prestige-Punkte |
 |---|---|
 | 100 | 5–10 |
-| 500 | 50–100 |
+| 500 | ~125 |
 | 1.000 | 500 |
 | 2.000 | 500+ |
 | 10.000 | massive Belohnung |
 
 > Die exakte Formel ist ein Balancing-Wert. Grundprinzip: je weiter der Spieler kommt, desto überproportional mehr Punkte.
 
+**Die 500er-Zeile stand bis zur Messung auf 50–100 und war unerfüllbar.** Die drei mittleren
+Zeilen sind untereinander unvereinbar: Der Sprung von 500 auf 1.000 verlangt einen Exponenten
+zwischen 2,32 und 3,32, der Sprung von 100 auf 500 einen zwischen 1,00 und 1,86 — die beiden
+Bereiche überschneiden sich nicht, **kein Potenzgesetz trifft alle drei**. Eine Parabel durch
+(100 → 5) und (1.000 → 500) muss bei Welle 500 auf rund 125 kommen; das ist keine Abweichung
+der Formel, sondern ihre Folge.
+
+Korrigiert wurde deshalb die Zeile und nicht die Formel. Die beiden Alternativen sind gemessen
+und verworfen: Eine auf 50–100 geeichte Parabel verfehlt **beide** anderen Zeilen (Welle 100
+gibt 3, Welle 1.000 gibt 300). Eine Kurve mit steigendem Exponent trifft alle drei, ist bei
+Welle 100 aber mit Exponent 0,52 *unter*proportional — das Gegenteil des Grundprinzips —, und
+bei Welle 10.000 kauft ein einziger Lauf den ganzen Prestige-Baum 170-mal.
+
+Der Stand der umgesetzten Formel ist bei `prestigePoints` in `src/sim/prestige.ts` notiert und
+wird von einer Regel in `src/selftest/guards.ts` gegen diese Tabelle gehalten.
+
 ---
 
 ## 6. Der Prestige-Baum
 
 Der Baum besteht aus verbundenen Knoten mit Symbol, Name, Kosten und Status (gesperrt / verfügbar / gekauft) und ist in acht Bereiche unterteilt.
+
+**Zu den Kosten.** Die Tabellen der folgenden Bereiche nennen sechzehn Knoten, und keiner davon
+kostet mehr als 500. Die übrigen vierzehn — die tieferen Glieder jeder Kette — nennt dieses
+Dokument nicht; sie sind Fortschreibungen der Umsetzung. Für sie gilt seit der Messung eine
+Regel, die in `src/data/prestige.ts` steht und in `src/selftest/suites/prestige.ts` geprüft wird:
+
+- Ein Kettenglied kostet über 500 ungefähr **das Doppelte** seines Vorgängers, nicht das Vier-
+  bis Fünffache. Vorher lief die Reihe auf 25.000 Punkte hinaus — das entspricht Welle 7.116,
+  also dem Doppelten dessen, wofür das Spiel je eine Zahl erhoben hat.
+- **Kein Knoten kostet mehr als zwei Läufe auf Welle 2.000** — der tiefsten Welle, zu der
+  [Abschnitt 5](#5-prestige-punkte-berechnung) noch eine Zahl nennt.
+- Ein Knoten ist **teurer als jeder, den er voraussetzt.** Sonst wäre die Voraussetzung totes
+  Kapital: gekauft nur, um an den billigeren Knoten dahinter zu kommen.
+
+Der Baum kostet damit zusammen **21.000** Punkte statt 81.550, und die vier teuersten Knoten
+tragen 40 Prozent davon statt 62.
 
 ---
 
@@ -105,7 +137,7 @@ Weitere Ziele dieses Bereichs: mehr XP, bessere Gold-Drops, bessere Versorgungsk
 
 | Upgrade | Kosten | Effekt |
 |---|---|---|
-| Zusätzlicher Turmplatz | 100 | +1 maximaler Turmplatz (Start: 4) |
+| Zusätzlicher Turmplatz | 100 | +1 maximaler Turmplatz (Start: 1) |
 | Fähigkeiten-Slot II | 400 | schaltet den 2. Fähigkeiten-Slot frei |
 | Fähigkeiten-Slot III | 2.000 | schaltet den 3. und letzten Fähigkeiten-Slot frei |
 | Erweiterte Auswahl | 250 | bessere Optionen beim Turmkauf |

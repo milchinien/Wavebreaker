@@ -700,10 +700,11 @@ export function stationSuite(): void {
     assert(st.nextUid > 2, `nextUid ${st.nextUid} wuerde eine Kennung doppelt vergeben`)
   })
 
-  check('Standardwerte: vier Turmplaetze zusaetzlich zum Hauptturm', () => {
-    // GDD 03 Abschnitt 6. Der Hauptturm zaehlt nicht mit.
+  check('Standardwerte: ein Turmplatz zusaetzlich zum Hauptturm', () => {
+    // GDD 03 Abschnitt 6. Der Hauptturm zaehlt nicht mit. Mehr Plaetze kauft der Spieler
+    // im Katalog (`f1.foreman`, `f2.pathfinder`, `f3.architect`).
     const st = createStation(START_CORE_ID, START_TOWER_SLOTS)
-    assertEqual(st.slots, 4)
+    assertEqual(st.slots, 1)
     assertEqual(usedSlots(st), 0)
   })
 

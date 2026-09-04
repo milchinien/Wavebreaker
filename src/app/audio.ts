@@ -49,6 +49,7 @@
 
 import type { Unsubscribe } from '../core/events.ts'
 import { createRng } from '../core/rng.ts'
+import { asset } from './assets.ts'
 import {
   BUSES,
   clampLevel,
@@ -249,7 +250,7 @@ export function mountAudio(mix: MixLevels): Audio {
   }
 
   function loadSample(ctx: AudioContext, name: string, take: number): void {
-    void fetch(`/sfx/${name}-${take}.wav`)
+    void fetch(asset(`sfx/${name}-${take}.wav`))
       .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(response.status)))
       .then((data) => ctx.decodeAudioData(data))
       .then((buffer) => {

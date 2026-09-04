@@ -11,7 +11,12 @@
 import { assert, assertClose, assertDeepEqual, assertEqual, check, suite } from '../../core/assert.ts'
 import { createLoop, createManualScheduler } from '../../core/loop.ts'
 import { on, resetEvents } from '../../core/events.ts'
-import { AUTOSAVE_INTERVAL_SECONDS, GOLD_SCALE } from '../../data/balance.ts'
+import {
+  AUTOSAVE_INTERVAL_SECONDS,
+  GOLD_SCALE,
+  START_CORE_ID,
+  START_TOWER_SLOTS,
+} from '../../data/balance.ts'
 import {
   clearSave,
   deserialize,
@@ -223,16 +228,22 @@ export function saveSuite(): void {
     assertEqual(restored.run.station.inventory[0]?.uid, 'm5')
   })
 
-  check('ein fehlender Stationsblock ergibt die Startmodule, nicht nichts', () => {
+  check('ein fehlender Stationsblock ergibt die Startstation, nicht nichts', () => {
+    /*
+     * Frueher hiess der Test "ergibt die Startmodule": Das Lager begann mit drei
+     * geschenkten Tuermen, und ihr Fehlen war die sichtbarste Folge eines verlorenen
+     * Blocks. Geschenkt wird nichts mehr (`START_INVENTORY`), und damit ist die Zusage die
+     * dahinterliegende geworden - **eine spielbare Station** statt `null` oder einer
+     * Station ohne Kern und ohne Platz.
+     */
     const raw = serialize(createInitialState(3), 0) as unknown as Record<string, unknown>
     delete (raw['run'] as Record<string, unknown>)['station']
 
     const restored = deserialize(raw)
     assert(restored !== null, 'der Spielstand darf nicht verworfen werden')
-    assert(
-      restored.run.station.inventory.length > 0,
-      'ohne Startmodule stuende der Spieler ohne alles da',
-    )
+    assertEqual(restored.run.station.coreId, START_CORE_ID, 'ohne Kern gibt es kein Spiel')
+    assertEqual(restored.run.station.slots, START_TOWER_SLOTS, 'und ohne Platz nichts zu bauen')
+    assertEqual(restored.run.station.placed.length, 0)
   })
 
   check('eine leere Modulliste bleibt leer', () => {
@@ -274,7 +285,9 @@ export function saveSuite(): void {
     assertClose(restored.run.gold, 250 * GOLD_SCALE, 1e-9, 'Fortschritt bleibt erhalten')
     assertEqual(restored.run.station.coreId, 'sentinel', 'der Kern wandert in die Station')
     assertEqual(restored.run.station.slots, 5, 'die Turmplaetze wandern mit')
-    assert(restored.run.station.inventory.length > 0, 'Startmodule wie bei einem frischen Spiel')
+    // Das Lager bleibt leer - genau wie bei einem frischen Spiel. Ein Spielstand aus
+    // Version 1 kannte noch keine Module, und geschenkt bekommt sie heute niemand mehr.
+    assertEqual(restored.run.station.inventory.length, 0, 'Lager wie bei einem frischen Spiel')
   })
 
   check('der Goldmassstab rechnet einen alten Spielstand vollstaendig um', () => {

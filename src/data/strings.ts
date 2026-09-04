@@ -158,9 +158,7 @@ export const STRINGS = {
   'status.waveDamage': 'Enemy damage this wave',
   'status.progress': '{done} / {total} down',
   'status.nextWave': 'Next wave in {seconds}s',
-  'status.waveReady': 'Next wave on your call',
 
-  'shop.title': 'Management',
   'shop.buyTower': 'Buy tower',
   'shop.price': '$ {amount}',
   'shop.tooPoor': 'Not enough gold',
@@ -168,7 +166,6 @@ export const STRINGS = {
   'shop.meltHint': 'Pick three towers in storage to melt them into a free draw.',
   'shop.meltShort': 'Melt',
   'shop.cancel': 'Cancel',
-  'shop.locked': 'Opens with the tower shop',
 
   'offer.title': 'Choose a tower',
   'offer.meltTitle': 'Melted — choose a tower',
@@ -210,17 +207,10 @@ export const STRINGS = {
 
   'hud.onField': '{amount} on field',
   'hud.auto': 'AUTO',
-  'hud.autoOn': 'Auto waves on',
-  'hud.autoOff': 'Auto waves off',
+  'hud.autoOn': 'Auto waves on — a cleared wave moves you up',
+  'hud.autoOff': 'Auto waves off — this wave repeats',
   'hud.prevWave': 'Previous wave',
   'hud.nextWave': 'Next wave',
-  /* Der Sprung auf eine Welle, die dieser Run schon hinter sich hat. Der Hinweis nennt die
-     Grenze als Zahl - "nur bis zum Rekord" waere eine Regel, "1 to 40" ist eine Auskunft. */
-  'hud.jumpWave': 'Jump to a wave',
-  'hud.jumpAbout':
-    'Any wave this run has already reached: 1 to {max}. Wave {next} opens once you have played {max}.',
-  'hud.jumpRange': '1–{max}',
-  'hud.jumpGo': 'GO',
   'hud.boss': 'BOSS',
   'hud.waveLost': 'Wave {wave} lost — try {attempt}',
   /* Der Ausgang einer Welle, gross in der Mitte des Feldes. Ein Wort, damit er sich in der
@@ -230,8 +220,25 @@ export const STRINGS = {
 
   'base.inventory': 'Storage',
   'base.station': 'Station',
-  'base.slots': '{used} / {total} slots',
+  /* Nur die Zahlen - was sie bedeuten, steht als Ueberschrift darueber (`base.docking`). */
+  'base.slots': '{used} / {total}',
+  /*
+   * Die Dockanzeige der Basis (`ui/base.ts`).
+   *
+   * "Docking points" und nicht "slots": Das Wort steht neben einer Reihe Punkte, von denen
+   * jeder eine Kante der Station ist - und die Station hat Kanten, keine Faecher.
+   *
+   * Der Nachsatz nennt die Ausbauten **beim Namen**, und die Namen kommen aus dem Katalog
+   * statt aus diesem Text: Wer im Katalog einen Pfad umbenennt oder einen vierten eintraegt,
+   * soll das hier nicht nachpflegen muessen - ein Hinweis, der auf ein Upgrade zeigt, das es
+   * nicht mehr gibt, ist schlimmer als keiner.
+   */
+  'base.docking': 'Docking points',
+  'base.dockingFree': '{count} free',
+  'base.dockingFull': 'All taken',
+  'base.dockingMore': 'More points: {names}',
   'base.empty': 'No modules in storage.',
+  'base.emptyHint': 'Buy your first tower below.',
   'base.placeHint': 'Pick a module, then click a glowing edge.',
   'base.building': 'Placing {name} — right click or Esc to cancel',
   'base.placed': 'placed',

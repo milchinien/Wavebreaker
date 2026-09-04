@@ -96,7 +96,7 @@ der Spielfantasie (Abschnitt 4, „Kamera").
 | `AUTO` | Auto-Wellen-Modus an/aus (hervorgehoben, wenn aktiv) |
 | `(>)` | eine Welle vor |
 
-Zwischen zwei Wellen liegt immer eine kurze Pause. Ist der Auto-Modus aus, wartet das Spiel auf `(>)`.
+Zwischen zwei Wellen liegt immer eine kurze Pause. Ist der Auto-Modus aus, folgt danach dieselbe Welle noch einmal; weiter geht es über `(>)`.
 Vollständige Regeln → [07, Abschnitt 9](07-gegner-bosse-und-wellen.md)
 
 ### Weiteres oberes HUD

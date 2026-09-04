@@ -155,7 +155,10 @@ export type RunState = {
   equipped: string[]
   /** Upgrade-Pfad -> gekaufte Stufe. */
   upgrades: Record<string, number>
-  /** Auto-Wellen-Modus: nach der Pause startet die naechste Welle von selbst. */
+  /**
+   * Auto-Wellen-Modus: An startet nach der Pause die naechste Welle, aus dieselbe noch
+   * einmal. Gegner kommen in beiden Faellen - er steuert die Richtung, nicht den Betrieb.
+   */
   autoWaves: boolean
   /**
    * Kapseln, die noch auf dem Feld liegen (GDD 11 Abschnitt 8).

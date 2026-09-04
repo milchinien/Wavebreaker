@@ -34,7 +34,7 @@ import {
   towerCost,
 } from '../sim/shop.ts'
 import { maxStationHp } from '../sim/stats.ts'
-import { enterLeague, nextWave, previousWave, setAutoMode, skipToWave } from '../sim/waves.ts'
+import { enterLeague, nextWave, previousWave, setAutoMode } from '../sim/waves.ts'
 import { spendGold } from './rewards.ts'
 import {
   canMove,
@@ -410,11 +410,6 @@ export function goToNextWave(state: GameState): boolean {
 
 export function goToPreviousWave(state: GameState): boolean {
   return previousWave(state)
-}
-
-/** Direkt auf eine erreichte Welle - die Regel steht in `sim/waves.ts`. */
-export function goToWave(state: GameState, wave: number): boolean {
-  return skipToWave(state, wave)
 }
 
 // ---------------------------------------------------------------------------

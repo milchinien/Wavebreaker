@@ -18,7 +18,11 @@
  */
 
 import { assert, assertEqual, check, suite } from '../../core/assert.ts'
-import { PRESTIGE_MIN_GOLD } from '../../data/balance.ts'
+import {
+  PRESTIGE_MIN_GOLD,
+  PRESTIGE_WAVE_DIVISOR,
+  PRESTIGE_WAVE_EXPONENT,
+} from '../../data/balance.ts'
 import { PRESTIGE_NODES, prestigeNodeById } from '../../data/prestige.ts'
 import { createInitialState, type GameState } from '../../app/state.ts'
 import { invalidateStationView, resetStationViewCache, stationView } from '../../app/view.ts'
@@ -101,6 +105,51 @@ export function prestigeSuite(): void {
           `${node.id} verlangt ${required}, das es nicht gibt`,
         )
       }
+    }
+  })
+
+  check('ein Knoten ist teurer als jeder, den er voraussetzt', () => {
+    /*
+     * Sonst ist die Voraussetzung **totes Kapital**: Man kauft sie nicht, weil man sie will,
+     * sondern nur, um an den billigeren Knoten dahinter zu kommen - und der Baum verliert
+     * genau die Entscheidung, fuer die es ihn gibt.
+     *
+     * Die Regel hat beim Umbau der Kostenleiter zweimal angeschlagen, und beide Male war der
+     * Entwurf schuld und nicht sie.
+     */
+    for (const node of PRESTIGE_NODES) {
+      for (const required of node.requires) {
+        const before = prestigeNodeById(required)
+        assert(
+          node.cost > before.cost,
+          `${node.id} kostet ${node.cost} und setzt ${required} zu ${before.cost} voraus`,
+        )
+      }
+    }
+  })
+
+  check('kein Knoten liegt jenseits der tiefsten Welle, die das GDD beziffert', () => {
+    /*
+     * GDD 10 Abschnitt 5 nennt Welle 2.000 als tiefste Zeile mit einer Zahl ("500+"); alles
+     * darunter ist "massive Belohnung" und damit keine Groesse, gegen die sich rechnen laesst.
+     * Ein Lauf bis dorthin bringt nach der Punkteformel rund 1.975 Punkte.
+     *
+     * **Zwei solche Laeufe sind die Obergrenze fuer einen einzelnen Knoten.** Ein Schlussstein
+     * darf etwas kosten - aber ein Knoten, den man nur mit zwoelf Laeufen auf der tiefsten
+     * bezifferten Welle bezahlt, ist kein Ziel mehr, sondern eine Zahl ohne Gegenstueck.
+     * Genau dort stand `trait.mythic` mit 25.000 Punkten (Welle 7.116), und niemandem ist es
+     * aufgefallen, weil Baum und Punkteformel in verschiedenen Dateien wohnen.
+     */
+    const deepest = 2000
+    const perRun = Math.pow(deepest / PRESTIGE_WAVE_DIVISOR, PRESTIGE_WAVE_EXPONENT)
+    const cap = 2 * perRun
+
+    for (const node of PRESTIGE_NODES) {
+      assert(
+        node.cost <= cap,
+        `${node.id} kostet ${node.cost} - das sind ${(node.cost / perRun).toFixed(1)} Laeufe ` +
+          `auf Welle ${deepest}, erlaubt sind 2`,
+      )
     }
   })
 
@@ -253,7 +302,7 @@ export function prestigeSuite(): void {
     doPrestige(state)
 
     assertEqual(state.run.station.placed.length, 0, 'nichts steht mehr')
-    assertEqual(state.run.station.inventory.length, 3, 'nur das Startlager')
+    assertEqual(state.run.station.inventory.length, 0, 'das Lager beginnt wieder leer')
     assertEqual(state.run.station.slots, towerSlots(state), 'der gekaufte Platz bleibt')
   })
 

@@ -158,16 +158,27 @@ export function prestigeGlobalBonus(state: GameState, key: string): number {
  * Deshalb steht die Welle im Quadrat und das Gold nur linear - Gold waechst ohnehin mit der
  * Welle, und beides ueberproportional zu nehmen liesse die Kurve zweimal dasselbe belohnen.
  *
- * Nachgerechnet gegen die Richtwerte aus GDD 10 Abschnitt 5 (ohne Goldanteil):
+ * **Gemessen** gegen die Richtwerte aus GDD 10 Abschnitt 5 - mit Goldanteil, Liga 1, gerader
+ * Durchlauf ohne Farmen (`selftest/guards.ts` haelt die Zahlen fest):
  *
- *   Welle    Richtwert     Formel
- *   100      5 bis 10      4
- *   500      50 bis 100    123
- *   1.000    500           493
+ *   Welle     Richtwert    Wellenterm   Goldterm   gesamt
+ *   100       5 bis 10            4,9        1,3        6
+ *   500       ~125              123,5        8,6      132
+ *   1.000     500               493,8       17,4      511
+ *   2.000     500+             1975,3       34,9     2010
+ *   10.000    massiv          49382,7      175,5    49558
  *
- * Zwei von drei liegen im oder am Zielbereich, der dritte um ein Fuenftel darueber. Das GDD
- * nennt die Formel ausdruecklich einen Balancing-Wert; sie wird mit der Wellenkurve zusammen
- * justiert (GDD 15 Abschnitt 16).
+ * Alle fuenf Zeilen sitzen. Die 500er stand einmal auf "50 bis 100" und war **unerfuellbar**:
+ * Der Sprung 500 -> 1.000 verlangt einen Exponenten zwischen 2,32 und 3,32, der Sprung
+ * 100 -> 500 einen zwischen 1,00 und 1,86 - die Bereiche ueberschneiden sich nicht, also
+ * trifft kein Potenzgesetz alle drei. Eine Parabel durch (100 -> 5) und (1.000 -> 500) *muss*
+ * bei 500 auf rund 125 kommen. Korrigiert wurde deshalb die Tabelle im GDD, nicht die Kurve;
+ * die Begruendung samt der beiden verworfenen Alternativen steht dort.
+ *
+ * Der Goldterm verhaelt sich dabei genau wie entworfen: Er waechst von 1,3 auf 175 und ist in
+ * tiefen Wellen nur noch drei Prozent der Summe. Bei einem geraden Durchlauf strebt er gegen
+ * einen **festen** Wert, weil Zaehler und Nenner beide mit `REWARD_SCALING` wachsen - was ihn
+ * ueber diesen Wert hebt, ist ausschliesslich Farmen. Genau das soll er messen.
  *
  * Gezaehlt wird der **Wellenrekord dieses Runs**, nicht die gerade gespielte Welle: Wer
  * zurueckspult, um Gold zu sammeln, soll dafuer nicht bestraft werden.

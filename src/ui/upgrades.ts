@@ -31,6 +31,7 @@ import {
   type UpgradeWindow,
 } from '../data/upgrades.ts'
 import { buyUpgrade, nextUpgradeCost, upgradeBlock } from '../app/actions.ts'
+import { asset } from '../app/assets.ts'
 import type { GameState } from '../app/state.ts'
 import { upgradeLevel } from '../sim/stats.ts'
 import { mountReveal } from './reveal.ts'
@@ -166,7 +167,7 @@ function tileNode(def: UpgradeDef, state: GameState, onChange: () => void): HTML
 
   const art = document.createElement('i')
   art.className = 'up-art'
-  art.style.setProperty('--icon', `url('/icons/upgrades/${upgradeIcon(def)}.svg')`)
+  art.style.setProperty('--icon', `url('${asset(`icons/upgrades/${upgradeIcon(def)}.svg`)}')`)
   node.appendChild(art)
 
   node.addEventListener('click', () => {

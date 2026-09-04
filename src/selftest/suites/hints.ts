@@ -85,12 +85,24 @@ function ready(seed = 18): GameState {
   return state
 }
 
-/** Ein Modul aus dem Lager andocken - der erste Turm an der Station. */
+/**
+ * Ein Modul kaufen und andocken - im Spiel zwei Handlungen, hier eine.
+ *
+ * Das Startlager ist leer (`START_INVENTORY`), also legt der Pruefstand sich das Modul
+ * selbst hin; und weil die Station mit **einem** Platz beginnt, waechst der Platz mit. Beide
+ * Zeilen ersetzen genau das, was frueher geschenkt war.
+ */
 function dock(state: GameState, defId: string): void {
   const station = state.run.station
-  const module = station.inventory.find((entry) => entry.defId === defId)
+  const module =
+    station.inventory.find((entry) => entry.defId === defId) ??
+    (() => {
+      const fresh = newModule(station, defId, 'common')
+      station.inventory.push(fresh)
+      return fresh
+    })()
+  station.slots = Math.max(station.slots, station.placed.length + 1)
   const edge = freeEdges(station)[0]
-  assert(module !== undefined, `${defId} muss im Lager liegen`)
   assert(edge !== undefined, 'die Station muss eine freie Kante haben')
   assertEqual(place(station, module.uid, edge), null, 'das Andocken muss gelingen')
   invalidateStationView(state)
@@ -469,14 +481,11 @@ export function hintsSuite(): void {
   })
 
   check('beim allerersten Start steht nichts am Rand', () => {
-    // Der Verstaerker liegt im Startlager, drei Module auch - beides darf nicht reichen.
+    // Leeres Lager, ein Turmplatz, nichts angedockt - kein Zettel hat einen Anlass.
     const state = ready()
-    assertEqual(state.run.station.inventory.length, MELT_COST, 'Startlager hat genau drei')
-    assert(
-      state.run.station.inventory.some((m) => towerById(m.defId).category === 'buff'),
-      'und darunter einen Verstaerker',
-    )
-    assertEqual(pendingHint(state), null, 'trotzdem faellt noch kein Hinweis')
+    assertEqual(state.run.station.inventory.length, 0, 'das Startlager ist leer')
+    assertEqual(state.run.station.placed.length, 0, 'und es steht nichts an der Station')
+    assertEqual(pendingHint(state), null, 'also faellt noch kein Hinweis')
   })
 
   check('der erste Satz des Spiels ist der Muenz-Hinweis', () => {
@@ -571,48 +580,62 @@ export function hintsSuite(): void {
     assertEqual(state.permanent.seenHints.length, 0)
   })
 
-  check('ein Hinweis ohne Gegenstand blockiert die Reihe nicht', () => {
-    // Wer seinen Verstaerker einschmilzt, bekommt nie etwas ueber Verstaerker zu lesen -
-    // aber alles danach muss trotzdem kommen.
+  check('ein Hinweis, dessen Sache erledigt ist, wird stumm abgelegt', () => {
+    /*
+     * Wer von selbst auf den Prestige-Knopf gefunden hat, bekommt nie etwas ueber Prestige
+     * zu lesen - der Zettel muss trotzdem **abgelegt** werden und nicht in der Reihe haengen
+     * bleiben. Nach dem Zuruecksetzen ist `when` falsch (das verdiente Gold ist wieder null)
+     * und `gone` wahr (es gab ein Prestige): genau die Lage, fuer die es `gone` gibt.
+     *
+     * Frueher stand hier der Verstaerker, den man einschmilzt. Den gibt es als Fall nicht
+     * mehr: `hint.buff` haengt seit dem leeren Startlager nur noch am ersten angedockten
+     * Turm, und `gone` kann dort nicht mehr zutreffen, ohne dass auch `when` zutrifft.
+     */
     const state = ready()
-    state.permanent.seenHints.push('hint.collect', 'hint.upgrade', 'hint.buyTower')
-    state.run.station.inventory.length = 0
-    state.run.xp = cumulativeXp(4)
+    for (const earlier of HINTS.slice(0, HINTS.length - 1)) {
+      state.permanent.seenHints.push(earlier.id)
+    }
+    state.permanent.prestigeCount = 1
+    state.run.goldEarned = 0
 
-    assertEqual(pendingHint(state)?.id, 'hint.level')
+    assertEqual(pendingHint(state), null, 'zu erklaeren ist da nichts mehr')
     assert(
-      state.permanent.seenHints.includes('hint.buff'),
+      state.permanent.seenHints.includes('hint.prestige'),
       'der uebersprungene Zettel muss abgelegt sein, sonst kaeme er zurueck',
     )
   })
 
-  check('ein Verstaerker loest den Hinweis aus - auch ein schon angedockter', () => {
-    // Der Satz erklaert den **Zeitpunkt** ("place them early"). Wer den Verstaerker
-    // zufaellig als erstes angedockt hat, weiss deswegen noch nicht, warum das gut war -
-    // und frueher fiel der Zettel bei ihm stumm unter den Tisch, weil "im Lager" die
-    // Bedingung war.
+  check('der erste angedockte Turm loest den Hinweis aus - ohne Verstaerker im Lager', () => {
+    /*
+     * Der Satz erklaert den **Zeitpunkt** ("place them early"), und der ist erst dann eine
+     * Auskunft, wenn er **vor** dem ersten Verstaerker kommt. Frueher haing er daran, dass
+     * einer im Lager liegt - das traf zu, solange das Startlager einen enthielt. Gekauft
+     * wird er gewuerfelt, und ein Zettel an einem Wuerfel ist keiner.
+     */
     const state = ready()
     const hint = HINTS.find((entry) => entry.id === 'hint.buff')
     assert(hint !== undefined, 'den Hinweis muss es geben')
 
-    dock(state, 'autocannon')
-    assertEqual(hint.when(state), true, 'die Station steht, der Verstaerker liegt im Lager')
+    assertEqual(hint.when(state), false, 'vor dem ersten Turm sagt der Satz nichts')
 
-    dock(state, 'amplifier')
-    assertEqual(hint.when(state), true, 'angedockt - der Zeitpunkt bleibt erklaerungswuerdig')
+    dock(state, 'autocannon')
+    assertEqual(hint.when(state), true, '"module" und "edge" hat der Spieler jetzt gesehen')
+    assert(
+      !state.run.station.inventory.some((m) => towerById(m.defId).category === 'buff'),
+      'und zwar ohne dass je ein Verstaerker im Lager lag',
+    )
   })
 
-  check('ohne Verstaerker gibt es nichts zu sagen, und die Reihe laeuft weiter', () => {
+  check('ein stehender Verstaerker beendet den Hinweis', () => {
     const state = ready()
     const hint = HINTS.find((entry) => entry.id === 'hint.buff')
     assert(hint !== undefined, 'den Hinweis muss es geben')
 
     dock(state, 'autocannon')
-    // Eingeschmolzen: Der Gegenstand des Satzes existiert nicht mehr.
-    state.run.station.inventory = state.run.station.inventory.filter(
-      (module) => towerById(module.defId).category !== 'buff',
-    )
-    assertEqual(hint.when(state), false, 'es gibt keinen Verstaerker mehr')
+    assertEqual(hint.gone?.(state), false, 'erklaert werden muss die Sache noch')
+
+    // Angedockt: Der Spieler hat genau das getan, wozu der Satz raet.
+    dock(state, 'amplifier')
     assertEqual(hint.gone?.(state), true, 'und die Reihe darf weiter')
   })
 
@@ -837,20 +860,18 @@ export function hintsSuite(): void {
   })
 
   check('auch wenn sein Gegenstand verschwindet, bleibt er stehen', () => {
-    // Der Fall, der ohne diese Regel am unangenehmsten waere: Der Spieler docht waehrend
-    // des Lesens den Verstaerker an oder schmilzt ihn ein - und der Satz, der ihm gerade
-    // erklaeren wollte, warum das wichtig ist, ist mitten im Wort weg.
+    // Der Fall, der ohne diese Regel am unangenehmsten waere: Der Spieler dockt waehrend
+    // des Lesens einen Verstaerker an - und der Satz, der ihm gerade erklaeren wollte,
+    // warum der Zeitpunkt wichtig ist, ist mitten im Wort weg.
     const state = ready()
     state.permanent.seenHints.push('hint.collect', 'hint.upgrade', 'hint.buyTower')
     dock(state, 'autocannon')
     assertEqual(pendingHint(state)?.id, 'hint.buff')
 
-    state.run.station.inventory = state.run.station.inventory.filter(
-      (module) => towerById(module.defId).category !== 'buff',
-    )
+    dock(state, 'amplifier')
     const buff = HINTS[3]
     assert(buff !== undefined, 'den Buff-Zettel muss es geben')
-    assertEqual(buff.gone?.(state), true, 'der Gegenstand des Satzes ist weg')
+    assertEqual(buff.gone?.(state), true, 'der Gegenstand des Satzes ist erledigt')
 
     for (let frame = 0; frame < 10; frame++) {
       assertEqual(pendingHint(state)?.id, 'hint.buff', `Bild ${frame + 1}`)
